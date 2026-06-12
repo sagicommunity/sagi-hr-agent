@@ -162,6 +162,8 @@ let busy = false;
 let userName = localStorage.getItem('sagi_hr_name') || '';
 let dashboardPassword = '';
 let awaitingPassword = false;
+let dashboardPeriod = 'all';
+let dashboardUnlocked = false;
 const defaultPlaceholder = input.placeholder;
 
 function autosize(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,180)+'px'; }
@@ -200,7 +202,7 @@ function showErr(e){
 }
 async function callApi(){
   const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({messages:history, userName, dashboardPassword})});
+    body:JSON.stringify({messages:history, userName, dashboardPassword, period: dashboardPeriod})});
   const data=await res.json();
   if(!res.ok||data.error){ throw new Error(data.error||('HTTP '+res.status)); }
   return data;
@@ -219,7 +221,7 @@ async function send(text){
     try{
       const data=await callApi(); hideTyping();
       if(data.needPassword){ awaitingPassword=true; input.placeholder='Введите пароль РОПа…'; addMsg('bot','❌ Неверный пароль. Попробуйте ещё раз.'); }
-      else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); }
+      else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); onDashUnlocked(); }
     }catch(e){ hideTyping(); showErr(e); }
     finally{ busy=false; sendBtn.disabled=false; input.focus(); }
     return;
@@ -232,7 +234,7 @@ async function send(text){
   try{
     const data=await callApi(); hideTyping();
     if(data.needPassword){ awaitingPassword=true; input.placeholder='Введите пароль РОПа…'; addMsg('bot',data.reply); }
-    else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); }
+    else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); if(detectMode(text)==='Дешборд') onDashUnlocked(); }
   }catch(e){ hideTyping(); showErr(e); }
   finally{ busy=false; sendBtn.disabled=false; input.focus(); }
 }
@@ -250,7 +252,52 @@ $('#resetBtn').addEventListener('click',()=>{
   history=[]; streamInner.innerHTML=''; streamInner.appendChild(welcome); welcome.style.display='block';
   modeLabel.textContent='авто'; input.value=''; autosize();
   awaitingPassword=false; dashboardPassword=''; input.placeholder=defaultPlaceholder;
+  dashboardUnlocked=false; dashboardPeriod='all';
+  const db=document.getElementById('dashbar'); if(db) db.style.display='none';
 });
+
+// ---- Панель дешборда РОПа (период / экспорт / очистка) ----
+function onDashUnlocked(){ dashboardUnlocked=true; renderDashToolbar(); }
+function requestDashboard(){ if(busy) return; send('Покажи дешборд по менеджерам за выбранный период.'); }
+function renderDashToolbar(){
+  let bar=document.getElementById('dashbar');
+  if(bar){ bar.style.display='flex'; return; }
+  bar=document.createElement('div'); bar.id='dashbar';
+  bar.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel)';
+  bar.innerHTML='<span style="color:var(--muted);font-size:12.5px">📊 РОП:</span>'
+    +'<select id="dashPeriod" style="background:var(--chip);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:12.5px;cursor:pointer"><option value="all">Всё время</option><option value="month">Месяц</option><option value="week">Неделя</option></select>'
+    +'<button id="dashExport" class="dashbtn">⬇️ CSV</button>'
+    +'<button id="dashClearTest" class="dashbtn">🧹 Тестовые</button>'
+    +'<button id="dashClearAll" class="dashbtn" style="border-color:#5a2230;color:#ff9b9b">🗑 Всё</button>';
+  const ci=document.querySelector('.composer-inner');
+  ci.insertBefore(bar, ci.firstChild);
+  const st=document.createElement('style'); st.textContent='.dashbtn{background:var(--chip);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:12.5px;cursor:pointer}.dashbtn:hover{border-color:var(--brand)}'; document.head.appendChild(st);
+  bar.querySelector('#dashPeriod').value=dashboardPeriod;
+  bar.querySelector('#dashPeriod').addEventListener('change',e=>{ dashboardPeriod=e.target.value; requestDashboard(); });
+  bar.querySelector('#dashExport').addEventListener('click', exportCsv);
+  bar.querySelector('#dashClearTest').addEventListener('click', ()=>clearData('test'));
+  bar.querySelector('#dashClearAll').addEventListener('click', ()=>clearData('all'));
+}
+async function exportCsv(){
+  try{
+    const res=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'export',password:dashboardPassword,period:dashboardPeriod})});
+    const data=await res.json();
+    if(!res.ok||data.error) throw new Error(data.error||'Ошибка экспорта');
+    const blob=new Blob(['﻿'+(data.csv||'')],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sagi-hr-dashboard-'+dashboardPeriod+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  }catch(e){ showErr(e); }
+}
+async function clearData(scope){
+  const msg = scope==='all' ? 'Удалить ВСЮ статистику команды без возможности восстановления?' : 'Удалить тестовые записи (имена со словом «тест»)?';
+  if(!confirm(msg)) return;
+  try{
+    const res=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear',password:dashboardPassword,scope})});
+    const data=await res.json();
+    if(!res.ok||data.error) throw new Error(data.error||'Ошибка очистки');
+    addMsg('bot','🧹 Готово. Удалено: '+data.removed+'. Осталось: '+data.remaining+'.');
+    requestDashboard();
+  }catch(e){ showErr(e); }
+}
 
 // ---- Имя пользователя (для трекинга прогресса) ----
 function renderName(){ $('#nameLabel').textContent = userName ? userName : 'Вход'; }
