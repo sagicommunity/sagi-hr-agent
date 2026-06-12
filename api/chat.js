@@ -111,6 +111,7 @@ export default async function handler(req, res) {
     if (typeof body === 'string') body = JSON.parse(body);
     const userName = (body?.userName || '').toString().slice(0, 60).trim();
     const dashPass = (body?.dashboardPassword || '').toString();
+    const period = (body?.period || 'all').toString();
     const incoming = Array.isArray(body?.messages) ? body.messages : [];
     const messages = incoming
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -132,9 +133,13 @@ export default async function handler(req, res) {
         });
         return;
       }
-      const events = await loadEvents();
+      const all = await loadEvents();
+      const now = Date.now();
+      const span = period === 'week' ? 7 * 86400000 : period === 'month' ? 30 * 86400000 : Infinity;
+      const events = all.filter(e => !e.ts || (now - e.ts) <= span);
       const agg = aggregate(events);
-      dataBlock = `\n\n<DATA>\n${JSON.stringify({ generatedAt: new Date().toISOString(), managers: agg, totalEvents: events.length }, null, 0)}\n</DATA>`;
+      const periodLabel = period === 'week' ? 'последние 7 дней' : period === 'month' ? 'последние 30 дней' : 'всё время';
+      dataBlock = `\n\n<DATA>\n${JSON.stringify({ generatedAt: new Date().toISOString(), period: periodLabel, managers: agg, totalEvents: events.length }, null, 0)}\n</DATA>`;
     }
 
     const sysSuffix =
