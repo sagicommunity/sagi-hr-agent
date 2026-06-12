@@ -98,6 +98,7 @@
   </div>
   <div class="spacer"></div>
   <div class="pill">Режим: <b id="modeLabel">авто</b></div>
+  <button class="pill" id="nameBtn" style="cursor:pointer">👤 <b id="nameLabel">Вход</b></button>
   <button class="pill" id="resetBtn" style="cursor:pointer">Новый диалог</button>
 </header>
 
@@ -158,6 +159,10 @@ const streamInner = $('#streamInner'), stream = $('#stream'), input = $('#input'
       sendBtn = $('#send'), welcome = $('#welcome'), errBox = $('#errBox'), modeLabel = $('#modeLabel');
 let history = [];   // {role, content}
 let busy = false;
+let userName = localStorage.getItem('sagi_hr_name') || '';
+let dashboardPassword = '';
+let awaitingPassword = false;
+const defaultPlaceholder = input.placeholder;
 
 function autosize(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,180)+'px'; }
 input.addEventListener('input', autosize);
@@ -189,28 +194,47 @@ function showTyping(){
 }
 function hideTyping(){ const t=$('#typing'); if(t) t.remove(); }
 
+function showErr(e){
+  errBox.style.display='block';
+  errBox.textContent='⚠️ '+(e.message||'Ошибка запроса')+'. Если это первый запуск — проверьте ключ ANTHROPIC_API_KEY в Vercel.';
+}
+async function callApi(){
+  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({messages:history, userName, dashboardPassword})});
+  const data=await res.json();
+  if(!res.ok||data.error){ throw new Error(data.error||('HTTP '+res.status)); }
+  return data;
+}
+
 async function send(text){
   text=(text||input.value).trim();
   if(!text||busy) return;
+
+  // Режим ввода пароля РОПа для дешборда
+  if(awaitingPassword){
+    dashboardPassword=text; awaitingPassword=false;
+    input.value=''; autosize(); input.placeholder=defaultPlaceholder;
+    addMsg('user','🔒 ••••••');
+    busy=true; sendBtn.disabled=true; showTyping();
+    try{
+      const data=await callApi(); hideTyping();
+      if(data.needPassword){ awaitingPassword=true; input.placeholder='Введите пароль РОПа…'; addMsg('bot','❌ Неверный пароль. Попробуйте ещё раз.'); }
+      else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); }
+    }catch(e){ hideTyping(); showErr(e); }
+    finally{ busy=false; sendBtn.disabled=false; input.focus(); }
+    return;
+  }
+
   busy=true; sendBtn.disabled=true; errBox.style.display='none';
   const m=detectMode(text); if(m) modeLabel.textContent=m;
   addMsg('user',text); history.push({role:'user',content:text});
   input.value=''; autosize(); showTyping();
   try{
-    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:history})});
-    const data=await res.json();
-    hideTyping();
-    if(!res.ok||data.error){ throw new Error(data.error||('HTTP '+res.status)); }
-    const reply=data.reply||'(пустой ответ)';
-    addMsg('bot',reply); history.push({role:'assistant',content:reply});
-  }catch(e){
-    hideTyping();
-    errBox.style.display='block';
-    errBox.textContent='⚠️ '+(e.message||'Ошибка запроса')+'. Если это первый запуск — проверьте, что в Vercel задан ключ ANTHROPIC_API_KEY.';
-  }finally{
-    busy=false; sendBtn.disabled=false; input.focus();
-  }
+    const data=await callApi(); hideTyping();
+    if(data.needPassword){ awaitingPassword=true; input.placeholder='Введите пароль РОПа…'; addMsg('bot',data.reply); }
+    else { addMsg('bot',data.reply); history.push({role:'assistant',content:data.reply}); }
+  }catch(e){ hideTyping(); showErr(e); }
+  finally{ busy=false; sendBtn.disabled=false; input.focus(); }
 }
 
 sendBtn.addEventListener('click',()=>send());
@@ -225,7 +249,33 @@ $('#quick').addEventListener('click',e=>{ const b=e.target.closest('button'); if
 $('#resetBtn').addEventListener('click',()=>{
   history=[]; streamInner.innerHTML=''; streamInner.appendChild(welcome); welcome.style.display='block';
   modeLabel.textContent='авто'; input.value=''; autosize();
+  awaitingPassword=false; dashboardPassword=''; input.placeholder=defaultPlaceholder;
 });
+
+// ---- Имя пользователя (для трекинга прогресса) ----
+function renderName(){ $('#nameLabel').textContent = userName ? userName : 'Вход'; }
+function askName(){
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:50';
+  ov.innerHTML='<div style="background:#151b24;border:1px solid #26303d;border-radius:16px;padding:24px;width:min(92vw,420px);box-shadow:0 20px 60px rgba(0,0,0,.5)">'
+    +'<div style="font-size:18px;font-weight:700;margin-bottom:6px">Как вас зовут?</div>'
+    +'<div style="color:#93a1b3;font-size:13.5px;line-height:1.5;margin-bottom:14px">Имя нужно, чтобы агент сохранял ваш прогресс по ролёвкам и тестам в общий дешборд. Кандидаты могут указать имя или пропустить.</div>'
+    +'<input id="nameInput" placeholder="Например: Айгерим" style="width:100%;background:#0d1117;border:1px solid #26303d;border-radius:11px;color:#e8edf3;font:inherit;font-size:15px;padding:11px 13px;outline:none;margin-bottom:14px">'
+    +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+    +'<button id="nameSkip" style="background:#1d2733;border:1px solid #26303d;color:#93a1b3;border-radius:10px;padding:9px 16px;cursor:pointer;font:inherit">Пропустить</button>'
+    +'<button id="nameSave" style="background:linear-gradient(135deg,#16d196,#0fb37e);border:0;color:#06281f;font-weight:700;border-radius:10px;padding:9px 18px;cursor:pointer;font:inherit">Сохранить</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  const ni=ov.querySelector('#nameInput'); ni.value=userName||''; ni.focus();
+  const close=()=>ov.remove();
+  const save=()=>{ userName=(ni.value||'').trim().slice(0,60); if(userName) localStorage.setItem('sagi_hr_name',userName); else localStorage.removeItem('sagi_hr_name'); renderName(); close(); input.focus(); };
+  ov.querySelector('#nameSave').onclick=save;
+  ov.querySelector('#nameSkip').onclick=()=>{ close(); input.focus(); };
+  ni.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } });
+}
+$('#nameBtn').addEventListener('click', askName);
+renderName();
+if(!userName) askName();
 input.focus();
 </script>
 </body>
