@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/chat.js": { "maxDuration": 30 }
-  }
+  },
+  "redirects": [
+    { "source": "/dashboard", "destination": "/dashboard/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/dashboard/:path*", "destination": "https://hr-sagi.vercel.app/:path*" }
+  ]
 }
