@@ -7,6 +7,7 @@
     { "source": "/dashboard", "destination": "/dashboard/", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/dashboard/", "destination": "https://hr-sagi.vercel.app/index.html" },
     { "source": "/dashboard/:path*", "destination": "https://hr-sagi.vercel.app/:path*" }
   ]
 }
