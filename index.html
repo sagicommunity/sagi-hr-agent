@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi HR-агент · Наём · Обучение · Коучинг сделок</title>
+<meta name="description" content="ИИ HR + Sales Enablement агент Sagi: скрининг кандидатов, обучение менеджеров, коучинг сделок и дешборд для руководства." />
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b24; --panel-2:#1b2330; --line:#26303d;
+    --text:#e8edf3; --muted:#93a1b3; --brand:#16d196; --brand-2:#0fb37e;
+    --user:#1f6feb; --chip:#1d2733; --danger:#ff6b6b; --warn:#ffd166;
+    --radius:16px; --shadow:0 8px 30px rgba(0,0,0,.35);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 800px at 80% -10%,#13241f 0%,var(--bg) 55%);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  a{color:var(--brand)}
+  /* Header */
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);background:rgba(13,17,23,.7);backdrop-filter:blur(8px);z-index:5}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .logo .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:#06281f;font-weight:900;box-shadow:0 4px 14px rgba(22,209,150,.35)}
+  .logo small{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:1px}
+  header .spacer{flex:1}
+  .pill{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:6px 12px;border-radius:999px;background:var(--panel)}
+  .pill b{color:var(--brand)}
+  /* Layout */
+  main{flex:1;display:flex;min-height:0}
+  .chat-wrap{flex:1;display:flex;flex-direction:column;min-width:0}
+  .stream{flex:1;overflow-y:auto;padding:26px 0;scroll-behavior:smooth}
+  .stream-inner{max-width:860px;margin:0 auto;padding:0 20px;display:flex;flex-direction:column;gap:18px}
+  /* Welcome */
+  .welcome{text-align:center;padding:30px 10px 6px}
+  .welcome h1{font-size:26px;margin:14px 0 6px}
+  .welcome p{color:var(--muted);margin:0 auto;max-width:560px;line-height:1.55}
+  .modes{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:720px;margin:26px auto 0}
+  .mode{text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:16px;cursor:pointer;transition:.15s;display:flex;gap:12px;align-items:flex-start}
+  .mode:hover{border-color:var(--brand);transform:translateY(-2px);background:var(--panel-2)}
+  .mode .ic{font-size:22px;line-height:1}
+  .mode h3{margin:0 0 4px;font-size:15px}
+  .mode span{color:var(--muted);font-size:13px;line-height:1.45}
+  /* Messages */
+  .msg{display:flex;gap:12px;align-items:flex-start;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .msg .av{width:32px;height:32px;border-radius:9px;flex:0 0 32px;display:grid;place-items:center;font-size:14px;font-weight:800;margin-top:2px}
+  .msg.bot .av{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#06281f}
+  .msg.user{flex-direction:row-reverse}
+  .msg.user .av{background:var(--user);color:#fff}
+  .bubble{padding:13px 16px;border-radius:14px;line-height:1.6;max-width:calc(100% - 56px);overflow-x:auto}
+  .msg.bot .bubble{background:var(--panel);border:1px solid var(--line);border-top-left-radius:4px}
+  .msg.user .bubble{background:var(--user);color:#fff;border-top-right-radius:4px}
+  .bubble p{margin:0 0 10px}.bubble p:last-child{margin:0}
+  .bubble h1,.bubble h2,.bubble h3{margin:14px 0 8px;line-height:1.3}
+  .bubble ul,.bubble ol{margin:8px 0;padding-left:20px}
+  .bubble li{margin:4px 0}
+  .bubble code{background:#0c1117;border:1px solid var(--line);padding:2px 6px;border-radius:6px;font-size:13px}
+  .bubble pre{background:#0c1117;border:1px solid var(--line);padding:12px;border-radius:10px;overflow-x:auto}
+  .bubble pre code{border:0;padding:0}
+  .bubble table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13.5px}
+  .bubble th,.bubble td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  .bubble th{background:var(--panel-2);color:var(--brand);font-weight:600}
+  .bubble tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .bubble blockquote{border-left:3px solid var(--brand);margin:8px 0;padding:4px 12px;color:var(--muted)}
+  .typing{display:inline-flex;gap:4px;padding:4px 0}
+  .typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,60%,100%{opacity:.25}30%{opacity:1}}
+  /* Composer */
+  .composer{border-top:1px solid var(--line);background:rgba(13,17,23,.7);backdrop-filter:blur(8px);padding:14px 20px 18px}
+  .composer-inner{max-width:860px;margin:0 auto}
+  .quick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .quick button{font-size:12.5px;color:var(--muted);background:var(--chip);border:1px solid var(--line);padding:7px 12px;border-radius:999px;cursor:pointer;transition:.15s}
+  .quick button:hover{color:var(--text);border-color:var(--brand)}
+  .input-row{display:flex;gap:10px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 14px}
+  .input-row:focus-within{border-color:var(--brand)}
+  textarea{flex:1;background:transparent;border:0;color:var(--text);font-family:inherit;font-size:15px;line-height:1.5;resize:none;max-height:180px;outline:none;padding:6px 0}
+  .send{width:42px;height:42px;border-radius:11px;border:0;background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#06281f;font-size:18px;cursor:pointer;flex:0 0 42px;display:grid;place-items:center;transition:.15s}
+  .send:disabled{opacity:.4;cursor:not-allowed}
+  .send:not(:disabled):hover{transform:translateY(-1px)}
+  .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:9px}
+  .banner{max-width:860px;margin:0 auto 0;padding:0 20px}
+  .banner .box{background:rgba(255,209,102,.08);border:1px solid rgba(255,209,102,.3);color:var(--warn);font-size:12.5px;padding:9px 12px;border-radius:10px;margin-top:10px;display:none}
+  /* Scrollbar */
+  .stream::-webkit-scrollbar{width:10px}.stream::-webkit-scrollbar-thumb{background:#222c38;border-radius:8px}
+  @media(max-width:640px){.modes{grid-template-columns:1fr}.welcome h1{font-size:22px}header .pill{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="mark">S</div>
+    <div>Sagi HR-агент
+      <small>Наём · Обучение · Коучинг сделок · Дешборд</small>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="pill">Режим: <b id="modeLabel">авто</b></div>
+  <button class="pill" id="resetBtn" style="cursor:pointer">Новый диалог</button>
+</header>
+
+<main>
+  <div class="chat-wrap">
+    <div class="stream" id="stream">
+      <div class="stream-inner" id="streamInner">
+        <div class="welcome" id="welcome">
+          <div class="logo" style="justify-content:center"><div class="mark" style="width:46px;height:46px;border-radius:13px;font-size:22px">S</div></div>
+          <h1>HR + Sales Enablement агент Sagi</h1>
+          <p>Я веду полный цикл отдела холодных продаж: собеседую кандидатов, обучаю и тестирую менеджеров, помогаю закрывать сделки и собираю дешборд для руководства. Выберите, кто вы — или просто напишите.</p>
+          <div class="modes">
+            <div class="mode" data-msg="Привет, я на собеседование на позицию менеджера по холодным продажам.">
+              <div class="ic">🎯</div>
+              <div><h3>Я кандидат</h3><span>Текстовое интервью: аутрич, копирайтинг офферов, работа с CTA, стрессоустойчивость.</span></div>
+            </div>
+            <div class="mode" data-msg="Агент, проведи мне ролевку по работе с возражениями. Сыграй холодного клиента.">
+              <div class="ic">🥊</div>
+              <div><h3>Я менеджер — тренировка</h3><span>Проверка знаний продукта, ролевые симуляции, оценка и фидбек.</span></div>
+            </div>
+            <div class="mode" data-msg="Агент, помоги со сделкой. Вот контекст: ">
+              <div class="ic">💬</div>
+              <div><h3>Я менеджер — сделка</h3><span>Пришлите переписку или кейс — дам сценарий ответа, фоллоу-ап, аргумент к закрытию.</span></div>
+            </div>
+            <div class="mode" data-msg="Агент, покажи текущий дешборд по менеджерам.">
+              <div class="ic">📊</div>
+              <div><h3>Я руководитель</h3><span>Сводный дешборд по команде: наём, обучение, аутрич, возражения, сделки.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="banner"><div class="box" id="errBox"></div></div>
+
+    <div class="composer">
+      <div class="composer-inner">
+        <div class="quick" id="quick">
+          <button data-msg="Привет, я на собеседование.">🎯 На собеседование</button>
+          <button data-msg="Проверь мои знания по продукту Sagi.">📝 Тест по продукту</button>
+          <button data-msg="Проведи ролевку: клиент говорит «у конкурентов дешевле».">🥊 Ролевка «дорого»</button>
+          <button data-msg="Помоги со сделкой: клиент прочитал оффер, но молчит 3 дня.">💬 Завис клиент</button>
+          <button data-msg="Покажи дешборд по менеджерам.">📊 Дешборд</button>
+        </div>
+        <div class="input-row">
+          <textarea id="input" rows="1" placeholder="Напишите сообщение…  (Enter — отправить, Shift+Enter — новая строка)"></textarea>
+          <button class="send" id="send" title="Отправить">➤</button>
+        </div>
+        <div class="foot">Sagi HR-агент работает на Claude. Ответы могут содержать неточности — проверяйте важные данные.</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const streamInner = $('#streamInner'), stream = $('#stream'), input = $('#input'),
+      sendBtn = $('#send'), welcome = $('#welcome'), errBox = $('#errBox'), modeLabel = $('#modeLabel');
+let history = [];   // {role, content}
+let busy = false;
+
+function autosize(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,180)+'px'; }
+input.addEventListener('input', autosize);
+
+function detectMode(text){
+  const t = text.toLowerCase();
+  if(/собеседован|на интервью|ваканси|резюме|хочу к вам в команд/.test(t)) return 'Наём';
+  if(/ролевк|проверь.*знани|тест|аттестац|симуляц|сыграй.*клиент/.test(t)) return 'Обучение';
+  if(/помоги.*сделк|клиент.*(молчит|думает|дорого|дешевле|не берёт|игнор)|фоллоу|переписк|оффер.*молч/.test(t)) return 'Коучинг';
+  if(/дешборд|dashboard|сводк.*менеджер|прогресс.*команд|отчёт по команде/.test(t)) return 'Дешборд';
+  return null;
+}
+
+function addMsg(role, text){
+  if(welcome) welcome.style.display='none';
+  const wrap=document.createElement('div'); wrap.className='msg '+(role==='user'?'user':'bot');
+  const av=document.createElement('div'); av.className='av'; av.textContent=role==='user'?'Вы':'S';
+  const bub=document.createElement('div'); bub.className='bubble';
+  if(role==='user'){ bub.textContent=text; } else { bub.innerHTML = marked.parse(text||''); }
+  wrap.appendChild(av); wrap.appendChild(bub); streamInner.appendChild(wrap);
+  stream.scrollTop = stream.scrollHeight;
+  return bub;
+}
+
+function showTyping(){
+  const wrap=document.createElement('div'); wrap.className='msg bot'; wrap.id='typing';
+  wrap.innerHTML='<div class="av">S</div><div class="bubble"><div class="typing"><i></i><i></i><i></i></div></div>';
+  streamInner.appendChild(wrap); stream.scrollTop=stream.scrollHeight;
+}
+function hideTyping(){ const t=$('#typing'); if(t) t.remove(); }
+
+async function send(text){
+  text=(text||input.value).trim();
+  if(!text||busy) return;
+  busy=true; sendBtn.disabled=true; errBox.style.display='none';
+  const m=detectMode(text); if(m) modeLabel.textContent=m;
+  addMsg('user',text); history.push({role:'user',content:text});
+  input.value=''; autosize(); showTyping();
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:history})});
+    const data=await res.json();
+    hideTyping();
+    if(!res.ok||data.error){ throw new Error(data.error||('HTTP '+res.status)); }
+    const reply=data.reply||'(пустой ответ)';
+    addMsg('bot',reply); history.push({role:'assistant',content:reply});
+  }catch(e){
+    hideTyping();
+    errBox.style.display='block';
+    errBox.textContent='⚠️ '+(e.message||'Ошибка запроса')+'. Если это первый запуск — проверьте, что в Vercel задан ключ ANTHROPIC_API_KEY.';
+  }finally{
+    busy=false; sendBtn.disabled=false; input.focus();
+  }
+}
+
+sendBtn.addEventListener('click',()=>send());
+input.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); }});
+document.querySelectorAll('.mode').forEach(el=>el.addEventListener('click',()=>{
+  const msg=el.dataset.msg;
+  if(msg.endsWith(': ')){ input.value=msg; autosize(); input.focus(); } else { send(msg); }
+}));
+$('#quick').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) {
+  const msg=b.dataset.msg; if(msg.endsWith(': ')){input.value=msg;autosize();input.focus();} else send(msg);
+}});
+$('#resetBtn').addEventListener('click',()=>{
+  history=[]; streamInner.innerHTML=''; streamInner.appendChild(welcome); welcome.style.display='block';
+  modeLabel.textContent='авто'; input.value=''; autosize();
+});
+input.focus();
+</script>
+</body>
+</html>
