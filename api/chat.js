@@ -125,14 +125,43 @@ const HH_TOOL = {
   },
 };
 
+const HH_UA = 'Sagi-HR-Bot/1.0 (business@sagibonus.com)';
+
+// Токен приложения HH через client_credentials (кэш в Redis ~25 мин)
+async function getHhToken() {
+  const id = process.env.HH_CLIENT_ID || '';
+  const secret = process.env.HH_CLIENT_SECRET || '';
+  if (!id || !secret) return null;
+  try { const cached = await redis(['GET', 'hh:token']); if (cached) return cached; } catch (e) {}
+  const r = await fetch('https://hh.ru/oauth/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'User-Agent': HH_UA },
+    body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}`,
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  if (d.access_token) {
+    const ttl = Math.max((d.expires_in || 1800) - 120, 60);
+    try { await redis(['SET', 'hh:token', d.access_token, 'EX', ttl]); } catch (e) {}
+    return d.access_token;
+  }
+  return null;
+}
+
 async function searchHhVacancies(input) {
   const text = (input?.text || '').toString().slice(0, 200);
   const area = (input?.area || '40').toString();
   const per = Math.min(Math.max(parseInt(input?.per_page || 10, 10) || 10, 1), 20);
   const url = `https://api.hh.ru/vacancies?text=${encodeURIComponent(text)}&area=${encodeURIComponent(area)}&per_page=${per}&order_by=relevance`;
-  const UA = 'Sagi-HR-Bot/1.0 (business@sagibonus.com)';
-  const r = await fetch(url, { headers: { 'User-Agent': UA, 'HH-User-Agent': UA, 'Accept': 'application/json' } });
-  if (!r.ok) { let detail = ''; try { detail = (await r.text()).slice(0, 200); } catch (e) {} return { error: `HH API ${r.status}`, detail }; }
+  const token = await getHhToken();
+  const headers = { 'User-Agent': HH_UA, 'HH-User-Agent': HH_UA, 'Accept': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(url, { headers });
+  if (!r.ok) {
+    let detail = ''; try { detail = (await r.text()).slice(0, 200); } catch (e) {}
+    const hint = !token ? ' (нет токена: задайте HH_CLIENT_ID и HH_CLIENT_SECRET в Vercel)' : '';
+    return { error: `HH API ${r.status}${hint}`, detail };
+  }
   const d = await r.json();
   const fmtSalary = s => !s ? 'не указана' : `${s.from ? 'от ' + s.from : ''}${s.to ? ' до ' + s.to : ''} ${s.currency || ''}`.trim();
   const items = (d.items || []).slice(0, per).map(v => ({
