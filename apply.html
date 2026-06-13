@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Отклик на вакансию менеджера по продажам</title>
+<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi. Оставьте контакт и резюме — мы свяжемся." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10; --panel:rgba(255,255,255,.035); --panel-solid:#11151c; --panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09); --line-2:rgba(255,255,255,.16);
+    --text:#eef2f6; --muted:#8a97a8; --faint:#5b6675;
+    --brand:#19e39a; --brand-2:#0fb57e; --brand-ink:#042319; --brand-glow:rgba(25,227,154,.35);
+    --warn:#ffcf66; --danger:#ff7a7a;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.12),transparent 58%),radial-gradient(760px 540px at 6% 112%,rgba(56,128,255,.08),transparent 54%),var(--bg);
+    -webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:14px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.55);backdrop-filter:blur(14px)}
+  .mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;font-size:18px;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15.5px}
+  .brand small{display:block;color:var(--muted);font-weight:500;font-size:11.5px;margin-top:2px;font-family:var(--font)}
+  header .spacer{flex:1}
+  header a.back{font-size:13px;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:999px}
+  header a.back:hover{color:var(--text);border-color:var(--line-2)}
+  .wrap{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:34px 20px 60px}
+  .card{width:100%;max-width:600px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;color:var(--brand);text-align:center}
+  h1{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.14;letter-spacing:-.5px;text-align:center;margin:12px 0 8px;
+    background:linear-gradient(180deg,#fff,#aeb9c6);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{color:var(--muted);text-align:center;line-height:1.6;margin:0 auto 26px;max-width:500px}
+  form{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+  label{display:block;font-size:13px;font-weight:600;color:var(--text);margin:0 0 7px}
+  label .req{color:var(--brand)}
+  .field{margin-bottom:18px}
+  input,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:13px;color:var(--text);font:inherit;font-size:15px;padding:12px 14px;outline:none;transition:.16s}
+  input:focus,textarea:focus{border-color:rgba(25,227,154,.55);box-shadow:0 0 0 4px rgba(25,227,154,.1)}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  textarea{resize:vertical;min-height:160px;line-height:1.55}
+  .hint{color:var(--faint);font-size:12px;margin-top:6px}
+  button.submit{width:100%;border:0;border-radius:14px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:800;font-size:15.5px;padding:14px;cursor:pointer;transition:.16s;box-shadow:0 8px 22px var(--brand-glow)}
+  button.submit:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+  button.submit:not(:disabled):hover{transform:translateY(-1px)}
+  .foot{color:var(--faint);font-size:11.5px;text-align:center;margin-top:14px;line-height:1.5}
+  .result{display:none;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:30px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.4)}
+  .result .big{width:64px;height:64px;border-radius:18px;margin:0 auto 16px;display:grid;place-items:center;font-size:30px;background:radial-gradient(120% 120% at 30% 20%,rgba(25,227,154,.22),rgba(25,227,154,.06));border:1px solid rgba(25,227,154,.3)}
+  .result h2{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 8px}
+  .result p{color:var(--muted);line-height:1.6;margin:0 auto;max-width:420px}
+  .err{display:none;background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:11px 14px;border-radius:12px;margin-bottom:16px}
+  @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">S</div>
+  <div class="brand">Sagi<small>Карьера в отделе продаж</small></div>
+  <div class="spacer"></div>
+  <a class="back" href="/">← На главную</a>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div id="formView">
+      <div class="eyebrow">Вакансия · отдел холодных продаж</div>
+      <h1>Менеджер по продажам в Sagi</h1>
+      <p class="lead">Холодный аутрич, поиск ЛПР, закрытие на встречи. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.</p>
+      <form id="applyForm">
+        <div class="err" id="err"></div>
+        <div class="field">
+          <label>Имя <span class="req">*</span></label>
+          <input id="name" maxlength="80" placeholder="Например: Айгерим Нурлановна" required />
+        </div>
+        <div class="field">
+          <label>Контакт <span class="req">*</span></label>
+          <input id="contact" maxlength="120" placeholder="Телефон / WhatsApp / Telegram / email" required />
+        </div>
+        <div class="field">
+          <label>Откуда узнали о вакансии</label>
+          <input id="source" maxlength="80" placeholder="HH, Instagram, по рекомендации…" />
+        </div>
+        <div class="field">
+          <label>Резюме / о себе <span class="req">*</span></label>
+          <textarea id="resume" maxlength="8000" placeholder="Вставьте резюме текстом или коротко расскажите: опыт в продажах, холодные звонки/аутрич, достижения, почему хотите к нам." required></textarea>
+          <div class="hint">Если есть ссылка на резюме (hh.kz, LinkedIn) — добавьте её тоже.</div>
+        </div>
+        <button class="submit" id="submitBtn" type="submit">Откликнуться</button>
+        <div class="foot">Нажимая «Откликнуться», вы соглашаетесь на обработку данных для целей подбора персонала Sagi.</div>
+      </form>
+    </div>
+
+    <div class="result" id="resultView">
+      <div class="big">✅</div>
+      <h2>Спасибо, заявка принята!</h2>
+      <p id="resultText">Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту. Удачи!</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
+form.addEventListener('submit',async e=>{
+  e.preventDefault();
+  err.style.display='none';
+  const payload={
+    name:$('#name').value.trim(),
+    contact:$('#contact').value.trim(),
+    source:$('#source').value.trim(),
+    resume:$('#resume').value.trim(),
+  };
+  if(!payload.name||!payload.contact||!payload.resume){ err.textContent='Заполните имя, контакт и резюме.'; err.style.display='block'; return; }
+  btn.disabled=true; btn.textContent='Отправляем…';
+  try{
+    const r=await fetch('/api/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok||d.error) throw new Error(d.error||('Ошибка '+r.status));
+    $('#formView').style.display='none';
+    $('#resultView').style.display='block';
+    $('#resultText').textContent='Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(ex){
+    err.textContent='⚠️ '+(ex.message||'Не удалось отправить. Попробуйте ещё раз.');
+    err.style.display='block';
+    btn.disabled=false; btn.textContent='Откликнуться';
+  }
+});
+</script>
+</body>
+</html>
