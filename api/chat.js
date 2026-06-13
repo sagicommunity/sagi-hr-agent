@@ -23,6 +23,7 @@ Sagi — платформа лояльности и бонусов для биз
    • LinkedIn boolean-поиск: ("cold calling" OR "холодные продажи" OR "B2B sales") AND (Kazakhstan OR Almaty OR Astana).
    • Instagram/HeadHunter отклики, реферальные программы.
    Давай готовые к копированию ссылки/строки запросов, а не общие советы.
+(в) РЫНОК ВАКАНСИЙ: если спрашивают про рынок труда, зарплаты, конкурентов-работодателей, сколько платят менеджерам по продажам, какие вакансии есть — ВЫЗЫВАЙ инструмент search_hh_vacancies (реальные данные hh.kz). По итогам сделай короткую сводку: вилка зарплат, кто нанимает, на что обратить внимание. Указывай, что данные с hh.kz.
 БЛОК 1 — ИНТЕРВЬЮ. Текстовое интервью кандидата по этапам: знакомство/мотивация → кейс на холодное сообщение владельцу кафе → стресс-кейс (резкий отказ) → кейс на CTA. По 1–2 вопроса за раз. В конце — оценка 0–10 по навыкам (аутрич, копирайтинг, стрессоустойчивость, CTA) и вердикт (Брать / Резерв / Отказ).
 БЛОК 2 — ОБУЧЕНИЕ И КВАЛИФИКАЦИЯ. Тесты по продукту/матчасти; симуляции, где ТЫ играешь холодного/негативного/занятого клиента, а менеджер отрабатывает возражения. Не сдавайся слишком легко. По итогам — оценка 0–10, разбор, 2–3 рекомендации.
 БЛОК 3 — DEAL COACHING. Менеджер присылает переписку/кейс — даёшь готовый к отправке текст ответа/фоллоу-апа/аргумент к закрытию (можно копировать), 1–2 варианта тона.
@@ -109,6 +110,59 @@ function extractSaves(text) {
   return { events, clean };
 }
 
+// ---- Инструмент: поиск вакансий на hh.kz/hh.ru (публичный API, без токена) ----
+const HH_TOOL = {
+  name: 'search_hh_vacancies',
+  description: 'Поиск реальных вакансий на hh.kz / hh.ru по ключевым словам и региону. Используй, когда спрашивают про рынок труда, зарплаты, конкурентов-работодателей, какие вакансии есть, сколько платят, где нанимают менеджеров по продажам. Возвращает список вакансий: должность, компания, город, зарплата, ссылка.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      text: { type: 'string', description: 'Ключевые слова, напр. "менеджер по холодным продажам" или "B2B sales"' },
+      area: { type: 'string', description: 'Регион: 159=Алматы, 160=Астана, 40=весь Казахстан, 1=Москва, 113=Россия. По умолчанию 40.' },
+      per_page: { type: 'integer', description: 'Сколько вакансий вернуть (1–20). По умолчанию 10.' },
+    },
+    required: ['text'],
+  },
+};
+
+async function searchHhVacancies(input) {
+  const text = (input?.text || '').toString().slice(0, 200);
+  const area = (input?.area || '40').toString();
+  const per = Math.min(Math.max(parseInt(input?.per_page || 10, 10) || 10, 1), 20);
+  const url = `https://api.hh.ru/vacancies?text=${encodeURIComponent(text)}&area=${encodeURIComponent(area)}&per_page=${per}&order_by=relevance`;
+  const r = await fetch(url, { headers: { 'User-Agent': 'Sagi HR Bot (business@sagibonus.com)' } });
+  if (!r.ok) return { error: `HH API ${r.status}` };
+  const d = await r.json();
+  const fmtSalary = s => !s ? 'не указана' : `${s.from ? 'от ' + s.from : ''}${s.to ? ' до ' + s.to : ''} ${s.currency || ''}`.trim();
+  const items = (d.items || []).slice(0, per).map(v => ({
+    name: v.name,
+    employer: v.employer?.name || '',
+    area: v.area?.name || '',
+    salary: fmtSalary(v.salary),
+    schedule: v.schedule?.name || '',
+    experience: v.experience?.name || '',
+    url: v.alternate_url,
+  }));
+  return { found: d.found, query: { text, area }, items };
+}
+
+async function runTool(name, input) {
+  try {
+    if (name === 'search_hh_vacancies') return await searchHhVacancies(input);
+    return { error: 'unknown tool' };
+  } catch (e) { return { error: e.message || 'tool error' }; }
+}
+
+async function anthropic(apiKey, payload) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  return { ok: r.ok, status: r.status, data };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -155,17 +209,29 @@ export default async function handler(req, res) {
       (isDashboard ? ' Роль: руководитель (доступ к дешборду подтверждён). Построй дешборд строго из блока <DATA>.' : '') +
       dataBlock;
 
-    const anthRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2200, system: SYSTEM_PROMPT + sysSuffix, messages }),
-    });
-    const data = await anthRes.json();
-    if (!anthRes.ok) {
-      res.status(anthRes.status).json({ error: data?.error?.message || ('Anthropic API error ' + anthRes.status) });
-      return;
+    // ---- Цикл с инструментами (поиск вакансий HH) ----
+    const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
+    let raw = '';
+    for (let step = 0; step < 4; step++) {
+      const { ok, status, data } = await anthropic(apiKey, {
+        model: MODEL, max_tokens: 2200, system: SYSTEM_PROMPT + sysSuffix, tools: [HH_TOOL], messages: apiMessages,
+      });
+      if (!ok) { res.status(status).json({ error: data?.error?.message || ('Anthropic API error ' + status) }); return; }
+      if (data.stop_reason === 'tool_use') {
+        apiMessages.push({ role: 'assistant', content: data.content });
+        const toolResults = [];
+        for (const block of (data.content || [])) {
+          if (block.type === 'tool_use') {
+            const result = await runTool(block.name, block.input);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result).slice(0, 6000) });
+          }
+        }
+        apiMessages.push({ role: 'user', content: toolResults });
+        continue;
+      }
+      raw = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      break;
     }
-    const raw = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
     const { events, clean } = extractSaves(raw);
     if (events.length) {
       const fixed = events.map(e => ({ ...e, manager: (e.manager && String(e.manager).trim()) || userName || '—' }));
