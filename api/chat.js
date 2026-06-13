@@ -28,6 +28,7 @@ Sagi — платформа лояльности и бонусов для биз
 БЛОК 2 — ОБУЧЕНИЕ И КВАЛИФИКАЦИЯ. Тесты по продукту/матчасти; симуляции, где ТЫ играешь холодного/негативного/занятого клиента, а менеджер отрабатывает возражения. Не сдавайся слишком легко. По итогам — оценка 0–10, разбор, 2–3 рекомендации.
 БЛОК 3 — DEAL COACHING. Менеджер присылает переписку/кейс — даёшь готовый к отправке текст ответа/фоллоу-апа/аргумент к закрытию (можно копировать), 1–2 варианта тона.
 БЛОК 4 — ДЕШБОРД. По запросу руководства строишь сводную Markdown-таблицу по команде: колонки «Наём/Онбординг», «Обучение (тесты/ролёвки)», «Навыки аутрича», «Работа с возражениями», «Помощь в сделках», «Итог». Затем блок выводов: «Требуют внимания», «Лидер недели», «Средний балл команды».
+ВОРОНКА КАНДИДАТОВ: если в <DATA> есть массив candidates (отклики с формы на сайте) — выведи отдельным разделом «📨 Воронка откликов» таблицу: Кандидат, Контакт, Источник, Балл, Вердикт (Брать на интервью/Резерв/Отказ), Дата. Отсортируй по баллу (лучшие сверху). Кратко выдели, кого звать на интервью в первую очередь. Если candidates пустой — напиши, что откликов пока нет, и дай ссылку на форму /apply.html.
 
 ═══ СОХРАНЕНИЕ ОЦЕНОК (ВАЖНО) ═══
 Когда в режимах БЛОК 1/2/3 ты выставляешь менеджеру/кандидату ФИНАЛЬНУЮ оценку (число 0–10) по итогам теста, ролёвки, интервью или разбора кейса — добавь В САМОМ КОНЦЕ ответа ОТДЕЛЬНОЙ СТРОКОЙ машиночитаемый блок РОВНО в таком формате (можно несколько подряд):
@@ -70,6 +71,14 @@ async function saveEvents(events) {
 async function loadEvents() {
   try {
     const arr = await redis(['LRANGE', EVENTS_KEY, 0, 999]);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+  } catch (e) { return []; }
+}
+
+async function loadCandidates() {
+  try {
+    const arr = await redis(['LRANGE', 'hr:candidates', 0, 999]);
     if (!Array.isArray(arr)) return [];
     return arr.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
   } catch (e) { return []; }
@@ -231,7 +240,11 @@ export default async function handler(req, res) {
       const events = all.filter(e => !e.ts || (now - e.ts) <= span);
       const agg = aggregate(events);
       const periodLabel = period === 'week' ? 'последние 7 дней' : period === 'month' ? 'последние 30 дней' : 'всё время';
-      dataBlock = `\n\n<DATA>\n${JSON.stringify({ generatedAt: new Date().toISOString(), period: periodLabel, managers: agg, totalEvents: events.length }, null, 0)}\n</DATA>`;
+      const allCands = await loadCandidates();
+      const candidates = allCands
+        .filter(c => !c.ts || (now - c.ts) <= span)
+        .map(c => ({ name: c.name, contact: c.contact, source: c.source, score: c.score, verdict: c.verdict, summary: c.summary, when: c.ts ? new Date(c.ts).toISOString().slice(0, 10) : '' }));
+      dataBlock = `\n\n<DATA>\n${JSON.stringify({ generatedAt: new Date().toISOString(), period: periodLabel, managers: agg, totalEvents: events.length, candidates, totalCandidates: allCands.length }, null, 0)}\n</DATA>`;
     }
 
     const sysSuffix =
