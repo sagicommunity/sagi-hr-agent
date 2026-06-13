@@ -130,8 +130,9 @@ async function searchHhVacancies(input) {
   const area = (input?.area || '40').toString();
   const per = Math.min(Math.max(parseInt(input?.per_page || 10, 10) || 10, 1), 20);
   const url = `https://api.hh.ru/vacancies?text=${encodeURIComponent(text)}&area=${encodeURIComponent(area)}&per_page=${per}&order_by=relevance`;
-  const r = await fetch(url, { headers: { 'User-Agent': 'Sagi HR Bot (business@sagibonus.com)' } });
-  if (!r.ok) return { error: `HH API ${r.status}` };
+  const UA = 'Sagi-HR-Bot/1.0 (business@sagibonus.com)';
+  const r = await fetch(url, { headers: { 'User-Agent': UA, 'HH-User-Agent': UA, 'Accept': 'application/json' } });
+  if (!r.ok) { let detail = ''; try { detail = (await r.text()).slice(0, 200); } catch (e) {} return { error: `HH API ${r.status}`, detail }; }
   const d = await r.json();
   const fmtSalary = s => !s ? 'не указана' : `${s.from ? 'от ' + s.from : ''}${s.to ? ' до ' + s.to : ''} ${s.currency || ''}`.trim();
   const items = (d.items || []).slice(0, per).map(v => ({
