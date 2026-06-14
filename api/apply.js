@@ -24,6 +24,30 @@ const SCREEN_SYS = `Ты — HR-скринер компании Sagi (loyalty-п
 Верни ТОЛЬКО валидный JSON, без markdown и пояснений:
 {"score": <число 0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения по сути>", "strengths": ["<сильная сторона>", ...], "flags": ["<красный флаг>", ...]}`;
 
+// Уведомление в Telegram о сильном кандидате (если заданы env TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+async function notifyTelegram(rec) {
+  const token = process.env.TELEGRAM_BOT_TOKEN || '';
+  const chat = process.env.TELEGRAM_CHAT_ID || '';
+  if (!token || !chat) return;
+  const strong = rec.verdict === 'Брать на интервью' || (typeof rec.score === 'number' && rec.score >= 7);
+  if (!strong) return;
+  const text =
+    `🔥 Сильный кандидат — Sagi\n\n` +
+    `👤 ${rec.name}\n` +
+    `⭐ ${rec.score != null ? rec.score + '/10' : '—'} · ${rec.verdict}\n` +
+    `📞 ${rec.contact}\n` +
+    `📍 Источник: ${rec.source}\n\n` +
+    `${rec.summary || ''}\n\n` +
+    `Открыть дешборд: https://hr.sagibonus.com/`;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }),
+    });
+  } catch (e) {}
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -62,6 +86,7 @@ export default async function handler(req, res) {
       strengths: evaln.strengths, flags: evaln.flags, ts: Date.now(),
     };
     try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); } catch (e) {}
+    notifyTelegram(rec); // best-effort, не блокируем ответ
 
     res.status(200).json({ ok: true, score: evaln.score, verdict: evaln.verdict, summary: evaln.summary });
   } catch (e) {
