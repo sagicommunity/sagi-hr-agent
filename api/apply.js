@@ -80,10 +80,12 @@ export default async function handler(req, res) {
     } catch (e) {}
 
     const rec = {
-      name, contact, source: source || '—',
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      name, contact, phone: '', source: source || 'форма отклика',
       resume: resume.slice(0, 2000),
       score: evaln.score, verdict: evaln.verdict, summary: evaln.summary,
-      strengths: evaln.strengths, flags: evaln.flags, ts: Date.now(),
+      strengths: evaln.strengths, flags: evaln.flags,
+      stage: 'Новый', ts: Date.now(),
     };
     try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); } catch (e) {}
     notifyTelegram(rec); // best-effort, не блокируем ответ
