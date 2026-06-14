@@ -357,6 +357,7 @@ function renderDashToolbar(){
     +'<select id="dashPeriod" style="background:var(--panel-solid);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:7px 9px;font:inherit;font-size:12.5px;cursor:pointer"><option value="all">Всё время</option><option value="month">Месяц</option><option value="week">Неделя</option></select>'
     +'<button id="dashExport" class="dashbtn">⬇️ CSV</button>'
     +'<button id="dashClearTest" class="dashbtn">🧹 Тестовые</button>'
+    +'<button id="dashClearCand" class="dashbtn">🧹 Тест-отклики</button>'
     +'<button id="dashClearAll" class="dashbtn" style="border-color:rgba(255,122,122,.4);color:#ff9b9b">🗑 Всё</button>';
   const ci=document.querySelector('.composer-inner');
   ci.insertBefore(bar, ci.firstChild);
@@ -364,8 +365,9 @@ function renderDashToolbar(){
   bar.querySelector('#dashPeriod').value=dashboardPeriod;
   bar.querySelector('#dashPeriod').addEventListener('change',e=>{ dashboardPeriod=e.target.value; requestDashboard(); });
   bar.querySelector('#dashExport').addEventListener('click', exportCsv);
-  bar.querySelector('#dashClearTest').addEventListener('click', ()=>clearData('test'));
-  bar.querySelector('#dashClearAll').addEventListener('click', ()=>clearData('all'));
+  bar.querySelector('#dashClearTest').addEventListener('click', ()=>clearData('test','events'));
+  bar.querySelector('#dashClearCand').addEventListener('click', ()=>clearData('test','candidates'));
+  bar.querySelector('#dashClearAll').addEventListener('click', ()=>clearData('all','all'));
 }
 async function exportCsv(){
   try{
@@ -376,11 +378,14 @@ async function exportCsv(){
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sagi-hr-dashboard-'+dashboardPeriod+'.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
   }catch(e){ showErr(e); }
 }
-async function clearData(scope){
-  const msg = scope==='all' ? 'Удалить ВСЮ статистику команды без возможности восстановления?' : 'Удалить тестовые записи (имена со словом «тест»)?';
-  if(!confirm(msg)) return;
+async function clearData(scope, target){
+  target = target || 'all';
+  const what = scope==='all' ? 'ВСЕ данные (статистику команды И отклики)' :
+    target==='candidates' ? 'тестовые отклики кандидатов (имена со словом «тест/проверка»)' :
+    target==='events' ? 'тестовые записи ролёвок/тестов' : 'тестовые данные';
+  if(!confirm('Удалить '+what+'? Это необратимо.')) return;
   try{
-    const res=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear',password:dashboardPassword,scope})});
+    const res=await fetch('/api/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear',password:dashboardPassword,scope,target})});
     const data=await res.json();
     if(!res.ok||data.error) throw new Error(data.error||'Ошибка очистки');
     addMsg('bot','🧹 Готово. Удалено: '+data.removed+'. Осталось: '+data.remaining+'.');
