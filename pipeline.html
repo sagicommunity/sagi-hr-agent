@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Пайплайн найма</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);
+    --warn:#ffcf66;--danger:#ff7a7a;--wa:#25d366;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:13px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  header .spacer{flex:1}
+  header a.back,header button.ghost{font-size:13px;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:999px;background:transparent;cursor:pointer;font-family:inherit}
+  header a.back:hover,header button.ghost:hover{color:var(--text);border-color:var(--line-2)}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  /* gate */
+  .gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,7,10,.75);backdrop-filter:blur(6px);z-index:50}
+  .gate .box{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;padding:26px;width:min(92vw,400px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .gate h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
+  .gate p{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  input,textarea,select{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);font:inherit;font-size:14.5px;padding:11px 13px;outline:none;width:100%}
+  input:focus,textarea:focus{border-color:rgba(25,227,154,.55)}
+  .btn{border:0;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;box-shadow:0 6px 18px var(--brand-glow)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+  .btn.sec{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:none}
+  .err{background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:10px 12px;border-radius:11px;margin-bottom:12px;display:none}
+  /* toolbar */
+  .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .head h1{font-family:var(--display);font-size:24px;margin:0;flex:1}
+  .pill{font-size:12.5px;color:var(--muted);border:1px solid var(--line);padding:7px 12px;border-radius:999px;background:var(--panel)}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .controls select,.controls input{width:auto;min-width:150px}
+  /* cards */
+  .grid{display:flex;flex-direction:column;gap:12px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:16px;display:flex;gap:14px;align-items:flex-start}
+  .score{width:46px;height:46px;flex:0 0 46px;border-radius:12px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:17px;border:1px solid var(--line-2)}
+  .s-hi{background:rgba(25,227,154,.16);color:var(--brand);border-color:rgba(25,227,154,.4)}
+  .s-mid{background:rgba(255,207,102,.14);color:var(--warn);border-color:rgba(255,207,102,.35)}
+  .s-lo{background:rgba(255,122,122,.12);color:#ff9b9b;border-color:rgba(255,122,122,.3)}
+  .card .body{flex:1;min-width:0}
+  .card .nm{font-weight:700;font-size:15.5px}
+  .card .meta{color:var(--muted);font-size:12.5px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .verdict{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;margin-top:8px}
+  .v-take{background:rgba(25,227,154,.14);color:var(--brand)}
+  .v-res{background:rgba(255,207,102,.14);color:var(--warn)}
+  .v-no{background:rgba(255,122,122,.12);color:#ff9b9b}
+  .card .sum{color:var(--muted);font-size:13px;line-height:1.5;margin-top:9px}
+  .card .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .wabtn{display:inline-flex;align-items:center;gap:6px;background:var(--wa);color:#062b14;border:0;border-radius:10px;padding:8px 13px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+  .wabtn[aria-disabled=true]{opacity:.4;cursor:not-allowed;pointer-events:none}
+  .stage-sel{background:var(--panel-solid);border:1px solid var(--line);border-radius:10px;color:var(--text);font:inherit;font-size:13px;padding:7px 9px;cursor:pointer;width:auto}
+  .delbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:7px 10px;font:inherit;font-size:13px;cursor:pointer}
+  .delbtn:hover{color:#ff9b9b;border-color:rgba(255,122,122,.4)}
+  .empty{text-align:center;color:var(--muted);padding:50px 10px}
+  /* add panel */
+  .addbox{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:18px;margin-bottom:18px;display:none}
+  .addbox h3{margin:0 0 4px;font-family:var(--display);font-size:16px}
+  .addbox .hint{color:var(--faint);font-size:12px;margin:6px 0 12px}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tab{font-size:13px;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+  .tab.on{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);border-color:transparent}
+  .prog{font-size:13px;color:var(--muted);margin-top:10px;min-height:18px}
+  .drop{border:1px dashed var(--line-2);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
+  .drop:hover{border-color:var(--brand);color:var(--text)}
+  @media(max-width:600px){.card{flex-direction:column}.controls select,.controls input{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">S</div>
+  <div class="brand">Sagi · Пайплайн найма</div>
+  <div class="spacer"></div>
+  <button class="ghost" id="addBtn">➕ Добавить кандидатов</button>
+  <a class="back" href="/">← Агент</a>
+</header>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="head">
+    <h1>Воронка кандидатов</h1>
+    <span class="pill" id="cnt">0</span>
+  </div>
+
+  <div class="addbox" id="addbox">
+    <h3>Добавить кандидатов</h3>
+    <div class="tabs">
+      <div class="tab on" data-tab="list">📋 Список (имя, телефон)</div>
+      <div class="tab" data-tab="pdf">📄 PDF-резюме</div>
+    </div>
+    <div id="tab-list">
+      <div class="hint">По одному в строке. Формат: <b>Имя; телефон; (резюме/заметка)</b>. Можно только имя и телефон.</div>
+      <textarea id="listInput" rows="6" placeholder="Айгерим Нурлановна; +7 701 123 4567; 3 года B2B продаж&#10;Данияр; 87012223344"></textarea>
+      <div style="margin-top:12px;display:flex;gap:10px"><button class="btn" id="listAdd">Добавить и оценить</button></div>
+    </div>
+    <div id="tab-pdf" style="display:none">
+      <div class="hint">Выберите один или несколько PDF-резюме. Робот прочитает текст, вытащит телефон и оценит каждое.</div>
+      <div class="drop" id="drop">📄 Нажмите, чтобы выбрать PDF-файлы (можно несколько)</div>
+      <input type="file" id="pdfInput" accept="application/pdf" multiple style="display:none" />
+    </div>
+    <div class="prog" id="prog"></div>
+  </div>
+
+  <div class="controls">
+    <select id="fStage"><option value="">Все стадии</option></select>
+    <select id="fSort"><option value="score">Сортировка: по баллу</option><option value="ts">по дате</option></select>
+    <input id="fSearch" placeholder="Поиск по имени/телефону…" />
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none">Кандидатов пока нет. Нажмите «➕ Добавить кандидатов» или дождитесь откликов с формы.</div>
+</div>
+
+<div class="gate" id="gate">
+  <div class="box">
+    <h2>🔒 Пайплайн найма</h2>
+    <p>Доступ для рекрутера/РОПа. Введите пароль.</p>
+    <div class="err" id="gateErr"></div>
+    <input id="gatePass" type="password" placeholder="Пароль РОПа" />
+    <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn" id="gateBtn">Войти</button></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+let PASS='', DATA=[], STAGES=[];
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+async function api(payload){
+  const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,password:PASS})});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+function scoreCls(s){ return s==null?'s-mid':(s>=8?'s-hi':(s>=6?'s-mid':'s-lo')); }
+function verdictCls(v){ return /брать/i.test(v)?'v-take':(/отказ/i.test(v)?'v-no':'v-res'); }
+
+function render(){
+  const grid=$('#grid'); grid.innerHTML='';
+  const fs=$('#fStage').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value;
+  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q)));
+  items.sort((a,b)=> sort==='ts' ? (b.ts-a.ts) : ((b.score??-1)-(a.score??-1)));
+  $('#cnt').textContent=DATA.length+' кандидат.';
+  $('#empty').style.display=items.length?'none':'block';
+  for(const c of items){
+    const card=document.createElement('div'); card.className='card';
+    const wa=c.phone?('https://wa.me/'+c.phone+'?text='+encodeURIComponent(c.waMessage||'')):'';
+    const stageOpts=STAGES.map(s=>'<option'+(s===c.stage?' selected':'')+'>'+s+'</option>').join('');
+    card.innerHTML=
+      '<div class="score '+scoreCls(c.score)+'">'+(c.score??'—')+'</div>'+
+      '<div class="body">'+
+        '<div class="nm">'+esc(c.name)+'</div>'+
+        '<div class="meta">'+(c.phone?'📱 '+esc(c.phone):'<span style="color:#ff9b9b">нет номера</span>')+(c.contact&&c.contact!==c.phone?' · '+esc(c.contact):'')+' · '+esc(c.source)+'</div>'+
+        '<span class="verdict '+verdictCls(c.verdict)+'">'+esc(c.verdict)+'</span>'+
+        (c.summary?'<div class="sum">'+esc(c.summary)+'</div>':'')+
+        '<div class="acts">'+
+          (wa?'<a class="wabtn" href="'+wa+'" target="_blank" rel="noopener">📱 WhatsApp</a>':'<span class="wabtn" aria-disabled="true">📱 нет номера</span>')+
+          '<select class="stage-sel" data-id="'+c.id+'">'+stageOpts+'</select>'+
+          '<button class="delbtn" data-del="'+c.id+'">🗑</button>'+
+        '</div>'+
+      '</div>';
+    grid.appendChild(card);
+  }
+  grid.querySelectorAll('.stage-sel').forEach(s=>s.addEventListener('change',async e=>{
+    try{ await api({action:'stage',id:e.target.dataset.id,stage:e.target.value}); const c=DATA.find(x=>x.id===e.target.dataset.id); if(c)c.stage=e.target.value; }catch(ex){ alert(ex.message); }
+  }));
+  grid.querySelectorAll('.delbtn').forEach(b=>b.addEventListener('click',async e=>{
+    if(!confirm('Удалить кандидата из воронки?')) return;
+    try{ await api({action:'delete',id:e.target.dataset.del}); DATA=DATA.filter(x=>x.id!==e.target.dataset.del); render(); }catch(ex){ alert(ex.message); }
+  }));
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+async function load(){
+  const d=await api({action:'list'}); DATA=d.items||[]; STAGES=d.stages||[];
+  $('#fStage').innerHTML='<option value="">Все стадии</option>'+STAGES.map(s=>'<option>'+s+'</option>').join('');
+  render();
+}
+
+// gate
+async function unlock(){
+  PASS=$('#gatePass').value; $('#gateErr').style.display='none';
+  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
+}
+$('#gateBtn').addEventListener('click',unlock);
+$('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
+
+// controls
+['#fStage','#fSort','#fSearch'].forEach(s=>$(s).addEventListener('input',render));
+$('#addBtn').addEventListener('click',()=>{ const b=$('#addbox'); b.style.display=b.style.display==='block'?'none':'block'; });
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); t.classList.add('on');
+  $('#tab-list').style.display=t.dataset.tab==='list'?'block':'none';
+  $('#tab-pdf').style.display=t.dataset.tab==='pdf'?'block':'none';
+}));
+
+// add via list
+$('#listAdd').addEventListener('click',async()=>{
+  const lines=$('#listInput').value.split(/\n/).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return;
+  const btn=$('#listAdd'); btn.disabled=true;
+  let done=0;
+  for(const line of lines){
+    const parts=line.split(/[;,]/).map(p=>p.trim());
+    const name=parts[0]||''; const phone=parts[1]||''; const resume=parts.slice(2).join(', ');
+    $('#prog').textContent='Обрабатываю '+(done+1)+' из '+lines.length+'…';
+    try{ const d=await api({action:'add',name,phone,resume,source:'список'}); DATA.unshift(d.item); }catch(ex){}
+    done++; render();
+  }
+  $('#prog').textContent='Готово: добавлено '+done+'.'; $('#listInput').value=''; btn.disabled=false;
+});
+
+// add via PDF
+$('#drop').addEventListener('click',()=>$('#pdfInput').click());
+$('#pdfInput').addEventListener('change',async e=>{
+  const files=[...e.target.files]; if(!files.length) return;
+  let done=0;
+  for(const f of files){
+    $('#prog').textContent='Читаю PDF '+(done+1)+' из '+files.length+': '+f.name+'…';
+    let text='';
+    try{
+      const buf=await f.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); text+=tc.items.map(i=>i.str).join(' ')+'\n'; }
+    }catch(ex){ text=''; }
+    const nameGuess=(f.name.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim())||'Из PDF';
+    $('#prog').textContent='Оцениваю '+(done+1)+' из '+files.length+'…';
+    try{ const d=await api({action:'add',name:nameGuess,resume:text,source:'PDF: '+f.name}); DATA.unshift(d.item); }catch(ex){}
+    done++; render();
+  }
+  $('#prog').textContent='Готово: обработано '+done+' PDF.'; e.target.value='';
+});
+
+$('#gatePass').focus();
+</script>
+</body>
+</html>
