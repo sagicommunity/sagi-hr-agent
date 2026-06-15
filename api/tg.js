@@ -89,20 +89,18 @@ async function finalize(chat, st) {
 export default async function handler(req, res) {
   // ---- setup webhook ----
   if (req.method === 'GET') {
-    const action = req.query?.action, key = req.query?.key;
+    const action = req.query?.action;
     if (action === 'setup') {
-      if ((process.env.DASHBOARD_PASSWORD || '') && key === process.env.DASHBOARD_PASSWORD && BOT) {
-        try {
-          const r = await fetch(`https://api.telegram.org/bot${BOT}/setWebhook`, {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ url: `${SITE}/api/tg`, allowed_updates: ['message'] }),
-          });
-          const d = await r.json();
-          res.status(200).json({ setup: true, telegram: d });
-        } catch (e) { res.status(500).json({ error: e.message }); }
-        return;
-      }
-      res.status(403).json({ error: 'Неверный ключ или нет CAREERS_BOT_TOKEN' });
+      // Безопасно без пароля: вебхук всегда ставится на наш же фиксированный URL.
+      if (!BOT) { res.status(400).json({ error: 'CAREERS_BOT_TOKEN не задан в Vercel' }); return; }
+      try {
+        const r = await fetch(`https://api.telegram.org/bot${BOT}/setWebhook`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url: `${SITE}/api/tg`, allowed_updates: ['message'] }),
+        });
+        const d = await r.json();
+        res.status(200).json({ setup: true, telegram: d });
+      } catch (e) { res.status(500).json({ error: e.message }); }
       return;
     }
     res.status(200).send('Sagi careers bot is running');
