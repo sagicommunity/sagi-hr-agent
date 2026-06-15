@@ -171,14 +171,15 @@
       <small>Наём · Обучение · Коучинг · Дешборд</small>
     </div>
   </div>
-  <nav class="nav">
-    <a class="navtab active" href="/">💬 ИИ-агент</a>
-    <a class="navtab" href="/dashboard/">📊 Дашборд</a>
-    <a class="navtab" href="/pipeline.html">🗂 Пайплайн</a>
-    <a class="navtab" href="/apply.html">📨 Отклик</a>
+  <nav class="nav" id="nav">
+    <a class="navtab active" data-tab="agent" href="/">💬 ИИ-агент</a>
+    <a class="navtab" data-tab="rop" href="/pipeline.html">🗂 Пайплайн</a>
+    <a class="navtab" data-tab="rop" href="/dashboard/">📊 Дашборд</a>
+    <a class="navtab" data-tab="rop" href="/apply.html">📨 Отклик</a>
   </nav>
   <div class="spacer"></div>
-  <div class="pill">Режим: <b id="modeLabel">авто</b></div>
+  <div class="pill" id="modePill">Режим: <b id="modeLabel">авто</b></div>
+  <button class="pill" id="roleBtn" style="cursor:pointer">🧭 <b id="roleLabel">Вход</b></button>
   <button class="pill" id="nameBtn" style="cursor:pointer">👤 <b id="nameLabel">Вход</b></button>
   <button class="pill" id="resetBtn" style="cursor:pointer">Новый диалог</button>
 </header>
@@ -249,6 +250,7 @@ const streamInner = $('#streamInner'), stream = $('#stream'), input = $('#input'
 let history = [];   // {role, content}
 let busy = false;
 let userName = localStorage.getItem('sagi_hr_name') || '';
+let userRole = localStorage.getItem('sagi_hr_role') || '';
 let dashboardPassword = '';
 let awaitingPassword = false;
 let dashboardPeriod = 'all';
@@ -331,10 +333,16 @@ async function send(text){
 
 sendBtn.addEventListener('click',()=>send());
 input.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); }});
-document.querySelectorAll('.mode').forEach(el=>el.addEventListener('click',()=>{
-  const msg=el.dataset.msg;
-  if(msg.endsWith(': ')){ input.value=msg; autosize(); input.focus(); } else { send(msg); }
-}));
+function bindModeCards(){
+  if(!welcome) return;
+  welcome.querySelectorAll('.mode').forEach(el=>{
+    el.onclick=()=>{
+      if(el.dataset.href){ window.location.href=el.dataset.href; return; }
+      const msg=el.dataset.msg||'';
+      if(msg.endsWith(': ')){ input.value=msg; autosize(); input.focus(); } else { send(msg); }
+    };
+  });
+}
 $('#quick').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) {
   const msg=b.dataset.msg; if(msg.endsWith(': ')){input.value=msg;autosize();input.focus();} else send(msg);
 }});
@@ -415,9 +423,84 @@ function askName(){
   ov.querySelector('#nameSkip').onclick=()=>{ close(); input.focus(); };
   ni.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } });
 }
+// ---- Роли: менеджер (тренажёр) vs РОП/рекрутер (наём+аналитика) ----
+const managerCards =
+  '<div class="mode" data-msg="Проведи мне ролевку по работе с возражениями. Сыграй холодного клиента."><div class="ic">🥊</div><div><h3>Ролевая игра</h3><span>Отработка возражений: «дорого», «подумаю», «уже есть», «не надо».</span></div></div>'
+ +'<div class="mode" data-msg="Проверь мои знания по продукту Sagi."><div class="ic">📝</div><div><h3>Тест по продукту</h3><span>Проверка знаний Sagi: бонусы, функции, ценность для бизнеса.</span></div></div>'
+ +'<div class="mode" data-msg="Помоги со сделкой. Вот контекст: "><div class="ic">💬</div><div><h3>Помощь со сделкой</h3><span>Пришлите переписку — дам сценарий ответа, фоллоу-ап, аргумент к закрытию.</span></div></div>'
+ +'<div class="mode" data-msg="Разбери мой холодный звонок. Вот как прошло: "><div class="ic">🎧</div><div><h3>Разбор звонка</h3><span>Расскажите, как прошёл звонок — дам обратную связь и что улучшить.</span></div></div>';
+const ropCards =
+  '<div class="mode" data-href="/pipeline.html"><div class="ic">🗂</div><div><h3>Пайплайн — вести кандидатов</h3><span>Карточки кандидатов, стадии найма, кнопка WhatsApp. Главный рабочий стол рекрутера.</span></div></div>'
+ +'<div class="mode" data-href="/dashboard/"><div class="ic">📊</div><div><h3>Дашборд — цифры</h3><span>Аналитика: воронка найма и прогресс обучения менеджеров.</span></div></div>'
+ +'<div class="mode" data-msg="Я рекрутер. Где искать менеджеров по холодным продажам в Казахстане? Дай готовые ссылки HH.kz и поисковые запросы, и оцени резюме, которое пришлю."><div class="ic">🔎</div><div><h3>Рекрутинг в чате</h3><span>Где искать хантеров + оценка присланных резюме под холодные продажи.</span></div></div>'
+ +'<div class="mode" data-href="/apply.html"><div class="ic">📨</div><div><h3>Ссылки для кандидатов</h3><span>Форма отклика и боты — раздайте кандидатам, чтобы они попадали в воронку.</span></div></div>';
+const managerQuick =
+  '<button data-msg="Проверь мои знания по продукту Sagi.">📝 Тест по продукту</button>'
+ +'<button data-msg="Проведи ролевку: клиент говорит «у конкурентов дешевле».">🥊 Ролевка «дорого»</button>'
+ +'<button data-msg="Проведи ролевку: клиент говорит «я подумаю».">🤔 «Я подумаю»</button>'
+ +'<button data-msg="Помоги со сделкой: клиент прочитал оффер, но молчит 3 дня.">💬 Завис клиент</button>'
+ +'<button data-msg="Разбери мой холодный звонок. Вот как прошло: ">🎧 Разбор звонка</button>';
+const ropQuick =
+  '<button data-msg="Где искать менеджеров по холодным продажам в Казахстане? Дай готовые ссылки HH.kz и поисковые запросы.">🧭 Где искать</button>'
+ +'<button data-msg="Оцени резюме кандидата под холодные продажи. Вот резюме: ">🔎 Оцени резюме</button>'
+ +'<button data-msg="Покажи рынок вакансий менеджеров по продажам в Казахстане: зарплаты и кто нанимает (с hh.kz).">📈 Рынок вакансий</button>'
+ +'<button data-msg="Покажи дешборд по менеджерам.">📊 Дешборд</button>';
+
+function renderWelcomeFor(role){
+  if(!welcome) return;
+  const eyebrow=welcome.querySelector('.eyebrow'), h1=welcome.querySelector('h1'), p=welcome.querySelector('p'), modes=welcome.querySelector('.modes');
+  if(role==='rop'){
+    if(eyebrow) eyebrow.textContent='Панель РОПа · наём и аналитика';
+    if(h1) h1.textContent='Наём и аналитика отдела продаж';
+    if(p) p.textContent='Ведите кандидатов в Пайплайне, смотрите цифры в Дашборде, или спросите меня про рынок, поиск хантеров и оценку резюме.';
+    if(modes) modes.innerHTML=ropCards;
+  } else {
+    if(eyebrow) eyebrow.textContent='Тренажёр · отдел продаж';
+    if(h1) h1.textContent='Тренажёр менеджера по продажам';
+    if(p) p.textContent='Тренируйтесь и проверяйте себя: ролевые игры, отработка возражений, тесты по продукту, разбор звонков. Укажите имя — и ваш прогресс увидит руководитель.';
+    if(modes) modes.innerHTML=managerCards;
+  }
+  bindModeCards();
+}
+function renderQuickFor(role){ const q=$('#quick'); if(q) q.innerHTML = role==='rop' ? ropQuick : managerQuick; }
+function renderRoleUI(){
+  const isRop = userRole==='rop';
+  document.querySelectorAll('.navtab').forEach(t=>{ if(t.dataset.tab==='rop') t.style.display = isRop ? 'flex' : 'none'; });
+  const rl=$('#roleLabel'); if(rl) rl.textContent = userRole==='rop' ? 'РОП' : userRole==='manager' ? 'Менеджер' : 'Вход';
+  const mp=$('#modePill'); if(mp) mp.style.display = isRop ? 'flex' : 'none';
+  renderWelcomeFor(userRole);
+  renderQuickFor(userRole);
+}
+function applyRole(role){ userRole=role; localStorage.setItem('sagi_hr_role',role); renderRoleUI(); }
+
+function roleCard(role,ic,title,desc){
+  return '<button data-role="'+role+'" style="text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:20px;cursor:pointer;color:var(--text);font:inherit;transition:.16s;display:flex;flex-direction:column;gap:10px" '
+    +'onmouseover="this.style.borderColor=\'rgba(25,227,154,.5)\';this.style.background=\'var(--panel-2)\'" onmouseout="this.style.borderColor=\'var(--line)\';this.style.background=\'var(--panel)\'">'
+    +'<div style="width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:24px;background:radial-gradient(120% 120% at 30% 20%,rgba(25,227,154,.18),rgba(25,227,154,.05));border:1px solid rgba(25,227,154,.22)">'+ic+'</div>'
+    +'<div style="font-family:var(--display);font-size:16px;font-weight:700">'+title+'</div>'
+    +'<div style="color:var(--muted);font-size:13px;line-height:1.5">'+desc+'</div></button>';
+}
+function askRole(){
+  const ov=document.createElement('div'); ov.id='roleOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(5,7,10,.82);backdrop-filter:blur(8px);display:grid;place-items:center;z-index:60;animation:rise .25s ease;padding:18px';
+  ov.innerHTML='<div style="background:var(--panel-solid);border:1px solid var(--line-2);border-radius:22px;padding:30px;width:min(94vw,560px);box-shadow:0 30px 80px rgba(0,0,0,.6)">'
+    +'<div style="font-family:var(--display);font-size:22px;font-weight:700;margin-bottom:6px;text-align:center">Кто вы?</div>'
+    +'<div style="color:var(--muted);font-size:13.5px;line-height:1.55;margin-bottom:22px;text-align:center">Выберите роль — покажем только то, что нужно именно вам. Сменить можно в любой момент кнопкой 🧭 сверху.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+    +roleCard('manager','🎓','Менеджер по продажам','Тренировки, ролевые игры, тесты, разбор звонков.')
+    +roleCard('rop','🎯','РОП / рекрутер','Наём кандидатов, пайплайн и аналитика команды.')
+    +'</div></div>';
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-role]').forEach(c=>c.addEventListener('click',()=>{
+    const r=c.dataset.role; ov.remove(); applyRole(r);
+    if(r==='manager' && !userName) askName(); else input.focus();
+  }));
+}
+
 $('#nameBtn').addEventListener('click', askName);
+$('#roleBtn').addEventListener('click', askRole);
 renderName();
-if(!userName) askName();
+if(userRole){ renderRoleUI(); } else { askRole(); }
 input.focus();
 </script>
 </body>
