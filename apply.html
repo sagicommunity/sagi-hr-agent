@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root{
     --bg:#0a0c10; --panel:rgba(255,255,255,.035); --panel-solid:#11151c; --panel-2:rgba(255,255,255,.06);
@@ -87,9 +88,15 @@
           <input id="source" maxlength="80" placeholder="HH, Instagram, по рекомендации…" />
         </div>
         <div class="field">
+          <label>Ссылка на резюме</label>
+          <input id="resumeUrl" maxlength="300" placeholder="hh.kz / LinkedIn / Google Drive — если есть" />
+        </div>
+        <div class="field">
           <label>Резюме / о себе <span class="req">*</span></label>
-          <textarea id="resume" maxlength="8000" placeholder="Вставьте резюме текстом или коротко расскажите: опыт в продажах, холодные звонки/аутрич, достижения, почему хотите к нам." required></textarea>
-          <div class="hint">Если есть ссылка на резюме (hh.kz, LinkedIn) — добавьте её тоже.</div>
+          <textarea id="resume" maxlength="12000" placeholder="Вставьте резюме текстом, или загрузите PDF ниже, или дайте ссылку выше."></textarea>
+          <div style="margin-top:8px"><button type="button" class="submit" id="pdfBtn" style="width:auto;padding:9px 16px;font-size:13.5px;font-weight:700;box-shadow:none;background:var(--panel);color:var(--text);border:1px solid var(--line)">📄 Загрузить PDF-резюме</button></div>
+          <input type="file" id="pdfInput" accept="application/pdf" style="display:none" />
+          <div class="hint" id="pdfHint">Можно вставить текст, дать ссылку выше или загрузить PDF — что удобнее.</div>
         </div>
         <button class="submit" id="submitBtn" type="submit">Откликнуться</button>
         <div class="foot">Нажимая «Откликнуться», вы соглашаетесь на обработку данных для целей подбора персонала Sagi.</div>
@@ -107,6 +114,24 @@
 <script>
 const $=s=>document.querySelector(s);
 const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+$('#pdfBtn').addEventListener('click',()=>$('#pdfInput').click());
+$('#pdfInput').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  $('#pdfHint').textContent='Читаю PDF: '+f.name+'…';
+  try{
+    const buf=await f.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let text='';
+    for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); text+=tc.items.map(i=>i.str).join(' ')+'\n'; }
+    const cur=$('#resume').value.trim();
+    $('#resume').value=(cur?cur+'\n\n':'')+text.trim();
+    $('#pdfHint').textContent='✅ Резюме из PDF загружено ('+f.name+'). Можно отправлять.';
+  }catch(ex){ $('#pdfHint').textContent='⚠️ Не удалось прочитать PDF. Вставьте текст или дайте ссылку.'; }
+  e.target.value='';
+});
+
 form.addEventListener('submit',async e=>{
   e.preventDefault();
   err.style.display='none';
@@ -114,7 +139,8 @@ form.addEventListener('submit',async e=>{
     name:$('#name').value.trim(),
     contact:$('#contact').value.trim(),
     source:$('#source').value.trim(),
-    resume:$('#resume').value.trim(),
+    resumeUrl:$('#resumeUrl').value.trim(),
+    resume:($('#resume').value.trim()+($('#resumeUrl').value.trim()?'\n\nСсылка на резюме: '+$('#resumeUrl').value.trim():'')).trim(),
   };
   if(!payload.name||!payload.contact||!payload.resume){ err.textContent='Заполните имя, контакт и резюме.'; err.style.display='block'; return; }
   btn.disabled=true; btn.textContent='Отправляем…';
