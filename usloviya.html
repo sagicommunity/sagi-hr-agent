@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi: условия работы менеджера по продажам</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);--warn:#ffcf66;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15.5px;min-height:100vh;line-height:1.55;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand)}
+  header{display:flex;align-items:center;gap:11px;padding:16px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 22px 60px}
+  h1{font-family:var(--display);font-size:26px;margin:6px 0 4px}
+  .lead{color:var(--muted);font-size:15px;margin-bottom:26px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;margin-bottom:16px}
+  .card h2{font-family:var(--display);font-size:17px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase}
+  td.num{font-weight:700}
+  .badge{display:inline-block;background:rgba(25,227,154,.14);color:var(--brand);border:1px solid rgba(25,227,154,.35);border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:700;margin-bottom:10px}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
+  .kpi .box{flex:1;min-width:200px;background:var(--panel-solid);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi .box .n{font-family:var(--display);font-weight:800;font-size:20px;color:var(--warn)}
+  .kpi .box .l{font-size:12.5px;color:var(--muted);margin-top:4px}
+  .example{background:var(--panel-solid);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;font-size:14px}
+  .example b{color:var(--brand)}
+  .note{color:var(--faint);font-size:12.5px;margin-top:8px}
+  .cta{text-align:center;margin-top:30px}
+  .btn{display:inline-block;border:0;border-radius:12px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font-family:var(--font);font-weight:700;padding:13px 26px;text-decoration:none;font-size:15px}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi</div>
+  </a>
+</header>
+<div class="wrap">
+  <span class="badge">Менеджер по B2B-продажам</span>
+  <h1>Условия работы и дохода</h1>
+  <p class="lead">Компания Sagi, платформа лояльности для бизнеса (программы кешбэка и бонусов для МСБ). Ниже честно и подробно, сколько можно зарабатывать и как это считается.</p>
+
+  <div class="card">
+    <h2>💰 Формат оплаты на выбор</h2>
+    <p>Есть два варианта условий, выбирается индивидуально при оформлении.</p>
+
+    <h3 style="font-size:14.5px;margin:16px 0 6px">Вариант «С окладом»</h3>
+    <p style="color:var(--muted);font-size:13.5px;margin:0 0 8px">Оклад 100 000 ₸ / месяц + % с продаж + KPI-бонусы.</p>
+    <table>
+      <tr><th>Продажи за месяц</th><th>Ставка</th></tr>
+      <tr><td>до 2 500 000 ₸</td><td class="num">5%</td></tr>
+      <tr><td>от 2 500 000 ₸</td><td class="num">10%</td></tr>
+      <tr><td>от 3 500 000 ₸</td><td class="num">15%</td></tr>
+      <tr><td>от 5 000 000 ₸</td><td class="num">20%</td></tr>
+    </table>
+
+    <h3 style="font-size:14.5px;margin:16px 0 6px">Вариант «Без оклада»</h3>
+    <p style="color:var(--muted);font-size:13.5px;margin:0 0 8px">Только % с продаж (выше, чем в варианте с окладом) + те же KPI-бонусы.</p>
+    <table>
+      <tr><th>Продажи за месяц</th><th>Ставка</th></tr>
+      <tr><td>до 1 500 000 ₸</td><td class="num">5%</td></tr>
+      <tr><td>от 1 500 000 ₸</td><td class="num">10%</td></tr>
+      <tr><td>от 2 500 000 ₸</td><td class="num">15%</td></tr>
+      <tr><td>от 5 000 000 ₸</td><td class="num">20%</td></tr>
+    </table>
+    <p class="note">Ставка применяется ко всей сумме продаж за месяц целиком: чем больше продал, тем выгоднее пересчитывается весь месяц.</p>
+  </div>
+
+  <div class="card">
+    <h2>🎯 KPI-бонусы (одинаковы для обоих вариантов)</h2>
+    <div class="kpi">
+      <div class="box"><div class="n">60 000 ₸</div><div class="l">за 30 проведённых онлайн-встреч в месяц (от 30 мин, с записью)</div></div>
+      <div class="box"><div class="n">60 000 ₸</div><div class="l">за 400 звонков в месяц (от 2 мин, через Bitrix24)</div></div>
+    </div>
+    <p class="note" style="margin-top:12px">До 120 000 ₸/мес суммарно. При продажах свыше 3 500 000 ₸ в месяц оба бонуса засчитываются автоматически, даже если сами показатели по встречам/звонкам не выполнены.</p>
+  </div>
+
+  <div class="card">
+    <h2>📊 Примеры дохода</h2>
+    <div class="example">Продал на <b>2 000 000 ₸</b> → с окладом: 100 000 + 100 000 (5%) + KPI ≈ <b>от 200 000 до 320 000 ₸</b></div>
+    <div class="example" style="margin-top:8px">Продал на <b>4 000 000 ₸</b> → с окладом: 100 000 + 600 000 (15%) + 120 000 KPI (автозачёт) = <b>820 000 ₸</b></div>
+    <div class="example" style="margin-top:8px">Продал на <b>5 000 000 ₸</b> без оклада: 1 000 000 (20%) + 120 000 KPI = <b>1 120 000 ₸</b></div>
+  </div>
+
+  <div class="card">
+    <h2>🎓 Как начинается работа</h2>
+    <p style="margin:0">Собеседование не требует готового опыта в продажах, важнее адекватность и мотивация. После короткого разговора начинается стажировка: обучение продукту и скриптам через личный кабинет, практика через ИИ-тренажёр звонков и возражений, затем работа в паре с опытным менеджером-наставником.</p>
+  </div>
+
+  <div class="card">
+    <h2>💬 Остались вопросы?</h2>
+    <p style="margin:0">Можно написать или позвонить напрямую в WhatsApp: <a href="https://wa.me/77077000087" target="_blank" rel="noopener">+7 707 700 0087</a>. Ответим на любые вопросы по условиям, обучению или самой вакансии.</p>
+  </div>
+
+  <div class="cta">
+    <a class="btn" href="https://t.me/Sagijobsbot" target="_blank" rel="noopener">Откликнуться в Telegram →</a>
+    <div style="margin-top:12px"><a href="https://wa.me/77077000087" target="_blank" rel="noopener" style="color:var(--muted);font-size:13.5px">или написать в WhatsApp: +7 707 700 0087</a></div>
+  </div>
+</div>
+</body>
+</html>

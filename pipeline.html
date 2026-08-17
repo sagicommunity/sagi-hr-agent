@@ -28,6 +28,11 @@
   header .spacer{flex:1}
   header a.back,header button.ghost{font-size:13px;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:999px;background:transparent;cursor:pointer;font-family:inherit}
   header a.back:hover,header button.ghost:hover{color:var(--text);border-color:var(--line-2)}
+  .nav{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+  .navtab{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);padding:7px 14px;border-radius:999px;transition:.16s;white-space:nowrap}
+  .navtab:hover{color:var(--text)}
+  .navtab.active{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);box-shadow:0 4px 14px var(--brand-glow)}
+  @media(max-width:760px){header{flex-wrap:wrap}.nav{order:3;width:100%;overflow-x:auto}}
   .wrap{max-width:1080px;margin:0 auto;padding:22px}
   /* gate */
   .gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,7,10,.75);backdrop-filter:blur(6px);z-index:50}
@@ -53,8 +58,14 @@
   .s-hi{background:rgba(25,227,154,.16);color:var(--brand);border-color:rgba(25,227,154,.4)}
   .s-mid{background:rgba(255,207,102,.14);color:var(--warn);border-color:rgba(255,207,102,.35)}
   .s-lo{background:rgba(255,122,122,.12);color:#ff9b9b;border-color:rgba(255,122,122,.3)}
-  .card .body{flex:1;min-width:0}
-  .card .nm{font-weight:700;font-size:15.5px}
+  .scorecol{display:flex;flex-direction:column;align-items:center;gap:5px;flex:0 0 46px}
+  .agetag{font-size:11px;font-weight:700;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:2px 6px;white-space:nowrap;line-height:1.2;text-align:center}
+  .agetag.none{color:var(--faint)}
+  .card .body{flex:1;min-width:0;cursor:pointer}
+  .card .nm{font-weight:700;font-size:15.5px;display:inline-flex;align-items:center;gap:7px}
+  .card .nm .open{font-size:11px;font-weight:600;color:var(--brand);opacity:0;transition:.16s}
+  .card:hover .nm .open{opacity:.85}
+  .vactag{display:inline-block;font-size:11px;font-weight:600;color:var(--brand);background:rgba(25,227,154,.1);border:1px solid rgba(25,227,154,.3);border-radius:8px;padding:2px 8px;margin-top:4px}
   .card .meta{color:var(--muted);font-size:12.5px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
   .verdict{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;margin-top:8px}
   .v-take{background:rgba(25,227,154,.14);color:var(--brand)}
@@ -78,16 +89,41 @@
   .prog{font-size:13px;color:var(--muted);margin-top:10px;min-height:18px}
   .drop{border:1px dashed var(--line-2);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
   .drop:hover{border-color:var(--brand);color:var(--text)}
+  /* modal — ответы кандидата боту */
+  .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(5,7,10,.72);backdrop-filter:blur(6px);z-index:60;padding:20px}
+  .modal.open{display:grid}
+  .modal .sheet{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;width:min(94vw,640px);max-height:86vh;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.65)}
+  .modal .top{display:flex;align-items:flex-start;gap:14px;padding:20px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel-solid)}
+  .modal .top .score{width:46px;height:46px;flex:0 0 46px;border-radius:12px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:17px;border:1px solid var(--line-2)}
+  .modal .top h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
+  .modal .top .mmeta{color:var(--muted);font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap}
+  .modal .x{margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:10px;width:34px;height:34px;font-size:18px;cursor:pointer;flex:0 0 auto}
+  .modal .x:hover{color:var(--text);border-color:var(--line-2)}
+  .modal .qa{padding:8px 22px 22px}
+  .modal .qa .item{padding:14px 0;border-bottom:1px solid var(--line)}
+  .modal .qa .item:last-child{border-bottom:0}
+  .modal .qa .q{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--brand);margin-bottom:5px}
+  .modal .qa .a{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+  .modal .qa .none{color:var(--muted);text-align:center;padding:24px 0}
   @media(max-width:600px){.card{flex-direction:column}.controls select,.controls input{width:100%}}
 </style>
 </head>
 <body>
 <header>
-  <div class="mark">S</div>
-  <div class="brand">Sagi · Пайплайн найма</div>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi · Пайплайн найма</div>
+  </a>
+  <nav class="nav">
+    <a class="navtab" href="/">🏠 Кабинет</a>
+    <a class="navtab" href="/agent.html">💬 ИИ-агент</a>
+    <a class="navtab active" href="/pipeline.html">🗂 Пайплайн</a>
+    <a class="navtab" href="/analytics.html">📊 Аналитика</a>
+    <a class="navtab" href="/dashboard/">📊 Дашборд</a>
+    <a class="navtab" href="/apply.html">📨 Отклик</a>
+  </nav>
   <div class="spacer"></div>
   <button class="ghost" id="addBtn">➕ Добавить кандидатов</button>
-  <a class="back" href="/">← Агент</a>
 </header>
 
 <div class="wrap" id="app" style="display:none">
@@ -116,8 +152,9 @@
   </div>
 
   <div class="controls">
+    <select id="fVacancy"><option value="">Все вакансии</option></select>
     <select id="fStage"><option value="">Все стадии</option></select>
-    <select id="fSort"><option value="score">Сортировка: по баллу</option><option value="ts">по дате</option></select>
+    <select id="fSort"><option value="score">Сортировка: по баллу</option><option value="ts">по дате</option><option value="vacancy">по вакансии</option></select>
     <input id="fSearch" placeholder="Поиск по имени/телефону…" />
   </div>
 
@@ -135,9 +172,24 @@
   </div>
 </div>
 
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="top">
+      <div class="score" id="mScore">—</div>
+      <div>
+        <h2 id="mName">Кандидат</h2>
+        <div class="mmeta" id="mMeta"></div>
+      </div>
+      <button class="x" id="mClose" title="Закрыть">×</button>
+    </div>
+    <div class="qa" id="mBody"></div>
+  </div>
+</div>
+
 <script>
 const $=s=>document.querySelector(s);
-let PASS='', DATA=[], STAGES=[];
+const PASS_KEY='sagiHR_ropPass';
+let PASS=localStorage.getItem(PASS_KEY)||'', DATA=[], STAGES=[];
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 async function api(payload){
@@ -149,19 +201,28 @@ function verdictCls(v){ return /брать/i.test(v)?'v-take':(/отказ/i.tes
 
 function render(){
   const grid=$('#grid'); grid.innerHTML='';
-  const fs=$('#fStage').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value;
-  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q)));
-  items.sort((a,b)=> sort==='ts' ? (b.ts-a.ts) : ((b.score??-1)-(a.score??-1)));
+  const fs=$('#fStage').value, fv=$('#fVacancy').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value;
+  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!fv||c.vacancy===fv)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q)));
+  items.sort((a,b)=>{
+    if(sort==='ts') return b.ts-a.ts;
+    if(sort==='vacancy'){ const v=(a.vacancy||'').localeCompare(b.vacancy||''); return v!==0 ? v : ((b.score??-1)-(a.score??-1)); }
+    return (b.score??-1)-(a.score??-1);
+  });
   $('#cnt').textContent=DATA.length+' кандидат.';
   $('#empty').style.display=items.length?'none':'block';
   for(const c of items){
-    const card=document.createElement('div'); card.className='card';
+    const card=document.createElement('div'); card.className='card'; card.dataset.id=c.id;
     const wa=c.phone?('https://wa.me/'+c.phone+'?text='+encodeURIComponent(c.waMessage||'')):'';
     const stageOpts=STAGES.map(s=>'<option'+(s===c.stage?' selected':'')+'>'+s+'</option>').join('');
+    const ageTxt=(c.age!=null&&c.age!=='')?(esc(c.age)+' '+yearsWord(c.age)):'возраст —';
     card.innerHTML=
-      '<div class="score '+scoreCls(c.score)+'">'+(c.score??'—')+'</div>'+
-      '<div class="body">'+
-        '<div class="nm">'+esc(c.name)+'</div>'+
+      '<div class="scorecol">'+
+        '<div class="score '+scoreCls(c.score)+'">'+(c.score??'—')+'</div>'+
+        '<div class="agetag'+((c.age!=null&&c.age!=='')?'':' none')+'">'+ageTxt+'</div>'+
+      '</div>'+
+      '<div class="body" data-open="'+c.id+'">'+
+        '<div class="nm">'+esc(c.name)+'<span class="open">💬 ответы боту →</span></div>'+
+        (c.vacancy?'<div class="vactag">🎯 '+esc(c.vacancy)+'</div>':'')+
         '<div class="meta">'+(c.phone?'📱 '+esc(c.phone):'<span style="color:#ff9b9b">нет номера</span>')+(c.contact&&c.contact!==c.phone?' · '+esc(c.contact):'')+' · '+esc(c.source)+'</div>'+
         '<span class="verdict '+verdictCls(c.verdict)+'">'+esc(c.verdict)+'</span>'+
         (c.summary?'<div class="sum">'+esc(c.summary)+'</div>':'')+
@@ -180,26 +241,72 @@ function render(){
     if(!confirm('Удалить кандидата из воронки?')) return;
     try{ await api({action:'delete',id:e.target.dataset.del}); DATA=DATA.filter(x=>x.id!==e.target.dataset.del); render(); }catch(ex){ alert(ex.message); }
   }));
+  grid.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',e=>{
+    if(e.target.closest('.acts')) return; // клики по кнопкам внутри карточки не открывают модалку
+    openCand(el.dataset.open);
+  }));
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function yearsWord(n){ n=parseInt(n,10); if(isNaN(n))return'лет'; const a=n%100, b=n%10; if(a>10&&a<15)return'лет'; if(b===1)return'год'; if(b>=2&&b<=4)return'года'; return'лет'; }
+
+// Модалка с ответами кандидата боту
+function openCand(id){
+  const c=DATA.find(x=>x.id===id); if(!c) return;
+  $('#mScore').className='score '+scoreCls(c.score);
+  $('#mScore').textContent=(c.score??'—');
+  $('#mName').textContent=c.name||'Кандидат';
+  const bits=[];
+  if(c.age!=null&&c.age!=='') bits.push('🎂 '+c.age+' '+yearsWord(c.age));
+  if(c.phone) bits.push('📱 '+c.phone);
+  bits.push(esc(c.verdict||'Резерв'));
+  bits.push(esc(c.source||''));
+  $('#mMeta').innerHTML=bits.filter(Boolean).map(esc).join(' · ');
+  const ans=Array.isArray(c.answers)?c.answers.filter(x=>x&&x.a):[];
+  let html='';
+  if(c.summary) html+='<div class="item"><div class="q">Оценка ИИ-скринера</div><div class="a">'+esc(c.summary)+'</div></div>';
+  if(ans.length){
+    html+=ans.map(x=>'<div class="item"><div class="q">'+esc(x.q)+'</div><div class="a">'+esc(x.a)+'</div></div>').join('');
+  } else if(c.resume){
+    html+='<div class="item"><div class="q">Резюме / о себе</div><div class="a">'+esc(c.resume)+'</div></div>';
+  } else if(!c.summary){
+    html='<div class="none">Кандидат ещё не отвечал боту — ответов пока нет.</div>';
+  }
+  $('#mBody').innerHTML=html;
+  $('#modal').classList.add('open');
+}
+function closeCand(){ $('#modal').classList.remove('open'); }
+$('#mClose').addEventListener('click',closeCand);
+$('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeCand(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeCand(); });
 
 async function load(){
   const d=await api({action:'list'}); DATA=d.items||[]; STAGES=d.stages||[];
   $('#fStage').innerHTML='<option value="">Все стадии</option>'+STAGES.map(s=>'<option>'+s+'</option>').join('');
+  const vacancies=[...new Set(DATA.map(c=>c.vacancy).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const curV=$('#fVacancy').value;
+  $('#fVacancy').innerHTML='<option value="">Все вакансии</option>'+vacancies.map(v=>'<option'+(v===curV?' selected':'')+'>'+esc(v)+'</option>').join('');
   render();
 }
 
 // gate
 async function unlock(){
   PASS=$('#gatePass').value; $('#gateErr').style.display='none';
-  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
-  catch(e){ PASS=''; $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
+  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
 }
 $('#gateBtn').addEventListener('click',unlock);
 $('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
 
+// Автовход, если пароль уже сохранён в этом браузере (не спрашиваем каждый раз при обновлении
+// страницы) — если пароль поменяли, тихо падаем обратно на экран входа.
+(async()=>{
+  if(!PASS) return;
+  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); }
+})();
+
 // controls
-['#fStage','#fSort','#fSearch'].forEach(s=>$(s).addEventListener('input',render));
+['#fVacancy','#fStage','#fSort','#fSearch'].forEach(s=>$(s).addEventListener('input',render));
 $('#addBtn').addEventListener('click',()=>{ const b=$('#addbox'); b.style.display=b.style.display==='block'?'none':'block'; });
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); t.classList.add('on');

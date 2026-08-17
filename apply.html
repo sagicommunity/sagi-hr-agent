@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sagi — Отклик на вакансию менеджера по продажам</title>
-<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi. Оставьте контакт и резюме — мы свяжемся." />
+<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi (офис или удалённо). Оставьте контакт и резюме — мы свяжемся." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -54,25 +54,35 @@
   .result{display:none;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:30px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.4)}
   .result .big{width:64px;height:64px;border-radius:18px;margin:0 auto 16px;display:grid;place-items:center;font-size:30px;background:radial-gradient(120% 120% at 30% 20%,rgba(25,227,154,.22),rgba(25,227,154,.06));border:1px solid rgba(25,227,154,.3)}
   .result h2{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 8px}
-  .result p{color:var(--muted);line-height:1.6;margin:0 auto;max-width:420px}
+  .result p{color:var(--muted);line-height:1.6;margin:0 auto;max-width:420px;white-space:pre-line;text-align:left}
   .err{display:none;background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:11px 14px;border-radius:12px;margin-bottom:16px}
+  .vacToggle{display:flex;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px}
+  .vacOpt{flex:1;text-align:center;padding:12px 10px;border-radius:12px;border:1px solid var(--line);cursor:pointer;font-size:13.5px;font-weight:700;color:var(--muted);transition:.16s}
+  .vacOpt.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.1);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
+  .vacOpt small{display:block;font-weight:500;color:var(--faint);font-size:11px;margin-top:3px}
   @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}}
 </style>
 </head>
 <body>
 <header>
-  <div class="mark">S</div>
-  <div class="brand">Sagi<small>Карьера в отделе продаж</small></div>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi<small>Карьера в отделе продаж</small></div>
+  </a>
   <div class="spacer"></div>
-  <a class="back" href="/">← На главную</a>
+  <a class="back" href="/">🏠 Главная</a>
 </header>
 
 <div class="wrap">
   <div class="card">
     <div id="formView">
-      <div class="eyebrow">Вакансия · отдел холодных продаж</div>
-      <h1>Менеджер по продажам в Sagi</h1>
-      <p class="lead">Холодный аутрич, поиск ЛПР, закрытие на встречи. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.</p>
+      <div class="eyebrow" id="eyebrow">Вакансия · отдел холодных продаж</div>
+      <h1 id="heading">Менеджер по продажам в Sagi</h1>
+      <p class="lead" id="lead">Холодный аутрич, поиск ЛПР, закрытие на встречи. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.</p>
+      <div class="vacToggle" id="vacToggle">
+        <div class="vacOpt active" data-vac="sales">Офис, Астана<small>Звонки + встречи</small></div>
+        <div class="vacOpt" data-vac="sales_remote">Удалённо<small>Звонки + онлайн-демо</small></div>
+      </div>
       <form id="applyForm">
         <div class="err" id="err"></div>
         <div class="field">
@@ -116,6 +126,20 @@ const $=s=>document.querySelector(s);
 const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+const VAC_COPY = {
+  sales: { eyebrow:'Вакансия · отдел холодных продаж', h1:'Менеджер по продажам в Sagi', lead:'Холодный аутрич, поиск ЛПР, закрытие на встречи в офисе (Астана). Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.' },
+  sales_remote: { eyebrow:'Вакансия · удалённые продажи', h1:'Менеджер по продажам в Sagi — удалённо', lead:'Холодный аутрич, поиск ЛПР, закрытие сделок через онлайн-демо. Полностью удалённо, без офиса и выездов. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку.' },
+};
+let currentVac = (new URLSearchParams(location.search).get('vacancy') === 'remote') ? 'sales_remote' : 'sales';
+function applyVac(v){
+  currentVac = v;
+  document.querySelectorAll('.vacOpt').forEach(el=>el.classList.toggle('active', el.dataset.vac===v));
+  const c = VAC_COPY[v];
+  $('#eyebrow').textContent = c.eyebrow; $('#heading').textContent = c.h1; $('#lead').textContent = c.lead;
+}
+document.querySelectorAll('.vacOpt').forEach(el=>el.addEventListener('click',()=>applyVac(el.dataset.vac)));
+applyVac(currentVac);
+
 $('#pdfBtn').addEventListener('click',()=>$('#pdfInput').click());
 $('#pdfInput').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -141,6 +165,7 @@ form.addEventListener('submit',async e=>{
     source:$('#source').value.trim(),
     resumeUrl:$('#resumeUrl').value.trim(),
     resume:($('#resume').value.trim()+($('#resumeUrl').value.trim()?'\n\nСсылка на резюме: '+$('#resumeUrl').value.trim():'')).trim(),
+    vacancy: currentVac,
   };
   if(!payload.name||!payload.contact||!payload.resume){ err.textContent='Заполните имя, контакт и резюме.'; err.style.display='block'; return; }
   btn.disabled=true; btn.textContent='Отправляем…';
@@ -150,7 +175,7 @@ form.addEventListener('submit',async e=>{
     if(!r.ok||d.error) throw new Error(d.error||('Ошибка '+r.status));
     $('#formView').style.display='none';
     $('#resultView').style.display='block';
-    $('#resultText').textContent='Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
+    $('#resultText').textContent = d.message || 'Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(ex){
     err.textContent='⚠️ '+(ex.message||'Не удалось отправить. Попробуйте ещё раз.');
