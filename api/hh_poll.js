@@ -959,6 +959,45 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Воронка по hh.kz (2026-08-17, по запросу Sagi): сколько всего откликов пришло на активную
+  // вакансию, скольким отправили первое сообщение (SEEN_KEY), сколько из них ответили (REPLIED_KEY),
+  // сколько получили приглашение на стажировку и всё ещё под наблюдением (INVITE_WATCH_KEY).
+  // negTotal тянем прямо из hh.ru API по каждой активной вакансии — это реальное число откликов
+  // на hh.kz, а не то, что у нас уже долетело и сохранилось в hr:candidates.
+  if (req.query?.hhFunnelStats) {
+    try {
+      const [seenTotal, repliedTotal, watchTotal] = await Promise.all([
+        redis(['SCARD', SEEN_KEY]),
+        redis(['SCARD', REPLIED_KEY]),
+        redis(['SCARD', INVITE_WATCH_KEY]),
+      ]);
+      const token = await getEmployerToken();
+      const employerId = process.env.HH_EMPLOYER_ID || '';
+      const vacRes = await hhGet(`/employers/${employerId}/vacancies/active?per_page=50`, token);
+      const vacancies = vacRes.ok ? (vacRes.data.items || []) : [];
+      const perVacancy = [];
+      let totalResponses = 0;
+      for (const v of vacancies) {
+        const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=1`, token);
+        const negTotal = neg.ok ? (neg.data.found ?? null) : null;
+        if (typeof negTotal === 'number') totalResponses += negTotal;
+        perVacancy.push({ vacancyId: v.id, vacancyName: v.name, negTotal, error: neg.ok ? null : { status: neg.status } });
+      }
+      res.status(200).json({
+        ok: true,
+        totalResponsesOnHh: totalResponses,
+        perVacancy,
+        firstMessageSent: seenTotal || 0,
+        repliedToUs: repliedTotal || 0,
+        awaitingReply: Math.max(0, (seenTotal || 0) - (repliedTotal || 0)),
+        invitedToInternshipStillWatching: watchTotal || 0,
+      });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Разовая миграция (2026-08-17): исправляем ярлык вакансии у уже сохранённых hh.kz-записей,
   // которым при интейке подставилась заглушка «Менеджер по продажам» вместо реального названия
   // (баг, см. ?vacList=1 — hh.kz не всегда возвращает vacancy.name в самой негоциации). Сейчас
