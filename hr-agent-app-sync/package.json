@@ -1,0 +1,8 @@
+{
+  "name": "sagi-hr-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sagi HR + Sales Enablement AI agent — наём, обучение, коучинг сделок, дешборд",
+  "engines": { "node": ">=20" }
+}

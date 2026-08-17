@@ -1,0 +1,252 @@
+// Vercel Serverless Function — аккаунты сотрудников и прогресс обучения.
+// POST { action, ... }. Данные — Redis (Upstash). Ключи: hr:user:<login>, set hr:users.
+// actions:
+//   register { name, login, password, role }      -> { ok, user, token }
+//   login    { login, password }                  -> { ok, user, token }
+//   me       { login, token }                      -> { ok, user }
+//   progress { login, token, moduleId, done }      -> { ok, user }
+//   list     { password }  (password = DASHBOARD_PASSWORD руководителя) -> { ok, users:[...] }
+//   setRole  { password, login, role }  role: 'manager'|'trainee' -> { ok, user } — перевод стажёра
+//            в менеджеры (или обратно), тот же аккаунт/логин/прогресс, ничего не создаётся заново
+
+import crypto from 'crypto';
+
+const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
+const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const CAND_KEY = 'hr:candidates';
+
+async function redis(cmd) {
+  if (!R_URL || !R_TOK) return null;
+  const r = await fetch(R_URL, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + R_TOK, 'content-type': 'application/json' },
+    body: JSON.stringify(cmd),
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.result;
+}
+
+const uKey = login => 'hr:user:' + login;
+const norm = s => (s || '').toString().trim().toLowerCase();
+
+function hashPass(password, salt) {
+  return crypto.createHash('sha256').update(salt + ':' + password).digest('hex');
+}
+function newToken() { return crypto.randomBytes(24).toString('hex'); }
+
+async function getUser(login) {
+  const raw = await redis(['GET', uKey(login)]);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+async function putUser(u) {
+  await redis(['SET', uKey(u.login), JSON.stringify(u)]);
+  await redis(['SADD', 'hr:users', u.login]);
+}
+// безопасное представление (без хэша/соли/токена)
+function safe(u) {
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null };
+}
+function checkBoss(body, res) {
+  const PASS = process.env.DASHBOARD_PASSWORD || '';
+  if (!PASS || (body.password || '').toString() !== PASS) { res.status(403).json({ error: 'Неверный пароль руководителя' }); return false; }
+  return true;
+}
+
+// 2026-08-17, по указанию Sagi: «ответы, которые кандидаты отвечают нам на вопросы, их нужно
+// тоже хранить в профайле» — при отклике человек уже отвечает на вопросы (hh.kz/Telegram-бот/
+// форма/WhatsApp), и этот текст сохраняется в hr:candidates (поля resume/replyText/answers).
+// Но карточка стажёра (hr:user) — отдельная запись, до сих пор не связанная с этим текстом.
+// Ищем совпадение по телефону (самый надёжный признак), затем по hhNegId, затем по точному
+// имени — и копируем найденный текст ответов в профиль стажёра, чтобы Sagi видел его в кабинете.
+function normPhone(s) { return (s || '').toString().replace(/\D/g, '').slice(-10); }
+async function findCandidateAnswers(u) {
+  const raw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+  const cands = raw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+  const uPhone = normPhone(u.phone);
+  const uName = norm(u.name);
+  let match = null;
+  if (u.hhNegId) match = cands.find(c => c.id === 'hh_' + u.hhNegId);
+  if (!match && uPhone) match = cands.find(c => normPhone(c.contact) === uPhone || normPhone(c.phone) === uPhone);
+  if (!match && uName) match = cands.find(c => norm(c.name) === uName);
+  if (!match) return null;
+  const answersText = match.replyText || match.resume || (Array.isArray(match.answers) ? match.answers.map(a => `${a.q}: ${a.a}`).join('\n\n') : '') || '';
+  if (!answersText) return null;
+  return { text: answersText.slice(0, 4000), vacancy: match.vacancy || null, source: match.source || null, candId: match.id };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+  if (!R_URL || !R_TOK) { res.status(500).json({ error: 'База не подключена' }); return; }
+  try {
+    let body = req.body;
+    if (typeof body === 'string') body = JSON.parse(body);
+    const action = body?.action;
+
+    // ── РЕГИСТРАЦИЯ ──
+    if (action === 'register') {
+      const name = (body.name || '').toString().trim();
+      const login = norm(body.login);
+      const password = (body.password || '').toString();
+      const role = body.role === 'manager' ? 'manager' : 'trainee';
+      if (!name || !login || !password) { res.status(400).json({ error: 'Заполните все поля.' }); return; }
+      if (password.length < 4) { res.status(400).json({ error: 'Пароль слишком короткий (мин. 4 символа).' }); return; }
+      if (await getUser(login)) { res.status(409).json({ error: 'Такой логин уже занят. Войдите.' }); return; }
+      const salt = crypto.randomBytes(8).toString('hex');
+      const token = newToken();
+      // hhNegId — id переписки на hh.kz, если человек пришёл по персональной ссылке из
+      // приглашения на стажировку (?hh=...). Нужен, чтобы напоминания об обучении и
+      // уведомление о наставнике могли прийти автоматически в тот же чат.
+      const hhNegId = (body.hh || '').toString().replace(/\D/g, '').slice(0, 30) || null;
+      const phone = (body.phone || '').toString().trim().slice(0, 30) || null;
+      const u = { name, login, role, salt, passHash: hashPass(password, salt), token, progress: {}, points: 0, createdAt: Date.now(), lastSeen: Date.now(), hhNegId, phone };
+      try {
+        const found = await findCandidateAnswers(u);
+        if (found) { u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; }
+      } catch (e) {}
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u), token });
+      return;
+    }
+
+    // ── ВХОД ──
+    if (action === 'login') {
+      const login = norm(body.login);
+      const password = (body.password || '').toString();
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден. Зарегистрируйтесь.' }); return; }
+      if (hashPass(password, u.salt) !== u.passHash) { res.status(403).json({ error: 'Неверный пароль.' }); return; }
+      u.token = newToken(); u.lastSeen = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u), token: u.token });
+      return;
+    }
+
+    // ── ВОССТАНОВЛЕНИЕ СЕССИИ ──
+    if (action === 'me') {
+      const login = norm(body.login);
+      const u = await getUser(login);
+      if (!u || u.token !== body.token) { res.status(401).json({ error: 'Сессия истекла' }); return; }
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── СОХРАНЕНИЕ ПРОГРЕССА ──
+    if (action === 'progress') {
+      const login = norm(body.login);
+      const u = await getUser(login);
+      if (!u || u.token !== body.token) { res.status(401).json({ error: 'Сессия истекла' }); return; }
+      u.progress = u.progress || {};
+      const id = (body.moduleId || '').toString();
+      if (!id) { res.status(400).json({ error: 'moduleId required' }); return; }
+      if (body.done) u.progress[id] = true; else delete u.progress[id];
+      u.points = Object.keys(u.progress).length * 10;
+      u.lastSeen = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── СПИСОК ДЛЯ РУКОВОДИТЕЛЯ ──
+    if (action === 'list') {
+      if (!checkBoss(body, res)) return;
+      const logins = await redis(['SMEMBERS', 'hr:users']);
+      const arr = Array.isArray(logins) ? logins : [];
+      const users = [];
+      for (const lg of arr) { const u = await getUser(lg); if (u) users.push(safe(u)); }
+      res.status(200).json({ ok: true, users });
+      return;
+    }
+
+    // ── УДАЛЕНИЕ (только руководитель, например тестовые/дублирующие аккаунты) ──
+    if (action === 'delete') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      if (!login) { res.status(400).json({ error: 'login required' }); return; }
+      await redis(['DEL', uKey(login)]);
+      await redis(['SREM', 'hr:users', login]);
+      res.status(200).json({ ok: true });
+      return;
+    }
+
+    // ── РУЧНОЕ РЕДАКТИРОВАНИЕ КОНТАКТА (только руководитель) — например, если сотрудник
+    // зарегистрировался не по персональной ссылке из hh.kz и телефон нужно вписать вручную ──
+    if (action === 'setContact') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      u.phone = (body.phone || '').toString().trim().slice(0, 30) || null;
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── РУЧНОЕ НАЗНАЧЕНИЕ НАСТАВНИКА (только руководитель) — например, если Sagi уже сам
+    // связал стажёра с наставником лично (звонок/WhatsApp), без автоматического уведомления,
+    // чтобы избежать дублирующего сообщения от бота ──
+    if (action === 'setMentor') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      u.mentorName = (body.mentorName || '').toString().trim() || null;
+      u.mentorPhone = (body.mentorPhone || '').toString().trim() || null;
+      u.mentorAssignedAt = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── ПЕРЕВОД СТАЖЁРА В МЕНЕДЖЕРЫ (только руководитель, 2026-08-17 по указанию Sagi) —
+    // после того как наставник провёл стажировку и решил, что человек готов, аккаунт НЕ
+    // пересоздаётся: тот же логин/пароль/прогресс/наставник/история остаются, меняется только
+    // role на 'manager'. Это сразу открывает 9 продвинутых модулей (ADV) и меняет бейдж в
+    // панели руководителя с «Стажёр» на «Менеджер». Можно и обратно перевести в 'trainee',
+    // если понадобится (role передаётся явно).
+    if (action === 'setRole') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const role = body.role === 'trainee' ? 'trainee' : (body.role === 'manager' ? 'manager' : null);
+      if (!role) { res.status(400).json({ error: 'role должен быть manager или trainee' }); return; }
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      u.role = role;
+      if (role === 'manager' && !u.promotedAt) u.promotedAt = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── ОДНОРАЗОВЫЙ БЭКФИЛЛ (только руководитель) — подтягивает ответы кандидата в уже
+    // существующие карточки стажёров, зарегистрированных до того, как это стало сохраняться
+    // автоматически при регистрации. Безопасно вызывать повторно (пропускает у кого уже есть).
+    if (action === 'backfillIntake') {
+      if (!checkBoss(body, res)) return;
+      const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      let updated = 0, skipped = 0, notFound = 0;
+      const names = [];
+      for (const login of logins) {
+        const u = await getUser(login);
+        if (!u) continue;
+        if (u.intakeAnswers) { skipped++; continue; }
+        try {
+          const found = await findCandidateAnswers(u);
+          if (found) {
+            u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy;
+            await putUser(u);
+            updated++;
+            names.push(u.name);
+          } else notFound++;
+        } catch (e) { notFound++; }
+      }
+      res.status(200).json({ ok: true, updated, skipped, notFound, names });
+      return;
+    }
+
+    res.status(400).json({ error: 'Неизвестное действие' });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+}

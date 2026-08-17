@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sagi HR — обучение и наём</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.04);--panel-2:rgba(255,255,255,.07);--panel-solid:#11151c;
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);
+    --blue:#378ADD;--blue-bg:rgba(55,138,221,.14);--amber:#EF9F27;--amber-bg:rgba(239,159,39,.14);
+    --display:'Unbounded',sans-serif;--font:'Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(900px 500px at 85% -10%,rgba(25,227,154,.10),transparent 60%),
+      radial-gradient(700px 500px at -10% 10%,rgba(55,138,221,.08),transparent 55%),var(--bg);
+    color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh}
+  a{color:var(--brand);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  .hidden{display:none!important}
+
+  /* top bar */
+  header{display:flex;align-items:center;gap:13px;padding:14px 22px;border-bottom:1px solid var(--line);
+    background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:20}
+  .mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));
+    display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;font-size:18px;
+    box-shadow:0 6px 20px var(--brand-glow)}
+  .brand-name{font-family:var(--display);font-weight:700;font-size:15.5px;line-height:1.1}
+  .brand-name small{display:block;color:var(--muted);font-weight:500;font-size:11.5px;margin-top:3px;font-family:var(--font)}
+  header .spacer{flex:1}
+  .chip{font-size:12.5px;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:999px;background:var(--panel);cursor:pointer;font:inherit}
+  .chip:hover{color:var(--text);border-color:var(--line-2)}
+  .chip b{color:var(--brand)}
+
+  /* entry */
+  .hero{text-align:center;padding:46px 0 26px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:2.6px;text-transform:uppercase;color:var(--brand)}
+  h1{font-family:var(--display);font-weight:800;font-size:34px;margin:12px 0 10px;line-height:1.15}
+  .lead{color:var(--muted);max-width:560px;margin:0 auto;line-height:1.6}
+  .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:30px}
+  @media(max-width:780px){.roles{grid-template-columns:1fr}h1{font-size:27px}}
+  .role{text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;cursor:pointer;
+    color:var(--text);font:inherit;transition:.16s;display:flex;flex-direction:column;gap:12px}
+  .role:hover{border-color:rgba(25,227,154,.5);background:var(--panel-2);transform:translateY(-2px)}
+  .role .ic{width:50px;height:50px;border-radius:14px;display:grid;place-items:center;font-size:26px;
+    background:radial-gradient(120% 120% at 30% 20%,rgba(25,227,154,.2),rgba(25,227,154,.05));border:1px solid rgba(25,227,154,.22)}
+  .role.blue .ic{background:radial-gradient(120% 120% at 30% 20%,rgba(55,138,221,.22),rgba(55,138,221,.05));border-color:rgba(55,138,221,.3)}
+  .role.amber .ic{background:radial-gradient(120% 120% at 30% 20%,rgba(239,159,39,.22),rgba(239,159,39,.05));border-color:rgba(239,159,39,.3)}
+  .role h3{font-family:var(--display);font-size:17px;font-weight:700;margin:0}
+  .role p{color:var(--muted);font-size:13px;line-height:1.5;margin:0}
+  .role .go{margin-top:auto;font-size:13px;font-weight:700;color:var(--brand)}
+
+  /* cards / forms */
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .authbox{max-width:420px;margin:40px auto}
+  label{display:block;font-size:13px;font-weight:600;margin:0 0 7px}
+  input,select{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;color:var(--text);
+    font:inherit;font-size:15px;padding:12px 14px;outline:none;transition:.16s;margin-bottom:14px}
+  input:focus,select:focus{border-color:var(--brand)}
+  .btn{width:100%;border:0;border-radius:13px;background:linear-gradient(140deg,var(--brand),var(--brand-2));
+    color:var(--brand-ink);font:inherit;font-weight:800;font-size:15px;padding:13px;cursor:pointer;box-shadow:0 8px 22px var(--brand-glow)}
+  .btn.sec{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:none;font-weight:600}
+  .btn.small{width:auto;padding:9px 16px;font-size:13.5px}
+  .err{display:none;background:rgba(255,122,122,.12);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;
+    font-size:13px;padding:10px 13px;border-radius:11px;margin-bottom:14px}
+  .switchline{text-align:center;color:var(--muted);font-size:13px;margin-top:8px}
+  .switchline a{cursor:pointer}
+
+  .sectitle{font-family:var(--display);font-weight:700;font-size:17px;margin:26px 0 12px}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+
+  /* progress */
+  .pbar{height:9px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}
+  .pfill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--brand-2),var(--brand));transition:width .5s}
+
+  /* module rows */
+  .mod{display:flex;align-items:center;gap:13px;border:1px solid var(--line);background:var(--panel);border-radius:13px;
+    padding:13px 15px;margin-bottom:9px;transition:.15s}
+  .mod:hover{border-color:var(--line-2)}
+  .mod .num{width:30px;height:30px;flex:0 0 30px;border-radius:9px;display:grid;place-items:center;font-weight:700;font-size:13px;
+    border:1px solid var(--line-2);color:var(--muted)}
+  .mod.done .num{background:rgba(25,227,154,.16);color:var(--brand);border-color:rgba(25,227,154,.4)}
+  .mod .mt{flex:1;font-weight:600;font-size:14px}
+  .mod .mt small{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:2px}
+  .mod.locked{opacity:.5}
+  .check{width:24px;height:24px;border-radius:7px;border:1px solid var(--line-2);background:transparent;cursor:pointer;color:var(--brand);font-size:14px;display:grid;place-items:center}
+  .mod.done .check{background:rgba(25,227,154,.16);border-color:rgba(25,227,154,.4)}
+  .lock-pill{font-size:11px;color:var(--amber);border:1px solid var(--amber-bg);background:var(--amber-bg);padding:4px 9px;border-radius:999px}
+  .open-pill{font-size:12px;font-weight:700;color:var(--brand);white-space:nowrap}
+  .mod.done .open-pill{color:var(--muted)}
+
+  /* lesson reader */
+  .lesson{max-width:760px;margin:0 auto}
+  .lesson-body{font-size:15px;line-height:1.7;color:#d7dee6}
+  .lesson-body h3{font-family:var(--display);font-weight:700;font-size:17px;color:var(--text);margin:22px 0 8px}
+  .lesson-body p{margin:0 0 12px}
+  .lesson-body ul{margin:0 0 14px;padding-left:20px}
+  .lesson-body li{margin:0 0 6px}
+  .lesson-body strong{color:#fff}
+  .lesson-body table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13.5px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .lesson-body th,.lesson-body td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  .lesson-body th{background:var(--panel-2);color:var(--text);font-weight:700}
+  .lesson-body tr:last-child td{border-bottom:0}
+  .lesson-body .obj-ans{color:var(--brand)}
+  .lesson-body .stats{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+  .lesson-body .stat-box{flex:1;min-width:120px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:14px;text-align:center}
+  .lesson-body .stat-num{font-family:var(--display);font-weight:800;font-size:22px;color:var(--brand)}
+  .lesson-body .stat-lbl{color:var(--muted);font-size:12px;margin-top:4px}
+  .lesson-body .key-points{display:flex;flex-direction:column;gap:9px;margin:12px 0}
+  .lesson-body .key-point{border:1px solid var(--line);background:var(--panel);border-left:3px solid var(--brand);border-radius:10px;padding:11px 13px;font-size:13.5px}
+  .lesson-body .case-box{background:#fff;color:#1f2937;border:1px solid #d7d2c7;border-radius:12px;padding:14px 16px;margin:14px 0}
+  .lesson-body .case-box *{color:#1f2937 !important}
+  .lesson-body .case-box strong{color:#0a0a0a !important}
+  .lesson-body .case-box .case-title{font-weight:800;color:#0f6e56 !important;margin-bottom:6px}
+  .lesson-body .script-box{border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .lesson-body .script-label{font-size:12px;font-weight:700;color:var(--brand);margin:8px 0 4px}
+  .lesson-body .script-line,.lesson-body .script-you{font-size:13.5px;line-height:1.55;color:#d7dee6}
+  .lesson-body .script-you{color:#fff;background:rgba(25,227,154,.08);border-left:3px solid var(--brand);border-radius:8px;padding:8px 11px}
+  .qblk{border:1px solid var(--line);background:var(--panel);border-radius:13px;padding:14px 16px;margin-bottom:10px}
+  .qq{font-weight:600;margin-bottom:10px}
+  .qopt{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;cursor:pointer;font-size:14px;transition:.12s}
+  .qopt:hover{border-color:var(--line-2);background:var(--panel-2)}
+  .qopt input{width:auto;margin:0}
+  .quizres{margin-top:8px;font-size:13.5px;font-weight:600;padding:10px 13px;border-radius:10px}
+  .quizres.ok{color:var(--brand);background:rgba(25,227,154,.1);border:1px solid rgba(25,227,154,.3)}
+  .quizres.bad{color:#ff9b9b;background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.3)}
+  .quizres.warn{color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-bg)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr}}
+  .tile{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:16px;display:flex;gap:12px;align-items:flex-start;cursor:pointer;transition:.15s}
+  .tile:hover{border-color:rgba(25,227,154,.45);background:var(--panel-2)}
+  .tile .ti{font-size:22px}
+  .tile h4{margin:0 0 3px;font-size:14.5px}
+  .tile p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.45}
+
+  .stat{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:16px}
+  .stat .big{font-family:var(--display);font-weight:800;font-size:26px;color:var(--brand)}
+  .stat .lbl{color:var(--muted);font-size:12.5px;margin-top:3px}
+
+  /* table */
+  table{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line)}
+  th{background:var(--panel);color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  tr:last-child td{border-bottom:0}
+  td .mini{width:90px;display:inline-block;vertical-align:middle}
+  .tag{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted)}
+  .tag.tr{color:var(--blue);border-color:var(--blue-bg);background:var(--blue-bg)}
+  .tag.mg{color:var(--brand);border-color:rgba(25,227,154,.3);background:rgba(25,227,154,.1)}
+  .empty{color:var(--muted);text-align:center;padding:34px;border:1px dashed var(--line-2);border-radius:14px}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="#" id="logoHome" style="display:flex;align-items:center;gap:11px;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand-name">Sagi HR<small>Обучение · Наём · Развитие</small></div>
+  </a>
+  <div class="spacer"></div>
+  <span class="chip hidden" id="whoChip"></span>
+  <button class="chip hidden" id="logoutBtn">Выйти</button>
+</header>
+
+<div class="wrap">
+
+  <!-- ENTRY -->
+  <section id="screen-entry">
+    <div class="hero">
+      <div class="eyebrow">Платформа отдела продаж</div>
+      <h1>Добро пожаловать в Sagi HR</h1>
+      <p class="lead">Единый кабинет для обучения и развития команды продаж. Выберите, кто вы — покажем нужный раздел.</p>
+    </div>
+    <div class="roles">
+      <button class="role blue" data-role="trainee">
+        <div class="ic">👨‍🎓</div>
+        <h3>Стажёр</h3>
+        <p>Соискатель, который пришёл учиться. Базовая программа с нуля: продукт, скрипты, тесты.</p>
+        <div class="go">Зарегистрироваться / войти →</div>
+      </button>
+      <button class="role" data-role="manager">
+        <div class="ic">💼</div>
+        <h3>Действующий менеджер</h3>
+        <p>Постоянное дообучение: продвинутые модули, тренажёр возражений, разбор звонков.</p>
+        <div class="go">Войти в кабинет →</div>
+      </button>
+      <button class="role amber" data-role="boss">
+        <div class="ic">🎯</div>
+        <h3>Руководитель</h3>
+        <p>Все сотрудники и их прогресс, пайплайн найма, отклики, аналитика. Вход по паролю.</p>
+        <div class="go">Войти →</div>
+      </button>
+    </div>
+  </section>
+
+  <!-- AUTH (trainee/manager) -->
+  <section id="screen-auth" class="hidden">
+    <div class="authbox card">
+      <div class="sectitle" id="authTitle" style="margin-top:0">Вход</div>
+      <div class="sub" id="authSub" style="margin-bottom:18px"></div>
+      <div class="err" id="authErr"></div>
+
+      <div id="regNameWrap">
+        <label>Имя и фамилия</label>
+        <input id="f-name" placeholder="Например: Айгерим Нурланова" maxlength="60" />
+        <label>Телефон (WhatsApp)</label>
+        <input id="f-phone" placeholder="+7 7XX XXX XX XX" maxlength="30" autocomplete="tel" />
+      </div>
+      <label>Логин (или email)</label>
+      <input id="f-login" placeholder="aigerim" maxlength="40" autocomplete="username" />
+      <label>Пароль</label>
+      <input id="f-pass" type="password" placeholder="••••••" maxlength="40" autocomplete="current-password" />
+
+      <button class="btn" id="authSubmit">Войти</button>
+      <div class="switchline" id="authSwitch"></div>
+      <div class="switchline" style="margin-top:14px"><a id="authBack">← Назад к выбору роли</a></div>
+    </div>
+  </section>
+
+  <!-- BOSS LOGIN -->
+  <section id="screen-boss-login" class="hidden">
+    <div class="authbox card">
+      <div class="sectitle" style="margin-top:0">Вход для руководителя</div>
+      <div class="sub" style="margin-bottom:18px">Доступ к данным сотрудников и найму. Пароль — тот же, что у дашборда РОПа.</div>
+      <div class="err" id="bossErr"></div>
+      <label>Пароль руководителя</label>
+      <input id="f-boss" type="password" placeholder="••••••" maxlength="40" />
+      <button class="btn" id="bossSubmit">Войти</button>
+      <div class="switchline" style="margin-top:14px"><a id="bossBack">← Назад к выбору роли</a></div>
+    </div>
+  </section>
+
+  <!-- EMPLOYEE CABINET -->
+  <section id="screen-cabinet" class="hidden">
+    <div class="sectitle" style="margin-top:18px;display:flex;align-items:center;gap:12px">
+      <span id="cabHello">Кабинет</span>
+      <span class="tag" id="cabRole"></span>
+    </div>
+
+    <div class="card" style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <b>Прогресс обучения</b><span id="progPct" style="color:var(--brand);font-weight:700">0%</span>
+      </div>
+      <div class="pbar"><div class="pfill" id="progFill" style="width:0%"></div></div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="stat"><div class="big" id="stDone">0</div><div class="lbl">модулей пройдено</div></div>
+        <div class="stat"><div class="big" id="stPts">0</div><div class="lbl">баллов набрано</div></div>
+      </div>
+    </div>
+
+    <div class="sectitle">🎧 Тренажёр</div>
+    <div class="sub" style="margin:-6px 0 12px">Практика с ИИ — прогресс виден руководителю.</div>
+    <div class="grid2">
+      <a class="tile" href="/agent.html"><div class="ti">🥊</div><div><h4>Ролевая игра</h4><p>Отработка возражений: «дорого», «подумаю», «уже есть».</p></div></a>
+      <a class="tile" href="/agent.html"><div class="ti">📝</div><div><h4>Тест по продукту</h4><p>Проверка знаний Sagi: бонусы, функции, ценность.</p></div></a>
+      <a class="tile" href="/agent.html"><div class="ti">💬</div><div><h4>Помощь со сделкой</h4><p>Сценарий ответа, фоллоу-ап, аргумент к закрытию.</p></div></a>
+      <a class="tile" href="/agent.html"><div class="ti">🎓</div><div><h4>Разбор звонка</h4><p>Обратная связь по звонку — что улучшить.</p></div></a>
+    </div>
+
+    <div class="sectitle">📚 Моя программа обучения</div>
+    <div id="modBasicWrap">
+      <div class="sub" style="margin:-6px 0 10px">База — для всех</div>
+      <div id="modBasic"></div>
+    </div>
+    <div id="modAdvWrap" style="margin-top:18px">
+      <div class="sub" style="margin:-6px 0 10px">Продвинутый уровень</div>
+      <div id="modAdv"></div>
+    </div>
+  </section>
+
+  <!-- BOSS PANEL -->
+  <section id="screen-boss" class="hidden">
+    <div class="sectitle" style="margin-top:18px">🎯 Панель руководителя</div>
+
+    <div class="g4">
+      <div class="stat"><div class="big" id="bsTotal">0</div><div class="lbl">всего сотрудников</div></div>
+      <div class="stat"><div class="big" id="bsTrainees">0</div><div class="lbl">стажёров</div></div>
+      <div class="stat"><div class="big" id="bsManagers">0</div><div class="lbl">менеджеров</div></div>
+      <div class="stat"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
+    </div>
+
+    <div class="sectitle">Инструменты найма</div>
+    <div class="g3">
+      <a class="tile" href="/pipeline.html"><div class="ti">🗂</div><div><h4>Пайплайн</h4><p>Карточки кандидатов и стадии найма.</p></div></a>
+      <a class="tile" href="/apply.html"><div class="ti">📨</div><div><h4>Отклики</h4><p>Публичная форма вакансии.</p></div></a>
+      <a class="tile" href="/dashboard/"><div class="ti">📊</div><div><h4>Дашборд</h4><p>Аналитика, документы, скрипты.</p></div></a>
+    </div>
+
+    <div class="sectitle">Сотрудники и прогресс</div>
+    <div id="bossTableWrap"></div>
+  </section>
+
+  <!-- EMPLOYEE PROFILE (boss view) -->
+  <section id="screen-profile" class="hidden">
+    <button class="btn sec small" id="profBack" style="margin:18px 0 14px">← К списку сотрудников</button>
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="sectitle" id="profName" style="margin-top:0">Имя</div>
+          <span class="tag" id="profRole"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn small" id="profPromote">🎓 Перевести в менеджеры</button>
+          <button class="btn sec small" id="profDelete" style="color:#ff6b6b;border-color:#ff6b6b">🗑 Удалить</button>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div class="stat"><div class="big" id="profDone">0</div><div class="lbl">модулей пройдено</div></div>
+        <div class="stat"><div class="big" id="profPct">0%</div><div class="lbl">прогресс</div></div>
+      </div>
+      <div style="margin-top:16px">
+        <label>Телефон / WhatsApp</label>
+        <div style="display:flex;gap:8px">
+          <input id="profPhone" placeholder="Не указан" maxlength="30" />
+          <button class="btn sec small" id="profPhoneSave">Сохранить</button>
+        </div>
+      </div>
+      <div class="sub" id="profMeta" style="margin-top:14px"></div>
+    </div>
+    <div class="card" id="profAnswersWrap" style="margin-bottom:16px;display:none">
+      <div class="sectitle" style="margin-top:0">📝 Ответы при отклике</div>
+      <div class="sub" id="profAnswersVac" style="margin-bottom:8px"></div>
+      <div id="profAnswersText" style="white-space:pre-line;line-height:1.5"></div>
+    </div>
+    <div class="sectitle">📚 Прогресс по модулям</div>
+    <div id="profModBasic"></div>
+    <div id="profModAdvWrap" style="margin-top:18px">
+      <div class="sub" style="margin:-6px 0 10px">Продвинутый уровень</div>
+      <div id="profModAdv"></div>
+    </div>
+  </section>
+
+  <!-- LESSON READER -->
+  <section id="screen-lesson" class="hidden">
+    <button class="btn sec small" id="lesBack" style="margin:18px 0 14px">← В кабинет</button>
+    <div class="card lesson">
+      <div class="sectitle" id="lesTitle" style="margin-top:0">Урок</div>
+      <div class="sub" id="lesDesc" style="margin:-6px 0 16px"></div>
+      <div id="lesContent" class="lesson-body"></div>
+      <div id="lesQuiz"></div>
+      <button class="btn" id="lesDone" style="margin-top:18px">Отметить пройденным</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="lessons.js"></script>
+<script>
+/* ============================================================
+   СЛОЙ ДАННЫХ — реальная база через /api/users (Upstash Redis).
+   Аккаунты и прогресс хранятся на сервере, видны с любого
+   устройства и руководителю.
+   ============================================================ */
+async function api(payload){
+  try{
+    const r=await fetch('/api/users',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json().catch(()=>({}));
+    return {status:r.status, ...d};
+  }catch(e){ return {status:0, error:'Нет связи с сервером. Проверьте интернет.'}; }
+}
+const SESSION_KEY='sagiHR_session';
+function saveSession(login,token){ localStorage.setItem(SESSION_KEY, JSON.stringify({login,token})); }
+function getSession(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch{ return null; } }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+
+let CUR=null;       // текущий сотрудник (safe-объект с сервера)
+const BOSS_PW_KEY='sagiHR_ropPass'; // тот же ключ, что и на pipeline.html/analytics.html — один вход на все три
+let BOSS_PW=localStorage.getItem(BOSS_PW_KEY)||null;
+// id переписки на hh.kz из ссылки-приглашения (?hh=123456) — привязываем при регистрации,
+// чтобы напоминания об обучении и уведомление о наставнике могли прийти в тот же чат.
+const REF_HH = new URLSearchParams(location.search).get('hh') || '';
+
+/* ---- Программа обучения (контент + тесты в lessons.js) ---- */
+const BASIC = (window.LESSONS && window.LESSONS.basic) || [];
+const ADV   = (window.LESSONS && window.LESSONS.adv)   || [];
+const byId  = id => BASIC.concat(ADV).find(m=>m.id===id);
+
+/* ---- helpers ---- */
+const $=s=>document.querySelector(s);
+const show=id=>{ ['screen-entry','screen-auth','screen-boss-login','screen-cabinet','screen-boss','screen-profile','screen-lesson']
+  .forEach(s=>$('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); };
+let authMode='login';   // 'login' | 'register'
+let authRole='trainee';
+
+/* ---- ENTRY ---- */
+document.querySelectorAll('.role').forEach(b=>b.addEventListener('click',async()=>{
+  const r=b.dataset.role;
+  if(r==='boss'){
+    if(BOSS_PW){
+      const res=await api({action:'list', password:BOSS_PW});
+      if(res.ok){ renderBoss(res.users); return; }
+      BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY);
+    }
+    $('#bossErr').style.display='none'; $('#f-boss').value=''; show('screen-boss-login'); $('#f-boss').focus(); return;
+  }
+  authRole=r;
+  authMode = (r==='trainee') ? 'register' : 'login';
+  renderAuth();
+  show('screen-auth');
+}));
+
+function renderAuth(){
+  const reg = authMode==='register';
+  $('#authTitle').textContent = reg ? 'Регистрация' : 'Вход';
+  $('#authSub').textContent = authRole==='trainee'
+    ? 'Стажёр — базовая программа обучения с нуля.'
+    : 'Действующий менеджер — продвинутые модули и тренажёр.';
+  $('#regNameWrap').style.display = reg ? 'block' : 'none';
+  $('#authSubmit').textContent = reg ? 'Создать аккаунт' : 'Войти';
+  $('#authSwitch').innerHTML = reg
+    ? 'Уже есть аккаунт? <a id="toLogin">Войти</a>'
+    : 'Нет аккаунта? <a id="toReg">Зарегистрироваться</a>';
+  $('#authErr').style.display='none';
+  const tl=$('#toLogin'), tr=$('#toReg');
+  if(tl) tl.onclick=()=>{ authMode='login'; renderAuth(); };
+  if(tr) tr.onclick=()=>{ authMode='register'; renderAuth(); };
+}
+$('#authBack').onclick=()=>show('screen-entry');
+$('#bossBack').onclick=()=>show('screen-entry');
+
+$('#authSubmit').onclick=async()=>{
+  const name=$('#f-name').value, login=$('#f-login').value, pass=$('#f-pass').value, phone=$('#f-phone').value;
+  const btn=$('#authSubmit'), old=btn.textContent; btn.disabled=true; btn.textContent='Подождите…';
+  const res = authMode==='register'
+    ? await api({action:'register', name, login, password:pass, role:authRole, hh:REF_HH, phone})
+    : await api({action:'login', login, password:pass});
+  btn.disabled=false; btn.textContent=old;
+  if(!res.ok){ const e=$('#authErr'); e.textContent=res.error||'Ошибка'; e.style.display='block'; return; }
+  saveSession(res.user.login, res.token); CUR=res.user;
+  $('#f-name').value=$('#f-login').value=$('#f-pass').value=$('#f-phone').value='';
+  renderCabinet(CUR);
+};
+
+/* ---- BOSS ---- */
+$('#bossSubmit').onclick=async()=>{
+  const pw=$('#f-boss').value;
+  const btn=$('#bossSubmit'), old=btn.textContent; btn.disabled=true; btn.textContent='Подождите…';
+  const res=await api({action:'list', password:pw});
+  btn.disabled=false; btn.textContent=old;
+  if(!res.ok){ const e=$('#bossErr'); e.textContent=res.error||'Ошибка'; e.style.display='block'; return; }
+  BOSS_PW=pw; localStorage.setItem(BOSS_PW_KEY, pw); renderBoss(res.users);
+};
+
+/* ---- CABINET ---- */
+function moduleRow(m, done, locked){
+  const div=document.createElement('div');
+  div.className='mod'+(done?' done':'')+(locked?' locked':'');
+  div.innerHTML='<div class="num">'+(done?'✓':'•')+'</div>'+
+    '<div class="mt">'+m.title+'<small>'+(m.desc||'')+'</small></div>'+
+    (locked?'<span class="lock-pill">🔒 уровень менеджера</span>'
+           :'<span class="open-pill">Открыть →</span>');
+  if(!locked){
+    div.style.cursor='pointer';
+    div.onclick=()=>openLesson(m.id);
+  }
+  return div;
+}
+function renderCabinet(u){
+  if(!u){ show('screen-entry'); return; }
+  $('#whoChip').classList.remove('hidden'); $('#whoChip').innerHTML='👤 <b>'+u.name+'</b>';
+  $('#logoutBtn').classList.remove('hidden');
+  $('#cabHello').textContent='Привет, '+u.name.split(' ')[0]+'!';
+  const isMgr=u.role==='manager';
+  $('#cabRole').textContent=isMgr?'Менеджер':'Стажёр';
+  $('#cabRole').className='tag '+(isMgr?'mg':'tr');
+
+  const prog=u.progress||{};
+  const all = isMgr ? BASIC.concat(ADV) : BASIC;
+  const doneCount = all.filter(m=>prog[m.id]).length;
+  const pct = Math.round(doneCount/all.length*100);
+  $('#progPct').textContent=pct+'%'; $('#progFill').style.width=pct+'%';
+  $('#stDone').textContent=doneCount+' / '+all.length;
+  $('#stPts').textContent=(u.points||0);
+
+  const mb=$('#modBasic'); mb.innerHTML='';
+  BASIC.forEach(m=>mb.appendChild(moduleRow(m, !!prog[m.id], false)));
+  const ma=$('#modAdv'); ma.innerHTML='';
+  ADV.forEach(m=>ma.appendChild(moduleRow(m, !!prog[m.id], !isMgr)));
+
+  show('screen-cabinet');
+}
+
+/* ---- LESSON READER ---- */
+let curLesson=null;
+function openLesson(id){
+  const m=byId(id); if(!m){ return; }
+  curLesson=m;
+  const done = !!((CUR&&CUR.progress)||{})[id];
+  $('#lesTitle').textContent=m.title;
+  $('#lesDesc').textContent=m.desc||'';
+  $('#lesContent').innerHTML=m.content||'<p>Материал скоро появится.</p>';
+  const qWrap=$('#lesQuiz'); qWrap.innerHTML='';
+  if(m.quiz && m.quiz.length){
+    qWrap.innerHTML='<div class="sectitle" style="margin-top:6px">📝 Проверка ('+m.quiz.length+' вопр.)</div>';
+    m.quiz.forEach((q,qi)=>{
+      const blk=document.createElement('div'); blk.className='qblk';
+      blk.innerHTML='<div class="qq">'+(qi+1)+'. '+q.q+'</div>'+
+        q.options.map((o,oi)=>'<label class="qopt"><input type="radio" name="q'+qi+'" value="'+oi+'"> '+o+'</label>').join('');
+      qWrap.appendChild(blk);
+    });
+    const res=document.createElement('div'); res.id='quizRes'; res.className='quizres'; qWrap.appendChild(res);
+  }
+  const btn=$('#lesDone');
+  btn.textContent = done ? '✓ Пройдено — пройти заново' : (m.quiz&&m.quiz.length ? 'Проверить и завершить' : 'Отметить пройденным');
+  btn.dataset.done = done ? '1':'';
+  show('screen-lesson');
+}
+async function markLesson(done){
+  const s=getSession(); if(!s||!curLesson) return;
+  const btn=$('#lesDone'), old=btn.textContent; btn.disabled=true; btn.textContent='Сохраняю…';
+  const res=await api({action:'progress', login:s.login, token:s.token, moduleId:curLesson.id, done});
+  btn.disabled=false;
+  if(res.ok){ CUR=res.user; renderCabinet(CUR); }
+  else if(res.status===401){ clearSession(); CUR=null; show('screen-entry'); }
+  else { btn.textContent=old; }
+}
+$('#lesDone').onclick=()=>{
+  const m=curLesson; if(!m) return;
+  // уже пройден → кнопка «пройти заново» просто открывает заново (прогресс не трогаем)
+  if($('#lesDone').dataset.done==='1'){ openLesson(m.id); return; }
+  if(m.quiz && m.quiz.length){
+    let correct=0, answered=0;
+    m.quiz.forEach((q,qi)=>{ const sel=document.querySelector('input[name="q'+qi+'"]:checked'); if(sel){ answered++; if(+sel.value===q.correct) correct++; } });
+    const resEl=$('#quizRes');
+    if(answered<m.quiz.length){ resEl.className='quizres warn'; resEl.textContent='Ответьте на все вопросы ('+answered+'/'+m.quiz.length+').'; return; }
+    const pass = correct>=Math.ceil(m.quiz.length*0.7);
+    if(pass){ resEl.className='quizres ok'; resEl.textContent='✓ '+correct+'/'+m.quiz.length+' — отлично! Модуль засчитан.'; markLesson(true); }
+    else{ resEl.className='quizres bad'; resEl.textContent='✗ '+correct+'/'+m.quiz.length+'. Нужно минимум '+Math.ceil(m.quiz.length*0.7)+'. Перечитайте материал и попробуйте снова.'; }
+  } else { markLesson(true); }
+};
+$('#lesBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabinet'); };
+
+/* ---- BOSS PANEL ---- */
+let BOSS_USERS={}; // login -> user, кэш последнего списка от 'list' (для клика по строке / профиля)
+
+function renderBoss(users){
+  users=users||[];
+  BOSS_USERS={}; users.forEach(u=>{ BOSS_USERS[u.login]=u; });
+  $('#whoChip').classList.remove('hidden'); $('#whoChip').innerHTML='🎯 <b>Руководитель</b>';
+  $('#logoutBtn').classList.remove('hidden');
+  const trainees=users.filter(u=>u.role==='trainee');
+  const managers=users.filter(u=>u.role==='manager');
+  $('#bsTotal').textContent=users.length;
+  $('#bsTrainees').textContent=trainees.length;
+  $('#bsManagers').textContent=managers.length;
+  const pcts=users.map(u=>{
+    const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
+    const done=all.filter(m=>(u.progress||{})[m.id]).length;
+    return Math.round(done/all.length*100);
+  });
+  $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
+
+  const wrap=$('#bossTableWrap');
+  if(!users.length){ wrap.innerHTML='<div class="empty">Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.</div>'; }
+  else{
+    let rows=users.sort((a,b)=>b.lastSeen-a.lastSeen).map((u,i)=>{
+      const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
+      const done=all.filter(m=>(u.progress||{})[m.id]).length;
+      const pct=Math.round(done/all.length*100);
+      const when=new Date(u.lastSeen).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
+      const loginAttr=String(u.login).replace(/"/g,'&quot;');
+      return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b><br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
+        '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'">'+(u.role==='manager'?'Менеджер':'Стажёр')+'</span></td>'+
+        '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
+        '<td>'+done+' / '+all.length+'</td>'+
+        '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
+        '<td style="color:var(--muted)">'+when+'</td>'+
+        '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
+    }).join('');
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Прогресс</th><th>Модули</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.querySelectorAll('.bossRow').forEach(tr=>{
+      tr.addEventListener('click', e=>{
+        if(e.target.closest('.bossDelBtn')) return;
+        const u=BOSS_USERS[tr.dataset.login];
+        if(u) renderProfile(u);
+      });
+    });
+    wrap.querySelectorAll('.bossDelBtn').forEach(btn=>{
+      btn.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const login=btn.dataset.login, u=BOSS_USERS[login];
+        if(!u) return;
+        if(!confirm('Удалить '+u.name+' (@'+login+')? Это действие необратимо.')) return;
+        btn.disabled=true; btn.textContent='…';
+        const res=await api({action:'delete', password:BOSS_PW, login});
+        if(!res.ok){ alert(res.error||'Не удалось удалить'); btn.disabled=false; btn.textContent='🗑'; return; }
+        const res2=await api({action:'list', password:BOSS_PW});
+        if(res2.ok) renderBoss(res2.users);
+      });
+    });
+  }
+  show('screen-boss');
+}
+
+/* ---- ПРОФИЛЬ СОТРУДНИКА (вид руководителя) ---- */
+function profModuleRow(m, done){
+  const div=document.createElement('div');
+  div.className='mod'+(done?' done':'');
+  div.innerHTML='<div class="num">'+(done?'✓':'•')+'</div>'+
+    '<div class="mt">'+m.title+'<small>'+(m.desc||'')+'</small></div>';
+  return div;
+}
+function renderProfile(u){
+  $('#profName').textContent=u.name;
+  $('#profRole').textContent=u.role==='manager'?'Менеджер':'Стажёр';
+  $('#profRole').className='tag '+(u.role==='manager'?'mg':'tr');
+  const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
+  const prog=u.progress||{};
+  const done=all.filter(m=>prog[m.id]).length;
+  const pct=Math.round(done/all.length*100);
+  $('#profDone').textContent=done+' / '+all.length;
+  $('#profPct').textContent=pct+'%';
+  $('#profPhone').value=u.phone||'';
+
+  const meta=[];
+  if(u.mentorName) meta.push('Наставник: '+u.mentorName+(u.mentorPhone?' ('+u.mentorPhone+')':''));
+  if(u.hhNegId) meta.push('Привязан к переписке на hh.kz — напоминания и уведомления приходят автоматически.');
+  else meta.push('Не привязан к hh.kz — автонапоминания и уведомления не дойдут, пока не заполнен телефон выше и с ним не свяжутся вручную.');
+  if(u.createdAt) meta.push('Регистрация: '+new Date(u.createdAt).toLocaleDateString('ru-RU'));
+  if(u.promotedAt) meta.push('Переведён(а) в менеджеры: '+new Date(u.promotedAt).toLocaleDateString('ru-RU'));
+  if(u.lastSeen) meta.push('Последняя активность: '+new Date(u.lastSeen).toLocaleDateString('ru-RU'));
+  $('#profMeta').innerHTML=meta.join('<br>');
+
+  if(u.intakeAnswers){
+    $('#profAnswersWrap').style.display='block';
+    $('#profAnswersVac').textContent=u.intakeVacancy?('Вакансия при отклике: '+u.intakeVacancy):'';
+    $('#profAnswersText').textContent=u.intakeAnswers;
+  } else {
+    $('#profAnswersWrap').style.display='none';
+  }
+
+  const mb=$('#profModBasic'); mb.innerHTML='';
+  BASIC.forEach(m=>mb.appendChild(profModuleRow(m, !!prog[m.id])));
+  const advWrap=$('#profModAdvWrap'), ma=$('#profModAdv'); ma.innerHTML='';
+  if(u.role==='manager'){
+    advWrap.style.display='block';
+    ADV.forEach(m=>ma.appendChild(profModuleRow(m, !!prog[m.id])));
+  } else {
+    advWrap.style.display='none';
+  }
+
+  const promoteBtn=$('#profPromote');
+  if(u.role==='manager'){
+    promoteBtn.textContent='↩️ Вернуть в стажёры';
+  } else {
+    promoteBtn.textContent='🎓 Перевести в менеджеры';
+  }
+  promoteBtn.onclick=async()=>{
+    const toManager=u.role!=='manager';
+    const msg=toManager?('Перевести '+u.name+' в менеджеры? Логин, пароль и прогресс сохранятся, откроются продвинутые модули.')
+                        :('Вернуть '+u.name+' в статус стажёра?');
+    if(!confirm(msg)) return;
+    promoteBtn.disabled=true;
+    const res=await api({action:'setRole', password:BOSS_PW, login:u.login, role: toManager?'manager':'trainee'});
+    promoteBtn.disabled=false;
+    if(!res.ok){ alert(res.error||'Не удалось изменить роль'); return; }
+    BOSS_USERS[u.login]=res.user;
+    renderProfile(res.user);
+  };
+  $('#profDelete').onclick=async()=>{
+    if(!confirm('Удалить '+u.name+' (@'+u.login+')? Это действие необратимо.')) return;
+    const res=await api({action:'delete', password:BOSS_PW, login:u.login});
+    if(!res.ok){ alert(res.error||'Не удалось удалить'); return; }
+    const res2=await api({action:'list', password:BOSS_PW});
+    if(res2.ok) renderBoss(res2.users); else show('screen-boss');
+  };
+  $('#profPhoneSave').onclick=async()=>{
+    const btn=$('#profPhoneSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';
+    const res=await api({action:'setContact', password:BOSS_PW, login:u.login, phone:$('#profPhone').value});
+    btn.disabled=false; btn.textContent=old;
+    if(!res.ok){ alert(res.error||'Не удалось сохранить'); return; }
+    u.phone=$('#profPhone').value; BOSS_USERS[u.login]=u;
+  };
+
+  show('screen-profile');
+}
+$('#profBack').onclick=()=>show('screen-boss');
+
+/* ---- logout / logo ---- */
+$('#logoutBtn').onclick=()=>{ clearSession(); CUR=null; BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY);
+  $('#whoChip').classList.add('hidden'); $('#logoutBtn').classList.add('hidden'); show('screen-entry'); };
+$('#logoHome').onclick=async e=>{ e.preventDefault();
+  if(BOSS_PW){ const res=await api({action:'list',password:BOSS_PW}); if(res.ok){ renderBoss(res.users); return; } BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY); }
+  if(CUR){ renderCabinet(CUR); return; }
+  show('screen-entry');
+};
+
+/* ---- ввод по Enter ---- */
+['f-name','f-login','f-pass'].forEach(id=>{ const el=$('#'+id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') $('#authSubmit').click(); }); });
+$('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#bossSubmit').click(); });
+
+/* ---- restore session ---- */
+(async function(){
+  const s=getSession();
+  if(s && s.login && s.token){
+    const res=await api({action:'me', login:s.login, token:s.token});
+    if(res.ok){ CUR=res.user; renderCabinet(CUR); return; }
+    clearSession();
+  }
+  show('screen-entry');
+})();
+</script>
+</body>
+</html>

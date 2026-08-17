@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Аналитика найма</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);
+    --warn:#ffcf66;--danger:#ff7a7a;--blue:#6ea8fe;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:13px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  header .spacer{flex:1}
+  header button.ghost{font-size:13px;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:999px;background:transparent;cursor:pointer;font-family:inherit}
+  header button.ghost:hover{color:var(--text);border-color:var(--line-2)}
+  .nav{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+  .navtab{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);padding:7px 14px;border-radius:999px;transition:.16s;white-space:nowrap}
+  .navtab:hover{color:var(--text)}
+  .navtab.active{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);box-shadow:0 4px 14px var(--brand-glow)}
+  @media(max-width:760px){header{flex-wrap:wrap}.nav{order:3;width:100%;overflow-x:auto}}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  .gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,7,10,.75);backdrop-filter:blur(6px);z-index:50}
+  .gate .box{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;padding:26px;width:min(92vw,400px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .gate h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
+  .gate p{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  input{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);font:inherit;font-size:14.5px;padding:11px 13px;outline:none;width:100%}
+  input:focus{border-color:rgba(25,227,154,.55)}
+  .btn{border:0;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;box-shadow:0 6px 18px var(--brand-glow)}
+  .err{background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:10px 12px;border-radius:11px;margin-bottom:12px;display:none}
+  .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .head h1{font-family:var(--display);font-size:24px;margin:0;flex:1}
+  .pill{font-size:12.5px;color:var(--muted);border:1px solid var(--line);padding:7px 12px;border-radius:999px;background:var(--panel)}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:22px}
+  .tile{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:16px}
+  .tile .lbl{font-size:12px;color:var(--muted);margin-bottom:8px}
+  .tile .val{font-family:var(--display);font-size:26px;font-weight:800}
+  .tile .sub{font-size:12px;color:var(--faint);margin-top:4px}
+  .tile.brand{border-color:rgba(25,227,154,.35);background:rgba(25,227,154,.06)}
+  .tile.brand .val{color:var(--brand)}
+  .tile.warn .val{color:var(--warn)}
+  .tile.blue .val{color:var(--blue)}
+  .section{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:20px;margin-bottom:16px}
+  .section h2{font-family:var(--display);font-size:16px;margin:0 0 4px}
+  .section .note{color:var(--faint);font-size:12.5px;margin:0 0 16px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .bar-row .lbl{width:150px;flex:0 0 150px;font-size:13px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-row .track{flex:1;height:20px;background:var(--panel-2);border-radius:6px;overflow:hidden;position:relative}
+  .bar-row .fill{height:100%;background:linear-gradient(90deg,var(--brand-2),var(--brand));border-radius:6px;min-width:3px}
+  .bar-row .cnt{width:40px;flex:0 0 40px;font-size:13px;font-weight:700;color:var(--text)}
+  .daily{display:flex;align-items:flex-end;gap:4px;height:110px;padding-top:10px}
+  .daily .col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;height:100%}
+  .daily .colbar{width:100%;max-width:22px;background:linear-gradient(180deg,var(--brand),var(--brand-2));border-radius:4px 4px 0 0;min-height:2px}
+  .daily .colnum{font-size:10.5px;color:var(--muted)}
+  .daily .collbl{font-size:9.5px;color:var(--faint);transform:rotate(0deg);white-space:nowrap}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px}
+  td.num{text-align:right;font-weight:700}
+  .empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:13.5px}
+  .refresh{font-size:12px;color:var(--faint);text-align:right;margin-top:6px}
+  @media(max-width:600px){.bar-row .lbl{width:100px;flex-basis:100px}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi · Аналитика найма</div>
+  </a>
+  <nav class="nav">
+    <a class="navtab" href="/">🏠 Кабинет</a>
+    <a class="navtab" href="/agent.html">💬 ИИ-агент</a>
+    <a class="navtab" href="/pipeline.html">🗂 Пайплайн</a>
+    <a class="navtab active" href="/analytics.html">📊 Аналитика</a>
+    <a class="navtab" href="/apply.html">📨 Отклик</a>
+  </nav>
+  <div class="spacer"></div>
+  <button class="ghost" id="refreshBtn">🔄 Обновить</button>
+</header>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="head">
+    <h1>Аналитика найма</h1>
+    <span class="pill" id="genAt">—</span>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="section">
+    <h2>Динамика по дням (пайплайн, 14 дней)</h2>
+    <p class="note">Сколько кандидатов добавлено в общий пайплайн каждый день — все каналы вместе.</p>
+    <div class="daily" id="daily"></div>
+  </div>
+
+  <div class="section">
+    <h2>Воронка hh.kz</h2>
+    <p class="note">Отклики на hh.kz → отправлено первое сообщение → кандидат ответил → рекомендация ИИ по ответу.</p>
+    <div id="hhFunnel"></div>
+    <div id="hhVerdict" style="margin-top:14px"></div>
+  </div>
+
+  <div class="section">
+    <h2>Telegram-бот найма (@Sagijobsbot)</h2>
+    <p class="note">Переходы по ссылке (/start) → заполнили анкету до конца. По источникам — метки из ссылок (например, Threads/Instagram).</p>
+    <div class="tiles" id="tgTiles" style="margin-bottom:14px"></div>
+    <div id="tgTable"></div>
+  </div>
+
+  <div class="section">
+    <h2>По стадиям пайплайна</h2>
+    <div id="byStage"></div>
+  </div>
+
+  <div class="section">
+    <h2>По каналам привлечения</h2>
+    <div id="byChannel"></div>
+  </div>
+
+  <div class="section">
+    <h2>По вакансиям</h2>
+    <div id="byVacancy"></div>
+  </div>
+
+  <div class="section">
+    <h2>По вердиктам ИИ-скринера (общий пайплайн)</h2>
+    <p class="note">У разных каналов разная терминология: hh.kz — «На стажировку/Уточнить/Не подходит», остальные — «Брать на интервью/Резерв/Отказ».</p>
+    <div id="byVerdict"></div>
+  </div>
+
+  <div class="refresh" id="refreshedAt"></div>
+</div>
+
+<div class="gate" id="gate">
+  <div class="box">
+    <h2>🔒 Аналитика найма</h2>
+    <p>Доступ для рекрутера/РОПа. Тот же пароль, что и в Пайплайне.</p>
+    <div class="err" id="gateErr"></div>
+    <input id="gatePass" type="password" placeholder="Пароль РОПа" />
+    <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn" id="gateBtn">Войти</button></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const PASS_KEY='sagiHR_ropPass';
+let PASS=localStorage.getItem(PASS_KEY)||'';
+
+async function api(){
+  const r=await fetch('/api/analytics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:PASS})});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+function barList(el, rows, opts){
+  opts = opts || {};
+  if(!rows.length){ el.innerHTML='<div class="empty">Данных пока нет.</div>'; return; }
+  const max = Math.max(...rows.map(r=>r.count), 1);
+  el.innerHTML = rows.map(r=>{
+    const pct = Math.max(3, Math.round((r.count/max)*100));
+    return '<div class="bar-row">'+
+      '<div class="lbl" title="'+esc(r.key)+'">'+esc(r.key)+'</div>'+
+      '<div class="track"><div class="fill" style="width:'+pct+'%"></div></div>'+
+      '<div class="cnt">'+r.count+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function tile(label, val, sub, cls){
+  return '<div class="tile'+(cls?(' '+cls):'')+'"><div class="lbl">'+esc(label)+'</div><div class="val">'+esc(val)+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
+}
+
+function renderDaily(days){
+  const max = Math.max(...days.map(d=>d.count), 1);
+  $('#daily').innerHTML = days.map(d=>{
+    const h = Math.max(3, Math.round((d.count/max)*90));
+    return '<div class="col"><div class="colnum">'+(d.count||'')+'</div><div class="colbar" style="height:'+h+'px"></div><div class="collbl">'+esc(d.label)+'</div></div>';
+  }).join('');
+}
+
+async function load(){
+  const d = await api();
+  $('#genAt').textContent = 'обновлено ' + new Date(d.generatedAt).toLocaleString('ru-RU');
+
+  const c = d.candidates, hh = d.hhkz, tg = d.telegram;
+
+  $('#tiles').innerHTML = [
+    tile('Всего в пайплайне', c.total, 'все каналы', 'brand'),
+    tile('За 7 дней', c.last7days, 'новых кандидатов'),
+    tile('За 30 дней', c.last30days, 'новых кандидатов'),
+    tile('Средний балл ИИ', c.avgScore==null?'—':c.avgScore, 'из 10, где есть оценка'),
+    tile('hh.kz: ответили', hh.totalReplied, 'из ' + hh.totalSeen + ' откликов (' + hh.replyRatePct + '%)', 'blue'),
+    tile('Telegram-бот: конверсия', tg.conversionPct + '%', tg.totalCompleted + ' из ' + tg.totalStarts + ' переходов', 'warn'),
+  ].join('');
+
+  renderDaily(c.daily);
+
+  // hh.kz funnel as bars
+  barList($('#hhFunnel'), [
+    {key:'Откликов получено', count: hh.totalSeen},
+    {key:'Ответили', count: hh.totalReplied},
+    {key:'Ожидают ответа', count: hh.pendingReply},
+  ]);
+  if(hh.byVerdict && hh.byVerdict.length){
+    barList($('#hhVerdict'), hh.byVerdict.map(x=>({key:x.key,count:x.count})));
+  } else {
+    $('#hhVerdict').innerHTML = '<div class="empty">Пока никто не ответил — вердиктов нет.</div>';
+  }
+
+  // telegram tiles + table
+  $('#tgTiles').innerHTML = [
+    tile('Всего переходов', tg.totalStarts, 'нажали Start'),
+    tile('Заполнили анкету', tg.totalCompleted, 'дошли до конца'),
+  ].join('');
+  if(tg.bySource && tg.bySource.length){
+    $('#tgTable').innerHTML = '<table><thead><tr><th>Источник</th><th class="num">Переходов</th><th class="num">Заполнили</th><th class="num">Конверсия</th></tr></thead><tbody>'+
+      tg.bySource.map(s=>'<tr><td>'+esc(s.key)+'</td><td class="num">'+s.starts+'</td><td class="num">'+s.completed+'</td><td class="num">'+s.conversionPct+'%</td></tr>').join('')+
+      '</tbody></table>';
+  } else {
+    $('#tgTable').innerHTML = '<div class="empty">Переходов с метками пока не было (например, по ссылке из Threads).</div>';
+  }
+
+  barList($('#byStage'), c.byStage.map(x=>({key:x.key,count:x.count})));
+  barList($('#byChannel'), c.byChannel.map(x=>({key:x.key,count:x.count})));
+  barList($('#byVacancy'), c.byVacancy.map(x=>({key:x.key,count:x.count})));
+  barList($('#byVerdict'), c.byVerdict.map(x=>({key:x.key,count:x.count})));
+
+  $('#refreshedAt').textContent = 'Данные читаются напрямую из базы при каждом обновлении.';
+}
+
+async function unlock(){
+  PASS = $('#gatePass').value; $('#gateErr').style.display='none';
+  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
+}
+$('#gateBtn').addEventListener('click', unlock);
+$('#gatePass').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+$('#refreshBtn').addEventListener('click', ()=>{ if(PASS) load().catch(e=>alert(e.message)); });
+$('#gatePass').focus();
+
+// Автовход, если пароль уже сохранён в этом браузере.
+(async()=>{
+  if(!PASS) return;
+  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); }
+})();
+</script>
+</body>
+</html>
