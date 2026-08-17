@@ -1,6 +1,6 @@
 // Vercel Serverless Function — рекрутинг-пайплайн (для РОПа/рекрутера).
 // POST { action, password, ... }. Защищено DASHBOARD_PASSWORD. Данные — Redis list hr:candidates.
-// actions: 'list' | 'add' | 'stage' | 'delete'
+// actions: 'list' | 'add' | 'stage' | 'delete' | 'hhFunnel'
 
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
@@ -152,6 +152,26 @@ export default async function handler(req, res) {
       items[idx].stage = stage;
       await saveAll(items);
       res.status(200).json({ ok: true });
+      return;
+    }
+
+    // Воронка по hh.kz для дешборда (2026-08-17, по запросу Sagi): сколько всего откликов пришло
+    // на активную вакансию, скольким отправили первое сообщение, сколько ответили, сколько уже
+    // приглашены на стажировку. Сама выборка живёт в hh_poll.js (там уже есть OAuth-токен hh.ru),
+    // здесь просто проксируем server-to-server через HH_POLL_SECRET, чтобы секрет не светился в
+    // браузере кандидата/рекрутера.
+    if (action === 'hhFunnel') {
+      try {
+        const secret = process.env.HH_POLL_SECRET || '';
+        const host = req.headers?.host || 'hr.sagibonus.com';
+        const proto = host.includes('localhost') ? 'http' : 'https';
+        if (!secret) { res.status(200).json({ ok: false, error: 'HH_POLL_SECRET не настроен' }); return; }
+        const r = await fetch(`${proto}://${host}/api/hh_poll?secret=${encodeURIComponent(secret)}&hhFunnelStats=1`);
+        const d = await r.json();
+        res.status(200).json(d);
+      } catch (e) {
+        res.status(200).json({ ok: false, error: e.message });
+      }
       return;
     }
 
