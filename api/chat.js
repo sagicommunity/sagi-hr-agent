@@ -48,6 +48,27 @@ const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL 
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const EVENTS_KEY = 'hr:events';
 
+// ---- База знаний техподдержки (support.sagibonus.com): 40 Q&A + живые исправления команды ----
+let _kbCache = { text: '', at: 0 };
+async function loadSupportKB() {
+  const now = Date.now();
+  if (_kbCache.text && now - _kbCache.at < 600000) return _kbCache.text; // кэш 10 мин
+  try {
+    const base = process.env.SUPPORT_KB_URL || 'https://support.sagibonus.com/api/kb';
+    const tok = process.env.SUPPORT_KB_TOKEN || 'sagi-kb-2026';
+    const r = await fetch(base + '?token=' + encodeURIComponent(tok));
+    if (!r.ok) return _kbCache.text || '';
+    const d = await r.json();
+    let txt = (d.kb || '').toString();
+    if (Array.isArray(d.corrections) && d.corrections.length) {
+      txt += '\n\nИСПРАВЛЕНИЯ ОТ КОМАНДЫ ПОДДЕРЖКИ (высший приоритет, если применимо):\n' +
+        d.corrections.map((x, i) => (i + 1) + '. ' + (x.q ? ('[' + x.q + '] ') : '') + x.correct + (x.tags ? ('  теги: ' + x.tags) : '')).join('\n');
+    }
+    if (txt) _kbCache = { text: txt, at: now };
+    return txt;
+  } catch (e) { return _kbCache.text || ''; }
+}
+
 async function redis(cmd) {
   if (!R_URL || !R_TOK) return null;
   const res = await fetch(R_URL, {
@@ -247,10 +268,16 @@ export default async function handler(req, res) {
       dataBlock = `\n\n<DATA>\n${JSON.stringify({ generatedAt: new Date().toISOString(), period: periodLabel, managers: agg, totalEvents: events.length, candidates, totalCandidates: allCands.length }, null, 0)}\n</DATA>`;
     }
 
+    // База знаний техподдержки — для точных ответов о продукте/настройке/тарифах и обучения менеджеров
+    const supportKB = await loadSupportKB();
+    const kbBlock = supportKB
+      ? ('\n\nБАЗА ЗНАНИЙ ТЕХПОДДЕРЖКИ SAGI (реальные ответы поддержки и аккаунт-менеджеров — используй как источник истины для вопросов о продукте, настройке, тарифах и типичных проблемах; при обучении менеджеров опирайся на эти формулировки):\n' + supportKB)
+      : '';
+
     const sysSuffix =
       `\n\n— Текущий пользователь: имя=${userName || 'не указано'}.` +
       (isDashboard ? ' Роль: руководитель (доступ к дешборду подтверждён). Построй дешборд строго из блока <DATA>.' : '') +
-      dataBlock;
+      dataBlock + kbBlock;
 
     // ---- Цикл с инструментами (поиск вакансий HH) ----
     const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));

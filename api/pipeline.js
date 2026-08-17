@@ -5,7 +5,7 @@
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const CAND_KEY = 'hr:candidates';
-const STAGES = ['Новый', 'На связи', 'Квалификация', 'Интервью', 'Оффер', 'Стажировка', 'Отказ'];
+const STAGES = ['Новый', 'Ответил', 'На связи', 'Квалификация', 'Интервью', 'Оффер', 'Стажировка', 'Отказ'];
 
 async function redis(cmd) {
   if (!R_URL || !R_TOK) return null;
@@ -41,27 +41,42 @@ function waMessage(name) {
   return `Здравствуйте${n ? ', ' + n : ''}! 👋 Меня зовут [ваше имя], я из компании Sagi (платформа лояльности для бизнеса). Мы расширяем отдел продаж и заинтересовались вашим опытом. Можете уделить пару минут — задам 3 коротких вопроса по позиции менеджера по продажам?`;
 }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function parseAge(s) {
+  const t = String(s || '');
+  const m = t.match(/(\d{1,2})\s*(?:лет|год[а]?|г\.?)\b/i) || t.match(/возраст[^\d]{0,8}(\d{1,2})/i);
+  if (m) { const a = parseInt(m[1], 10); if (a >= 14 && a <= 70) return a; }
+  return null;
+}
 
 const SCREEN_SYS = `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ). Оцениваешь кандидата на менеджера по ХОЛОДНЫМ продажам (хантер): аутрич, звонки, поиск ЛПР, работа с возражениями, закрытие на встречу. Работа: офис в Астане.
 КЛЮЧЕВОЙ ФИЛЬТР: кандидат ОБЯЗАН быть готов САМОСТОЯТЕЛЬНО искать ЛПР и делать ХОЛОДНЫЕ звонки/обзвоны. Если видно, что он НЕ хочет/не готов к холодным звонкам и самостоятельному поиску клиентов (только тёплые/входящие лиды, «не люблю звонить», только переписка) — ставь «Отказ» и низкий балл, укажи это в summary.
 Верни ТОЛЬКО валидный JSON без markdown:
-{"score": <0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения>", "strengths": ["..."], "flags": ["..."]}`;
+{"score": <0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения>", "strengths": ["..."], "flags": ["..."], "age": <возраст числом, если есть в резюме, иначе null>}`;
 
-async function screen(name, resume) {
+const SCREEN_SYS_REMOTE = `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ). Оцениваешь кандидата на менеджера по ХОЛОДНЫМ продажам, работающего ПОЛНОСТЬЮ УДАЛЁННО (хантер): аутрич, звонки, поиск ЛПР, работа с возражениями, закрытие сделки через онлайн-демо (Zoom/видеозвонок), без офиса и личных встреч.
+ФИЛЬТР 1: кандидат ОБЯЗАН быть готов САМОСТОЯТЕЛЬНО искать ЛПР и делать ХОЛОДНЫЕ звонки/обзвоны. Если не готов — «Отказ», низкий балл, укажи в summary.
+ФИЛЬТР 2: критична самодисциплина без офисного контроля и техническая готовность (интернет, компьютер, тихое место для звонков/видео весь день). Если под вопросом — снижай балл.
+Верни ТОЛЬКО валидный JSON без markdown:
+{"score": <0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения>", "strengths": ["..."], "flags": ["..."], "age": <возраст числом, если есть в резюме, иначе null>}`;
+
+const VAC_TITLES = { sales: 'Менеджер по продажам', sales_remote: 'Менеджер по продажам — удалённо' };
+
+async function screen(name, resume, vacancy) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  let out = { score: null, verdict: 'Резерв', summary: '', strengths: [], flags: [] };
+  let out = { score: null, verdict: 'Резерв', summary: '', strengths: [], flags: [], age: null };
   if (!apiKey || !resume) return out;
+  const sys = vacancy === 'sales_remote' ? SCREEN_SYS_REMOTE : SCREEN_SYS;
   try {
     const ar = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 700, system: SCREEN_SYS, messages: [{ role: 'user', content: `Кандидат: ${name}\n\nРезюме:\n${resume.slice(0, 7000)}` }] }),
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 700, system: sys, messages: [{ role: 'user', content: `Кандидат: ${name}\n\nРезюме:\n${resume.slice(0, 7000)}` }] }),
     });
     const ad = await ar.json();
     if (ar.ok) {
       const txt = (ad.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
       const m = txt.match(/\{[\s\S]*\}/);
-      if (m) { const o = JSON.parse(m[0]); out = { score: o.score ?? null, verdict: o.verdict || 'Резерв', summary: o.summary || '', strengths: o.strengths || [], flags: o.flags || [] }; }
+      if (m) { const o = JSON.parse(m[0]); out = { score: o.score ?? null, verdict: o.verdict || 'Резерв', summary: o.summary || '', strengths: o.strengths || [], flags: o.flags || [], age: (typeof o.age === 'number' && o.age >= 14 && o.age <= 70) ? o.age : null }; }
     }
   } catch (e) {}
   return out;
@@ -74,9 +89,13 @@ function normalize(c) {
     contact: c.contact || '',
     phone: c.phone || extractPhone(c.contact, c.resume),
     source: c.source || '—',
+    vacancy: c.vacancy || 'Менеджер по продажам',
+    age: (c.age != null && c.age !== '') ? c.age : parseAge(c.resume),
     score: c.score ?? null,
     verdict: c.verdict || 'Резерв',
     summary: c.summary || '',
+    answers: Array.isArray(c.answers) ? c.answers : [],
+    resume: c.resume || '',
     strengths: c.strengths || [],
     flags: c.flags || [],
     stage: STAGES.includes(c.stage) ? c.stage : 'Новый',
@@ -108,11 +127,14 @@ export default async function handler(req, res) {
       const contact = (body?.contact || '').toString().slice(0, 160).trim() || phoneIn;
       const source = (body?.source || 'ручное добавление').toString().slice(0, 80).trim();
       const resume = (body?.resume || '').toString().slice(0, 8000).trim();
+      const vacancyIn = (body?.vacancy === 'sales_remote') ? 'sales_remote' : 'sales';
+      const vacTitle = VAC_TITLES[vacancyIn];
       if (!name && !phoneIn && !resume) { res.status(400).json({ error: 'Нужно имя, телефон или резюме' }); return; }
-      const ev = await screen(name, resume);
+      const ev = await screen(name, resume, vacancyIn);
+      const answers = resume ? [{ q: 'Резюме / о себе', a: resume.slice(0, 4000) }] : [];
       const rec = normalize({
         id: newId(), name: name || 'Без имени', contact, phone: phoneIn ? digits(phoneIn) : extractPhone(contact, resume),
-        source, resume: resume.slice(0, 2000), ...ev, stage: 'Новый', waMessage: waMessage(name), ts: Date.now(),
+        source, vacancy: vacTitle, resume: resume.slice(0, 2000), answers, ...ev, stage: 'Новый', waMessage: waMessage(name), ts: Date.now(),
       });
       await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]);
       await redis(['LTRIM', CAND_KEY, 0, 1999]);

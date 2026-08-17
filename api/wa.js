@@ -33,6 +33,7 @@ async function waSend(to, text) {
 }
 
 function digits(s) { return String(s || '').replace(/[^\d]/g, ''); }
+function parseAge(s) { const m = String(s || '').match(/\b(1[4-9]|[2-6]\d|70)\b/); return m ? parseInt(m[1], 10) : null; }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function waMessage(name) { const n = (name || '').trim().split(/\s+/)[0] || ''; return `Здравствуйте${n ? ', ' + n : ''}! 👋 Меня зовут [ваше имя], я из Sagi. Мы расширяем отдел продаж и заинтересовались вашим опытом. Удобно ответить на пару вопросов?`; }
 
@@ -56,18 +57,20 @@ async function screen(name, fullText) {
   return out;
 }
 
+// Алерт по КАЖДОЙ заявке (2026-08-17: та же единая политика, что в hh_poll.js/tg.js/apply.js —
+// раньше алертило только по «сильным», заявки без уведомления молча лежали в пайплайне).
 async function notifyROP(rec) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
   const strong = rec.verdict === 'Брать на интервью' || (typeof rec.score === 'number' && rec.score >= 7);
-  if (!strong) return;
-  const text = `🔥 Сильный кандидат (WhatsApp-бот) — Sagi\n\n👤 ${rec.name}\n⭐ ${rec.score != null ? rec.score + '/10' : '—'} · ${rec.verdict}\n📞 ${rec.contact}\n\n${rec.summary || ''}\n\nПайплайн: ${SITE}/pipeline.html`;
+  const text = `${strong ? '🔥 Сильный кандидат' : '💬 Новая заявка'} (WhatsApp-бот) — Sagi\n\n👤 ${rec.name}\n⭐ ${rec.score != null ? rec.score + '/10' : '—'} · ${rec.verdict}\n📞 ${rec.contact}\n\n${rec.summary || ''}\n\nПайплайн: ${SITE}/pipeline.html`;
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 
 const Q = {
   name: 'Здравствуйте! 👋\n\nСразу честно: я — ИИ-бот 🤖, виртуальный помощник команды найма Sagi (я не живой человек). Моя задача — познакомиться с вами, задать несколько коротких вопросов и передать вашу заявку HR-менеджеру, чтобы он быстрее её рассмотрел. Это займёт ~2–3 минуты.\n\nВакансия: *менеджер по продажам* (холодные продажи — звонки, поиск клиентов, встречи). Офис в Астане 🏢.\n\nЧто важно знать:\n• Ваши ответы и контакты увидит только наша команда найма — для подбора.\n• Если подойдёте — с вами свяжется живой человек.\n• Отвечайте свободно, своими словами. Если что-то непонятно — просто напишите вопрос, я поясню. 🙂\n\nДавайте начнём — как вас зовут? (имя и фамилия)',
-  source: 'Приятно познакомиться! Откуда вы узнали о вакансии? (Instagram, HH, по рекомендации и т.п.)',
+  age: 'Приятно познакомиться! Сколько вам полных лет? (напишите числом, например: 27)',
+  source: 'Спасибо! Откуда вы узнали о вакансии? (Instagram, HH, по рекомендации и т.п.)',
   resume: 'Отлично. Пришлите ваше резюме — *текстом* или *ссылкой* (hh.kz, LinkedIn). Можно кратко: опыт, достижения, чем занимались.',
   q1: 'Спасибо! Теперь пара вопросов по делу.\n\n1️⃣ Работа — это самостоятельный поиск клиентов и холодные звонки/обзвоны (искать ЛПР, звонить «вхолодную»). Готовы так работать? И есть ли у вас такой опыт?',
   q2: '2️⃣ Какой ваш лучший результат в продажах? (план/цифры/достижения)',
@@ -85,17 +88,43 @@ function answerFaq(text) {
   return null;
 }
 
+// Приглашение на стажировку — та же философия, что и на hh.kz (2026-08-17, по прямому указанию
+// Sagi «так и всем»): не держим кандидата в подвешенном «рассмотрим и свяжемся», сразу зовём на
+// стажировку. Исключение — только явный «Отказ» от ИИ-скринера (жёсткий стоп-фактор вроде «не
+// готов к холодным звонкам»), таких не приглашаем, а вежливо отказываем.
+function buildWaInviteText(name) {
+  const n = (name || '').trim().split(/\s+/)[0] || '';
+  const greet = n ? `${n}, спасибо за ответы!` : 'Спасибо за ответы!';
+  return `${greet} 🙌\n\nПриглашаем вас на стажировку. Это первый шаг перед выходом на работу, дальше уже на практике будет понятно, насколько вам подходит эта работа.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли появятся вопросы, можно написать сюда же или в WhatsApp: +7 707 700 0087.`;
+}
+function buildWaDeclineText(name) {
+  const n = (name || '').trim().split(/\s+/)[0] || '';
+  const greet = n ? `${n}, спасибо за ответы!` : 'Спасибо за ответы!';
+  return `${greet} Сейчас, судя по ответам, эта позиция не очень совпадает с тем, что нужно для этой роли. Если что-то изменится или откроется другая подходящая позиция, обязательно свяжемся. Удачи! 🙌`;
+}
 async function finalize(wa, st) {
-  await waSend(wa, 'Спасибо за ответы! ✅ Заявка принята — мы рассмотрим её и свяжемся с вами по этому же номеру. Хорошего дня! 🙌');
   const d = st.data || {};
-  const fullText = `Резюме/о себе: ${d.resume || '—'}\n\nОпыт холодных продаж: ${d.q1 || '—'}\nЛучший результат: ${d.q2 || '—'}\nГотовность/формат: ${d.q3 || '—'}`;
+  const age = parseAge(d.age);
+  const fullText = `Возраст: ${age != null ? age : (d.age || '—')}\n\nРезюме/о себе: ${d.resume || '—'}\n\nОпыт холодных продаж: ${d.q1 || '—'}\nЛучший результат: ${d.q2 || '—'}\nГотовность/формат: ${d.q3 || '—'}`;
+  // Структурированные ответы кандидата боту — для просмотра в пайплайне по клику
+  const answers = [
+    { q: 'Имя', a: d.name || '' },
+    { q: 'Возраст', a: age != null ? String(age) : (d.age || '') },
+    { q: 'Откуда узнали о вакансии', a: d.source || '' },
+    { q: 'Резюме / о себе', a: d.resume || '' },
+    { q: 'Готовность к холодным звонкам и опыт', a: d.q1 || '' },
+    { q: 'Лучший результат в продажах', a: d.q2 || '' },
+    { q: 'Астана / офис / когда может приступить', a: d.q3 || '' },
+  ].filter(x => x.a);
   const ev = await screen(d.name || '', fullText);
+  const invited = ev.verdict !== 'Отказ';
+  await waSend(wa, invited ? buildWaInviteText(d.name) : buildWaDeclineText(d.name));
   const phone = digits(st.phone || '');
   const rec = {
-    id: newId(), name: d.name || 'Из WhatsApp', contact: phone ? '+' + phone : '', phone,
+    id: newId(), name: d.name || 'Из WhatsApp', contact: phone ? '+' + phone : '', phone, age,
     source: 'WhatsApp-бот' + (d.source ? ' (' + d.source + ')' : ''),
-    resume: fullText.slice(0, 2000), score: ev.score, verdict: ev.verdict, summary: ev.summary,
-    strengths: [], flags: [], stage: 'Новый', waMessage: waMessage(d.name), ts: Date.now(),
+    resume: fullText.slice(0, 2000), answers, score: ev.score, verdict: ev.verdict, summary: ev.summary,
+    strengths: [], flags: [], stage: invited ? 'Стажировка' : 'Отказ', waMessage: waMessage(d.name), ts: Date.now(),
   };
   try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 1999]); } catch (e) {}
   await notifyROP(rec);
@@ -140,7 +169,7 @@ export default async function handler(req, res) {
     st.data = st.data || {};
     st.phone = st.phone || wa;
 
-    const order = ['name', 'source', 'resume', 'q1', 'q2', 'q3'];
+    const order = ['name', 'age', 'source', 'resume', 'q1', 'q2', 'q3'];
     const i = order.indexOf(st.step);
 
     if (st.step === 'done') {
