@@ -79,6 +79,12 @@
   .delbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:7px 10px;font:inherit;font-size:13px;cursor:pointer}
   .delbtn:hover{color:#ff9b9b;border-color:rgba(255,122,122,.4)}
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
+  /* hh.kz funnel */
+  .funnel{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+  .fcard{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+  .fcard .fnum{font-family:var(--display);font-weight:800;font-size:24px;color:var(--brand)}
+  .fcard .flbl{font-size:12px;color:var(--muted);margin-top:3px}
+  .funnel .err{display:block;grid-column:1/-1;margin-bottom:0}
   /* add panel */
   .addbox{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:18px;margin-bottom:18px;display:none}
   .addbox h3{margin:0 0 4px;font-family:var(--display);font-size:16px}
@@ -131,6 +137,8 @@
     <h1>Воронка кандидатов</h1>
     <span class="pill" id="cnt">0</span>
   </div>
+
+  <div class="funnel" id="funnel"></div>
 
   <div class="addbox" id="addbox">
     <h3>Добавить кандидатов</h3>
@@ -286,6 +294,28 @@ async function load(){
   const curV=$('#fVacancy').value;
   $('#fVacancy').innerHTML='<option value="">Все вакансии</option>'+vacancies.map(v=>'<option'+(v===curV?' selected':'')+'>'+esc(v)+'</option>').join('');
   render();
+  loadFunnel();
+}
+
+// Воронка откликов hh.kz: сколько всего откликов, скольким написали первыми, сколько ответили,
+// сколько уже приглашены на стажировку. Грузится отдельно и не блокирует основной список.
+async function loadFunnel(){
+  const box=$('#funnel');
+  box.innerHTML='<div class="fcard"><div class="flbl">Загружаю воронку hh.kz…</div></div>';
+  try{
+    const d=await api({action:'hhFunnel'});
+    if(!d.ok) throw new Error(d.error||'нет данных');
+    const items=[
+      ['Откликов на hh.kz',d.totalResponsesOnHh],
+      ['Написали первыми',d.firstMessageSent],
+      ['Ответили нам',d.repliedToUs],
+      ['Ждём ответа',d.awaitingReply],
+      ['Приглашены на стажировку',d.invitedToInternshipStillWatching],
+    ];
+    box.innerHTML=items.map(([lbl,num])=>'<div class="fcard"><div class="fnum">'+(num??'—')+'</div><div class="flbl">'+esc(lbl)+'</div></div>').join('');
+  }catch(e){
+    box.innerHTML='<div class="err" style="display:block">Не удалось загрузить воронку hh.kz: '+esc(e.message)+'</div>';
+  }
 }
 
 // gate
