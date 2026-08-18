@@ -1279,6 +1279,23 @@ export default async function handler(req, res) {
   // Изолированный тестовый маршрут: пробует отправить сообщение ОДНОЙ негоциации разными
   // способами (JSON / form-urlencoded), НЕ трогая SEEN_KEY/пайплайн — только для диагностики
   // формата запроса к hh.ru, чтобы не спамить реальных кандидатов, пока не найдём рабочий формат.
+  // Временный диагностический маршрут (2026-08-18): смотрим ПОЛНЫЙ (без обрезки) ответ hh.kz по
+  // конкретной негоциации, чтобы понять, почему extractCandidateReply не видит ответ кандидата,
+  // который точно виден в веб-интерфейсе hh.kz. Только чтение, ничего не меняет.
+  if (req.query?.rawNegMessages) {
+    const negId = String(req.query.rawNegMessages);
+    try {
+      const token = await getEmployerToken();
+      const msgsRes = await hhGet(`/negotiations/${negId}/messages`, token);
+      const messages = msgsRes.data?.items || msgsRes.data?.messages || (Array.isArray(msgsRes.data) ? msgsRes.data : []);
+      const extracted = extractCandidateReply(messages);
+      res.status(200).json({ ok: msgsRes.ok, status: msgsRes.status, rawKeys: Object.keys(msgsRes.data || {}), messagesCount: messages.length, extracted, fullData: msgsRes.data });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   if (req.query?.testSend) {
     const negId = String(req.query.testSend);
     const testText = 'Тест доставки сообщения от Sagi HR-бота, можно игнорировать.';
