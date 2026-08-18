@@ -884,6 +884,12 @@ export default async function handler(req, res) {
   // resume/replyText/answers) в карточки уже зарегистрированных стажёров, у которых этой связки
   // ещё нет (для новых регистраций это теперь делается автоматически в api/users.js). Матчит по
   // hhNegId, затем по телефону, затем по точному имени. Безопасно вызывать повторно.
+  // 2026-08-18: заодно проставляет candId (id записи в hr:candidates) — это НУЖНО для
+  // ?fixStageMislabel (см. ниже), иначе стажёры, зарегистрированные ДО того, как candId стал
+  // сохраняться при регистрации (например, Жанара, Нургуль — уже закончили обучение), не
+  // распознаются как «зарегистрированные» и их правильную «Стажировка» могло бы по ошибке
+  // понизить обратно до «Приглашён». Поэтому теперь НЕ пропускаем пользователя только из-за
+  // того, что intakeAnswers уже есть — довозаполняем candId отдельно, если он пуст.
   if (req.query?.backfillIntakeAnswers) {
     try {
       const normPhone = s => (s || '').toString().replace(/\D/g, '').slice(-10);
@@ -891,29 +897,28 @@ export default async function handler(req, res) {
       const candsRaw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
       const cands = candsRaw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
       const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
-      let updated = 0, skipped = 0, notFound = 0;
+      let updated = 0, skipped = 0, notFound = 0, candIdBackfilled = 0;
       const names = [];
       for (const login of logins) {
         const raw = await redis(['GET', 'hr:user:' + login]);
         if (!raw) continue;
         let u; try { u = JSON.parse(raw); } catch (e) { continue; }
-        if (u.intakeAnswers) { skipped++; continue; }
+        if (u.intakeAnswers && u.candId) { skipped++; continue; }
         let match = null;
         if (u.hhNegId) match = cands.find(c => c.id === 'hh_' + u.hhNegId);
         if (!match && u.phone) { const p = normPhone(u.phone); match = cands.find(c => normPhone(c.contact) === p || normPhone(c.phone) === p); }
         if (!match && u.name) { const n = normName(u.name); match = cands.find(c => normName(c.name) === n); }
         if (!match) { notFound++; continue; }
+        let changed = false;
+        if (!u.candId) { u.candId = match.id; changed = true; candIdBackfilled++; }
         const answersText = match.replyText || match.resume || (Array.isArray(match.answers) ? match.answers.map(a => `${a.q}: ${a.a}`).join('\n\n') : '') || '';
-        if (!answersText) { notFound++; continue; }
-        if (!dryRun) {
-          u.intakeAnswers = answersText.slice(0, 4000);
-          u.intakeVacancy = match.vacancy || null;
-          await redis(['SET', 'hr:user:' + login, JSON.stringify(u)]);
-        }
+        if (!u.intakeAnswers && answersText) { u.intakeAnswers = answersText.slice(0, 4000); u.intakeVacancy = match.vacancy || null; changed = true; }
+        if (!changed) { skipped++; continue; }
+        if (!dryRun) await redis(['SET', 'hr:user:' + login, JSON.stringify(u)]);
         updated++;
-        names.push({ login, name: u.name, vacancy: match.vacancy });
+        names.push({ login, name: u.name, vacancy: match.vacancy, candId: match.id });
       }
-      res.status(200).json({ ok: true, dryRun, updated, skipped, notFound, names });
+      res.status(200).json({ ok: true, dryRun, updated, skipped, notFound, candIdBackfilled, names });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
