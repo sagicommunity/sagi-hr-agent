@@ -1318,6 +1318,35 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ---- Разовая починка бага «Не подходит» (2026-08-18) ----
+  // При отказе на гейт-вопросе (кандидат прямо написал, что формат/холодные звонки не подходят)
+  // ФАЗА B1 ставит кандидату stage='Не подходит' (см. выше). Но до этой правки 'Не подходит'
+  // отсутствовал в STAGES в api/pipeline.js — normalize() там молча сбрасывал такую стадию на
+  // 'Новый' при каждом открытии pipeline.html, а при первом же действии (смена стадии/удаление
+  // ЛЮБОГО кандидата — normalize() прогоняет ВЕСЬ список) это тихо перезаписывалось в хранилище
+  // навсегда. Восстанавливаем по DECLINED_KEY (hh:declined_negotiations) — там сохранён негоциация
+  // id каждого, кто реально отказался на гейте, независимо от того, что сейчас в поле stage.
+  if (req.query?.fixDeclinedStage) {
+    try {
+      const declinedIds = (await redis(['SMEMBERS', DECLINED_KEY])) || [];
+      const raw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const items = raw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const byId = new Map(items.map(c => [c.id, c]));
+      const toFix = [];
+      for (const negId of declinedIds) {
+        const c = byId.get('hh_' + negId);
+        if (c && c.stage !== 'Не подходит') toFix.push({ id: c.id, name: c.name, wasStage: c.stage });
+      }
+      if (!dryRun) {
+        for (const x of toFix) await updateCandidateRecord(x.id, { stage: 'Не подходит' });
+      }
+      res.status(200).json({ ok: true, dryRun, totalDeclined: declinedIds.length, fixed: toFix.length, sample: toFix.slice(0, 30) });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Разовая миграция (2026-08-17): исправляем ярлык вакансии у уже сохранённых hh.kz-записей,
   // которым при интейке подставилась заглушка «Менеджер по продажам» вместо реального названия
   // (баг, см. ?vacList=1 — hh.kz не всегда возвращает vacancy.name в самой негоциации). Сейчас
