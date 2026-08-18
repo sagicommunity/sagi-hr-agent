@@ -11,6 +11,13 @@ const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TO
 const CAND_KEY = 'hr:candidates';
 const HH_SEEN_KEY = 'hh:seen_negotiations';
 const HH_REPLIED_KEY = 'hh:replied_negotiations';
+// 2026-08-18, по запросу Sagi «добавь воронку по вакансии, сколько было откликов и конверсия» —
+// те же ключи, что в api/hh_poll.js (SEEN/GATE_HANDLED/QUESTIONS_SENT/DECLINED/REPLIED), чтобы
+// видеть не только «откликнулся / ответил», а честную многоступенчатую воронку: гейт-вопрос
+// (интересен ли формат) -> анкета из 5 вопросов -> приглашение -> обучение -> стажировка.
+const HH_GATE_HANDLED_KEY = 'hh:gate_handled';
+const HH_QUESTIONS_SENT_KEY = 'hh:questions_sent';
+const HH_DECLINED_KEY = 'hh:declined_negotiations';
 const TG_SOURCES_KEY = 'hr:tg:stat:sources';
 
 // 2026-08-18, по замечанию Sagi: «Стажировка» ставилась сразу после приглашения, до того как
@@ -92,14 +99,46 @@ export default async function handler(req, res) {
     const avgScore = scored.length ? Math.round((scored.reduce((s, c) => s + c.score, 0) / scored.length) * 10) / 10 : null;
 
     // ---- hh.kz воронка ----
-    const [hhSeen, hhReplied] = await redisBatch([
+    const [hhSeen, hhReplied, hhGateHandled, hhGatePassed, hhDeclined] = await redisBatch([
       ['SCARD', HH_SEEN_KEY],
       ['SCARD', HH_REPLIED_KEY],
+      ['SCARD', HH_GATE_HANDLED_KEY],
+      ['SCARD', HH_QUESTIONS_SENT_KEY],
+      ['SCARD', HH_DECLINED_KEY],
     ]);
     const hhTotalSeen = typeof hhSeen === 'number' ? hhSeen : 0;
     const hhTotalReplied = typeof hhReplied === 'number' ? hhReplied : 0;
+    const hhTotalGateHandled = typeof hhGateHandled === 'number' ? hhGateHandled : 0;
+    const hhTotalGatePassed = typeof hhGatePassed === 'number' ? hhGatePassed : 0;
+    const hhTotalDeclined = typeof hhDeclined === 'number' ? hhDeclined : 0;
     const hhCandidates = candidates.filter(c => (c.id || '').startsWith('hh_'));
     const hhByVerdict = tally(hhCandidates.filter(c => c.verdict), c => c.verdict, 'Без вердикта');
+    // Полная воронка вакансии: от «получили отклик» до «трудоустроен». Первые 4 шага — это
+    // сообщения в переписке на hh.kz (считаются по счётчикам выше, они точнее и не зависят от
+    // того, успели ли мы создать карточку кандидата). Дальше — уже стадии карточки кандидата
+    // (hr:candidates), т.к. приглашение/обучение/стажировка — это про саму карточку, а не
+    // про переписку на hh.kz.
+    const hhInvited = hhCandidates.filter(c => ['Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен'].includes(c.stage)).length;
+    const hhTrainingStarted = hhCandidates.filter(c => ['Обучение', 'Стажировка', 'Трудоустроен'].includes(c.stage)).length;
+    const hhInternship = hhCandidates.filter(c => ['Стажировка', 'Трудоустроен'].includes(c.stage)).length;
+    const hhEmployed = hhCandidates.filter(c => c.stage === 'Трудоустроен').length;
+    const funnelRaw = [
+      { key: 'Откликов получено', count: hhTotalSeen },
+      { key: 'Ответили на гейт-вопрос (интересен формат?)', count: hhTotalGateHandled },
+      { key: 'Прошли гейт, получили анкету из 5 вопросов', count: hhTotalGatePassed },
+      { key: 'Ответили на анкету (оценено ИИ)', count: hhTotalReplied },
+      { key: 'Приглашены на обучение', count: hhInvited },
+      { key: 'Начали обучение (зарегистрировались)', count: hhTrainingStarted },
+      { key: 'Дошли до стажировки', count: hhInternship },
+      { key: 'Трудоустроены', count: hhEmployed },
+    ];
+    const funnelFirst = funnelRaw[0].count || 1;
+    const hhFunnel = funnelRaw.map((r, i) => ({
+      key: r.key,
+      count: r.count,
+      fromPrevPct: i === 0 ? null : (funnelRaw[i - 1].count ? Math.round((r.count / funnelRaw[i - 1].count) * 1000) / 10 : 0),
+      fromStartPct: Math.round((r.count / funnelFirst) * 1000) / 10,
+    }));
 
     // ---- Telegram-бот воронка (со срезом по источнику/UTM — Threads, Instagram и т.п.) ----
     const tgSources = await redis(['SMEMBERS', TG_SOURCES_KEY]);
@@ -169,6 +208,14 @@ export default async function handler(req, res) {
         pendingReply: Math.max(0, hhTotalSeen - hhTotalReplied),
         replyRatePct: hhTotalSeen ? Math.round((hhTotalReplied / hhTotalSeen) * 1000) / 10 : 0,
         byVerdict: hhByVerdict,
+        totalGateHandled: hhTotalGateHandled,
+        totalGatePassed: hhTotalGatePassed,
+        totalDeclined: hhTotalDeclined,
+        invited: hhInvited,
+        trainingStarted: hhTrainingStarted,
+        internship: hhInternship,
+        employed: hhEmployed,
+        funnel: hhFunnel,
       },
       telegram: {
         totalStarts: parseInt(tgTotalStarts, 10) || 0,
