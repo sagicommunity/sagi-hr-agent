@@ -873,7 +873,7 @@ export default async function handler(req, res) {
       const nameParts = (u.name || '').toLowerCase().split(/\s+/).filter(Boolean);
       const similar = cands.filter(c => nameParts.some(p => p.length > 2 && (c.name || '').toLowerCase().includes(p)))
         .map(c => ({ id: c.id, name: c.name, contact: c.contact, phone: c.phone, vacancy: c.vacancy, hasAnswers: !!(c.replyText || c.resume) }));
-      res.status(200).json({ ok: true, user: { login: u.login, name: u.name, phone: u.phone || null, hhNegId: u.hhNegId || null }, similarCandidates: similar });
+      res.status(200).json({ ok: true, user: { login: u.login, name: u.name, phone: u.phone || null, hhNegId: u.hhNegId || null, candId: u.candId || null }, similarCandidates: similar });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
