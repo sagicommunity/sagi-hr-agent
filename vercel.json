@@ -4,10 +4,8 @@
     "api/chat.js": { "maxDuration": 60 }
   },
   "redirects": [
-    { "source": "/dashboard", "destination": "/dashboard/", "permanent": false }
-  ],
-  "rewrites": [
-    { "source": "/dashboard/", "destination": "https://hr-sagi.vercel.app/index.html" },
-    { "source": "/dashboard/:path*", "destination": "https://hr-sagi.vercel.app/:path*" }
+    { "source": "/dashboard", "destination": "/analytics.html", "permanent": false },
+    { "source": "/dashboard/", "destination": "/analytics.html", "permanent": false },
+    { "source": "/dashboard/:path*", "destination": "/analytics.html", "permanent": false }
   ]
 }
