@@ -266,8 +266,20 @@ function render(){
     grid.appendChild(card);
   }
   grid.querySelectorAll('.stage-sel').forEach(s=>s.addEventListener('change',async e=>{
-    try{ await api({action:'stage',id:e.target.dataset.id,stage:e.target.value}); const c=DATA.find(x=>x.id===e.target.dataset.id); if(c)c.stage=e.target.value; }catch(ex){ alert(ex.message); }
+    const prevStage=s.dataset.prev||'';
+    let exitReason='';
+    if(e.target.value==='Ушёл'){
+      exitReason=prompt('Почему уходит сотрудник? (необязательно, можно оставить пустым)')||'';
+    }
+    try{
+      const body={action:'stage',id:e.target.dataset.id,stage:e.target.value};
+      if(exitReason) body.exitReason=exitReason;
+      await api(body);
+      const c=DATA.find(x=>x.id===e.target.dataset.id); if(c)c.stage=e.target.value;
+      s.dataset.prev=e.target.value;
+    }catch(ex){ alert(ex.message); s.value=prevStage; }
   }));
+  grid.querySelectorAll('.stage-sel').forEach(s=>{ s.dataset.prev=s.value; });
   grid.querySelectorAll('.delbtn').forEach(b=>b.addEventListener('click',async e=>{
     if(!confirm('Удалить кандидата из воронки?')) return;
     try{ await api({action:'delete',id:e.target.dataset.del}); DATA=DATA.filter(x=>x.id!==e.target.dataset.del); render(); }catch(ex){ alert(ex.message); }
@@ -294,12 +306,17 @@ function openCand(id){
   $('#mMeta').innerHTML=bits.filter(Boolean).map(esc).join(' · ');
   const ans=Array.isArray(c.answers)?c.answers.filter(x=>x&&x.a):[];
   let html='';
+  if(c.employedAt) html+='<div class="item"><div class="q">Трудоустроен(а)</div><div class="a">'+esc(new Date(c.employedAt).toLocaleDateString('ru-RU'))+'</div></div>';
+  if(c.leftAt) html+='<div class="item"><div class="q">Ушёл/ушла</div><div class="a">'+esc(new Date(c.leftAt).toLocaleDateString('ru-RU'))+(c.exitReason?' — '+esc(c.exitReason):'')+'</div></div>';
+  if(Array.isArray(c.pulseReplies)&&c.pulseReplies.length){
+    html+=c.pulseReplies.map(p=>'<div class="item"><div class="q">Пульс-проверка, день '+esc(p.day)+(p.atRisk?' ⚠️':'')+'</div><div class="a">'+esc(p.text)+'</div></div>').join('');
+  }
   if(c.summary) html+='<div class="item"><div class="q">Оценка ИИ-скринера</div><div class="a">'+esc(c.summary)+'</div></div>';
   if(ans.length){
     html+=ans.map(x=>'<div class="item"><div class="q">'+esc(x.q)+'</div><div class="a">'+esc(x.a)+'</div></div>').join('');
   } else if(c.resume){
     html+='<div class="item"><div class="q">Резюме / о себе</div><div class="a">'+esc(c.resume)+'</div></div>';
-  } else if(!c.summary){
+  } else if(!c.summary && !html){
     html='<div class="none">Кандидат ещё не отвечал боту — ответов пока нет.</div>';
   }
   $('#mBody').innerHTML=html;
@@ -333,6 +350,8 @@ const FUNNEL_ITEMS=[
   ['repliedToUs','Ответили нам'],
   ['awaitingReply','Ждём ответа'],
   ['invitedToInternshipStillWatching','Приглашены на hh.kz'],
+  ['registeredForTraining','Зарегистрировались, учатся'],
+  ['completedTraining','Закончили обучение (стажировка)'],
 ];
 async function loadFunnel(){
   const box=$('#funnel');

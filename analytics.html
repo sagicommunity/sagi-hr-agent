@@ -121,6 +121,19 @@
   </div>
 
   <div class="section">
+    <h2>Воронка по стадиям (конверсия)</h2>
+    <p class="note">Основной путь кандидата: Новый → Ответил → Приглашён → Обучение → Стажировка. % показывает, сколько дошло от предыдущего шага и от самого начала — здесь видно, на каком именно шаге теряем больше всего людей.</p>
+    <div id="stageFunnel"></div>
+  </div>
+
+  <div class="section">
+    <h2>Отток сотрудников</h2>
+    <p class="note">Считаем только тех, кто реально вышел на работу (стадия «Трудоустроен»). Срок работы и причины ухода берутся из отметки стадии «Ушёл» в Пайплайне.</p>
+    <div class="tiles" id="retentionTiles" style="margin-bottom:14px"></div>
+    <div id="exitReasons"></div>
+  </div>
+
+  <div class="section">
     <h2>По стадиям пайплайна</h2>
     <div id="byStage"></div>
   </div>
@@ -179,6 +192,23 @@ function barList(el, rows, opts){
   }).join('');
 }
 
+// Основной путь кандидата (без «На связи»/«Квалификация»/«Интервью»/«Оффер» — эти стадии сейчас
+// нигде автоматикой не выставляются, показывать их в конверсии смысла нет) и «Отказ» — это не
+// шаг воронки, а выход из неё. Считаем % от предыдущего шага и от самого первого, чтобы сразу
+// увидеть, где именно теряем больше всего кандидатов.
+const STAGE_FUNNEL_PATH = ['Новый','Ответил','Приглашён','Обучение','Стажировка'];
+function renderStageFunnel(el, byStage){
+  const countByKey = new Map(byStage.map(x=>[x.key,x.count]));
+  const rows = STAGE_FUNNEL_PATH.map(k=>({key:k, count: countByKey.get(k)||0}));
+  const first = rows[0].count || 1;
+  el.innerHTML = '<table><thead><tr><th>Стадия</th><th class="num">Кандидатов</th><th class="num">От предыдущего шага</th><th class="num">От начала</th></tr></thead><tbody>'+
+    rows.map((r,i)=>{
+      const fromPrev = i===0 ? '—' : (rows[i-1].count ? Math.round((r.count/rows[i-1].count)*1000)/10+'%' : '—');
+      const fromStart = i===0 ? '100%' : Math.round((r.count/first)*1000)/10+'%';
+      return '<tr><td>'+esc(r.key)+'</td><td class="num">'+r.count+'</td><td class="num">'+fromPrev+'</td><td class="num">'+fromStart+'</td></tr>';
+    }).join('')+
+    '</tbody></table>';
+}
 function tile(label, val, sub, cls){
   return '<div class="tile'+(cls?(' '+cls):'')+'"><div class="lbl">'+esc(label)+'</div><div class="val">'+esc(val)+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
 }
@@ -233,6 +263,21 @@ async function load(){
     $('#tgTable').innerHTML = '<div class="empty">Переходов с метками пока не было (например, по ссылке из Threads).</div>';
   }
 
+  // Отток
+  const ret = d.retention || {};
+  $('#retentionTiles').innerHTML = [
+    tile('Трудоустроено всего', ret.employedTotal||0, 'вышли на реальную работу'),
+    tile('Работают сейчас', ret.stillEmployed||0, '', 'brand'),
+    tile('Ушли', ret.left||0, ret.employedTotal ? Math.round((ret.left/ret.employedTotal)*1000)/10+'% от трудоустроенных' : '', (ret.left>0?'warn':'')),
+    tile('Средний срок до ухода', ret.avgTenureDays==null?'—':ret.avgTenureDays+' дн.', 'по тем, кто ушёл'),
+  ].join('');
+  if(ret.exitReasons && ret.exitReasons.length){
+    barList($('#exitReasons'), ret.exitReasons);
+  } else {
+    $('#exitReasons').innerHTML = '<div class="empty">Пока никто не отмечен как «Ушёл», или причины не указывались.</div>';
+  }
+
+  renderStageFunnel($('#stageFunnel'), c.byStage);
   barList($('#byStage'), c.byStage.map(x=>({key:x.key,count:x.count})));
   barList($('#byChannel'), c.byChannel.map(x=>({key:x.key,count:x.count})));
   barList($('#byVacancy'), c.byVacancy.map(x=>({key:x.key,count:x.count})));

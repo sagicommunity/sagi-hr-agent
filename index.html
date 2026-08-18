@@ -256,8 +256,9 @@
     </div>
 
     <div class="sectitle">🎧 Тренажёр</div>
-    <div class="sub" style="margin:-6px 0 12px">Практика с ИИ — прогресс виден руководителю.</div>
-    <div class="grid2">
+    <div class="sub" style="margin:-6px 0 4px">Практика с ИИ — прогресс виден руководителю.</div>
+    <div class="sub" id="trainerStats" style="margin:0 0 12px"></div>
+    <div class="grid2 trainerTiles">
       <a class="tile" href="/agent.html"><div class="ti">🥊</div><div><h4>Ролевая игра</h4><p>Отработка возражений: «дорого», «подумаю», «уже есть».</p></div></a>
       <a class="tile" href="/agent.html"><div class="ti">📝</div><div><h4>Тест по продукту</h4><p>Проверка знаний Sagi: бонусы, функции, ценность.</p></div></a>
       <a class="tile" href="/agent.html"><div class="ti">💬</div><div><h4>Помощь со сделкой</h4><p>Сценарий ответа, фоллоу-ап, аргумент к закрытию.</p></div></a>
@@ -484,7 +485,27 @@ function renderCabinet(u){
   const ma=$('#modAdv'); ma.innerHTML='';
   ADV.forEach(m=>ma.appendChild(moduleRow(m, !!prog[m.id], !isMgr)));
 
+  // 2026-08-18: раньше плитки тренажёра вели на голый /agent.html, где стажёр должен был сам
+  // ввести имя — прогресс никак не был привязан к реальному аккаунту. Теперь передаём login и
+  // имя из уже открытой сессии, чтобы agent.html сразу знал, кто пришёл.
+  const trainerUrl='/agent.html?login='+encodeURIComponent(u.login)+'&name='+encodeURIComponent(u.name);
+  document.querySelectorAll('.trainerTiles a.tile').forEach(a=>a.href=trainerUrl);
+  loadTrainerStats(u.login);
+
   show('screen-cabinet');
+}
+async function loadTrainerStats(login){
+  const el=$('#trainerStats'); if(!el) return;
+  el.textContent='Загружаю статистику тренажёра…';
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'stats',login})});
+    const d=await r.json();
+    if(d.ok && d.stats && d.stats.events>0){
+      el.textContent='Пройдено тренировок: '+d.stats.events+(d.stats.overall!=null?' · средний балл: '+d.stats.overall+'/10':'');
+    } else {
+      el.textContent='Пока ни одной тренировки — начните с ролевой игры ниже.';
+    }
+  }catch(e){ el.textContent=''; }
 }
 
 /* ---- LESSON READER ---- */
@@ -506,16 +527,20 @@ function openLesson(id){
       qWrap.appendChild(blk);
     });
     const res=document.createElement('div'); res.id='quizRes'; res.className='quizres'; qWrap.appendChild(res);
+    const best=((CUR&&CUR.quizBest)||{})[id];
+    if(best) res.innerHTML='<div style="color:var(--muted);font-weight:400">Лучший результат: '+best.score+'/'+best.total+'</div>';
   }
   const btn=$('#lesDone');
   btn.textContent = done ? '✓ Пройдено — пройти заново' : (m.quiz&&m.quiz.length ? 'Проверить и завершить' : 'Отметить пройденным');
   btn.dataset.done = done ? '1':'';
   show('screen-lesson');
 }
-async function markLesson(done){
+async function markLesson(done, quizInfo){
   const s=getSession(); if(!s||!curLesson) return;
   const btn=$('#lesDone'), old=btn.textContent; btn.disabled=true; btn.textContent='Сохраняю…';
-  const res=await api({action:'progress', login:s.login, token:s.token, moduleId:curLesson.id, done});
+  const body={action:'progress', login:s.login, token:s.token, moduleId:curLesson.id, done};
+  if(quizInfo){ body.quizScore=quizInfo.score; body.quizTotal=quizInfo.total; body.quizMissed=quizInfo.missed; }
+  const res=await api(body);
   btn.disabled=false;
   if(res.ok){ CUR=res.user; renderCabinet(CUR); }
   else if(res.status===401){ clearSession(); CUR=null; show('screen-entry'); }
@@ -526,13 +551,16 @@ $('#lesDone').onclick=()=>{
   // уже пройден → кнопка «пройти заново» просто открывает заново (прогресс не трогаем)
   if($('#lesDone').dataset.done==='1'){ openLesson(m.id); return; }
   if(m.quiz && m.quiz.length){
-    let correct=0, answered=0;
-    m.quiz.forEach((q,qi)=>{ const sel=document.querySelector('input[name="q'+qi+'"]:checked'); if(sel){ answered++; if(+sel.value===q.correct) correct++; } });
+    let correct=0, answered=0; const missed=[];
+    m.quiz.forEach((q,qi)=>{ const sel=document.querySelector('input[name="q'+qi+'"]:checked'); if(sel){ answered++; if(+sel.value===q.correct) correct++; else missed.push(q.q); } });
     const resEl=$('#quizRes');
     if(answered<m.quiz.length){ resEl.className='quizres warn'; resEl.textContent='Ответьте на все вопросы ('+answered+'/'+m.quiz.length+').'; return; }
     const pass = correct>=Math.ceil(m.quiz.length*0.7);
-    if(pass){ resEl.className='quizres ok'; resEl.textContent='✓ '+correct+'/'+m.quiz.length+' — отлично! Модуль засчитан.'; markLesson(true); }
-    else{ resEl.className='quizres bad'; resEl.textContent='✗ '+correct+'/'+m.quiz.length+'. Нужно минимум '+Math.ceil(m.quiz.length*0.7)+'. Перечитайте материал и попробуйте снова.'; }
+    // Сохраняем КАЖДУЮ попытку, не только успешную — это и есть реальная картина качества
+    // обучения (кто проходит с первого раза, а кто застревает), а не просто факт «прошёл».
+    const quizInfo={score:correct, total:m.quiz.length, missed};
+    if(pass){ resEl.className='quizres ok'; resEl.textContent='✓ '+correct+'/'+m.quiz.length+' — отлично! Модуль засчитан.'; markLesson(true, quizInfo); }
+    else{ resEl.className='quizres bad'; resEl.textContent='✗ '+correct+'/'+m.quiz.length+'. Нужно минимум '+Math.ceil(m.quiz.length*0.7)+'. Перечитайте материал и попробуйте снова.'; markLesson(false, quizInfo); }
   } else { markLesson(true); }
 };
 $('#lesBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabinet'); };
@@ -540,8 +568,22 @@ $('#lesBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabine
 /* ---- BOSS PANEL ---- */
 let BOSS_USERS={}; // login -> user, кэш последнего списка от 'list' (для клика по строке / профиля)
 
-function renderBoss(users){
+let TRAINER_STATS_MAP={}; // login -> {events, overall} — с ИИ-тренажёра (agent.html), см. loadTrainerStatsAll
+let LAST_BOSS_USERS=[];
+async function loadTrainerStatsAll(){
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'statsAll',dashboardPassword:BOSS_PW})});
+    const d=await r.json();
+    if(d.ok && Array.isArray(d.stats)){
+      TRAINER_STATS_MAP={};
+      d.stats.forEach(s=>{ if(s.login) TRAINER_STATS_MAP[s.login]=s; });
+      if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
+    }
+  }catch(e){}
+}
+function renderBoss(users, skipStatsFetch){
   users=users||[];
+  LAST_BOSS_USERS=users;
   BOSS_USERS={}; users.forEach(u=>{ BOSS_USERS[u.login]=u; });
   $('#whoChip').classList.remove('hidden'); $('#whoChip').innerHTML='🎯 <b>Руководитель</b>';
   $('#logoutBtn').classList.remove('hidden');
@@ -556,6 +598,7 @@ function renderBoss(users){
     return Math.round(done/all.length*100);
   });
   $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
+  if(!skipStatsFetch) loadTrainerStatsAll(); // не блокируем первую отрисовку — догружаем и перерисовываем
 
   const wrap=$('#bossTableWrap');
   if(!users.length){ wrap.innerHTML='<div class="empty">Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.</div>'; }
@@ -566,15 +609,23 @@ function renderBoss(users){
       const pct=Math.round(done/all.length*100);
       const when=new Date(u.lastSeen).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
       const loginAttr=String(u.login).replace(/"/g,'&quot;');
+      const ts=TRAINER_STATS_MAP[u.login];
+      const trainerCell=ts&&ts.events ? ts.events+' · '+(ts.overall!=null?ts.overall+'/10':'—') : '—';
+      // Средний % по лучшим попыткам тестов модулей (2026-08-18, задача Sagi «чтобы обучение
+      // было качественно») — видно, кто проходит модули формально, а кто реально усваивает.
+      const qb=u.quizBest||{}; const qKeys=Object.keys(qb);
+      const quizCell=qKeys.length ? Math.round(qKeys.reduce((s,k)=>s+(qb[k].score/qb[k].total),0)/qKeys.length*100)+'% ('+qKeys.length+')' : '—';
       return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b><br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
         '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'">'+(u.role==='manager'?'Менеджер':'Стажёр')+'</span></td>'+
         '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
         '<td>'+done+' / '+all.length+'</td>'+
+        '<td style="color:var(--muted)">'+quizCell+'</td>'+
+        '<td style="color:var(--muted)">'+trainerCell+'</td>'+
         '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Прогресс</th><th>Модули</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn')) return;

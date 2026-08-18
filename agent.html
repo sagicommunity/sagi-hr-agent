@@ -252,6 +252,18 @@ let history = [];   // {role, content}
 let busy = false;
 let userName = localStorage.getItem('sagi_hr_name') || '';
 let userRole = localStorage.getItem('sagi_hr_role') || '';
+// 2026-08-18, по запросу Sagi: раньше сюда попадали по голой ссылке /agent.html и прогресс
+// никак не привязывался к реальному аккаунту стажёра (localStorage-имя можно было ввести любое,
+// и совпадение с логином в hr:user было чисто случайным). Кабинет обучения (index.html) теперь
+// передаёт сюда ?login=...&name=... для уже вошедшего пользователя — если они есть, используем
+// их напрямую и не спрашиваем роль/имя заново.
+const _urlParams = new URLSearchParams(location.search);
+let userLogin = _urlParams.get('login') || '';
+if(userLogin){
+  const urlName = (_urlParams.get('name')||'').trim();
+  if(urlName){ userName = urlName.slice(0,60); localStorage.setItem('sagi_hr_name', userName); }
+  userRole = 'manager'; localStorage.setItem('sagi_hr_role','manager');
+}
 let dashboardPassword = '';
 let awaitingPassword = false;
 let dashboardPeriod = 'all';
@@ -295,7 +307,7 @@ function showErr(e){
 }
 async function callApi(){
   const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({messages:history, userName, dashboardPassword, period: dashboardPeriod})});
+    body:JSON.stringify({messages:history, userName, login: userLogin, dashboardPassword, period: dashboardPeriod})});
   const data=await res.json();
   if(!res.ok||data.error){ throw new Error(data.error||('HTTP '+res.status)); }
   return data;
@@ -501,7 +513,8 @@ function askRole(){
 $('#nameBtn').addEventListener('click', askName);
 $('#roleBtn').addEventListener('click', askRole);
 renderName();
-if(userRole){ renderRoleUI(); } else { askRole(); }
+if(userLogin){ renderRoleUI(); } // пришли из кабинета с готовым логином — сразу к делу, без вопросов
+else if(userRole){ renderRoleUI(); } else { askRole(); }
 input.focus();
 </script>
 </body>
