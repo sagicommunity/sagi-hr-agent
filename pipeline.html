@@ -81,10 +81,20 @@
   .empty{text-align:center;color:var(--muted);padding:50px 10px}
   /* hh.kz funnel */
   .funnel{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
-  .fcard{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+  .fcard{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px;cursor:pointer;transition:.14s;text-align:left}
+  .fcard:hover{border-color:var(--brand);background:var(--panel-2)}
   .fcard .fnum{font-family:var(--display);font-weight:800;font-size:24px;color:var(--brand)}
   .fcard .flbl{font-size:12px;color:var(--muted);margin-top:3px}
   .funnel .err{display:block;grid-column:1/-1;margin-bottom:0}
+  /* funnel list modal rows */
+  .fnrow{padding:12px 22px;border-bottom:1px solid var(--line);cursor:pointer;transition:.12s}
+  .fnrow:hover{background:var(--panel-2)}
+  .fnrow:last-child{border-bottom:0}
+  .fnrow .fnname{font-weight:700;font-size:14.5px}
+  .fnrow .fnmeta{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .fnrow.fnrow-pending{cursor:default}
+  .fnrow.fnrow-pending:hover{background:transparent}
+  .fnrow.fnrow-pending .fnname{color:var(--muted);font-weight:600}
   /* add panel */
   .addbox{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:18px;margin-bottom:18px;display:none}
   .addbox h3{margin:0 0 4px;font-family:var(--display);font-size:16px}
@@ -194,6 +204,19 @@
   </div>
 </div>
 
+<div class="modal" id="funnelModal">
+  <div class="sheet">
+    <div class="top">
+      <div>
+        <h2 id="fnTitle">Список</h2>
+        <div class="mmeta">Клик по человеку открывает его карточку</div>
+      </div>
+      <button class="x" id="fnClose" title="Закрыть">×</button>
+    </div>
+    <div id="fnBody"></div>
+  </div>
+</div>
+
 <script>
 const $=s=>document.querySelector(s);
 const PASS_KEY='sagiHR_ropPass';
@@ -285,7 +308,7 @@ function openCand(id){
 function closeCand(){ $('#modal').classList.remove('open'); }
 $('#mClose').addEventListener('click',closeCand);
 $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeCand(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeCand(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeCand(); closeFunnelList(); } });
 
 async function load(){
   const d=await api({action:'list'}); DATA=d.items||[]; STAGES=d.stages||[];
@@ -299,24 +322,56 @@ async function load(){
 
 // Воронка откликов hh.kz: сколько всего откликов, скольким написали первыми, сколько ответили,
 // сколько уже приглашены на стажировку. Грузится отдельно и не блокирует основной список.
+// Карточки кликабельны — по клику показываем конкретных людей за этой цифрой (сматчено с DATA
+// по id='hh_'+negId, т.к. каждому отклику на hh.kz соответствует запись в hr:candidates).
+let FUNNEL=null;
+const FUNNEL_ITEMS=[
+  ['totalResponsesOnHh','Откликов на hh.kz'],
+  ['firstMessageSent','Написали первыми'],
+  ['repliedToUs','Ответили нам'],
+  ['awaitingReply','Ждём ответа'],
+  ['invitedToInternshipStillWatching','Приглашены на стажировку'],
+];
 async function loadFunnel(){
   const box=$('#funnel');
   box.innerHTML='<div class="fcard"><div class="flbl">Загружаю воронку hh.kz…</div></div>';
   try{
     const d=await api({action:'hhFunnel'});
     if(!d.ok) throw new Error(d.error||'нет данных');
-    const items=[
-      ['Откликов на hh.kz',d.totalResponsesOnHh],
-      ['Написали первыми',d.firstMessageSent],
-      ['Ответили нам',d.repliedToUs],
-      ['Ждём ответа',d.awaitingReply],
-      ['Приглашены на стажировку',d.invitedToInternshipStillWatching],
-    ];
-    box.innerHTML=items.map(([lbl,num])=>'<div class="fcard"><div class="fnum">'+(num??'—')+'</div><div class="flbl">'+esc(lbl)+'</div></div>').join('');
+    FUNNEL=d;
+    box.innerHTML=FUNNEL_ITEMS.map(([key,lbl])=>'<div class="fcard" data-fkey="'+key+'"><div class="fnum">'+(d[key]??'—')+'</div><div class="flbl">'+esc(lbl)+'</div></div>').join('');
+    box.querySelectorAll('.fcard').forEach(el=>el.addEventListener('click',()=>openFunnelList(el.dataset.fkey)));
   }catch(e){
+    FUNNEL=null;
     box.innerHTML='<div class="err" style="display:block">Не удалось загрузить воронку hh.kz: '+esc(e.message)+'</div>';
   }
 }
+
+// Список людей за конкретной цифрой воронки
+function openFunnelList(key){
+  const lbl=(FUNNEL_ITEMS.find(x=>x[0]===key)||[])[1]||'Список';
+  const ids=(FUNNEL&&FUNNEL.negIds&&FUNNEL.negIds[key])||[];
+  $('#fnTitle').textContent=lbl+' ('+ids.length+')';
+  if(!ids.length){
+    $('#fnBody').innerHTML='<div class="none" style="padding:30px 22px;text-align:center;color:var(--muted)">Пока никого нет.</div>';
+  }else{
+    $('#fnBody').innerHTML=ids.map(negId=>{
+      const c=DATA.find(x=>x.id==='hh_'+negId);
+      if(c){
+        return '<div class="fnrow" data-open="'+c.id+'"><div class="fnname">'+esc(c.name)+'</div><div class="fnmeta">'+esc(c.phone||c.contact||'—')+' · '+esc(c.stage)+(c.verdict?' · '+esc(c.verdict):'')+'</div></div>';
+      }
+      return '<div class="fnrow fnrow-pending"><div class="fnname">Отклик hh.kz</div><div class="fnmeta">ещё не обработан, появится после следующего опроса</div></div>';
+    }).join('');
+    $('#fnBody').querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>{
+      closeFunnelList();
+      openCand(el.dataset.open);
+    }));
+  }
+  $('#funnelModal').classList.add('open');
+}
+function closeFunnelList(){ $('#funnelModal').classList.remove('open'); }
+$('#fnClose').addEventListener('click',closeFunnelList);
+$('#funnelModal').addEventListener('click',e=>{ if(e.target.id==='funnelModal') closeFunnelList(); });
 
 // gate
 async function unlock(){
