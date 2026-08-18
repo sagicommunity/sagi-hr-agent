@@ -8,6 +8,8 @@
 //   list     { password }  (password = DASHBOARD_PASSWORD руководителя) -> { ok, users:[...] }
 //   setRole  { password, login, role }  role: 'manager'|'trainee' -> { ok, user } — перевод стажёра
 //            в менеджеры (или обратно), тот же аккаунт/логин/прогресс, ничего не создаётся заново
+//   setStatus { password, login, status, comment } status: см. HIRE_STATUSES ниже -> { ok, user }
+//            — статус найма/работы (не путать с role), с комментарием-причиной
 
 import crypto from 'crypto';
 
@@ -46,8 +48,14 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {} };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
 }
+
+// Статусы сотрудника/стажёра (отдельно от role trainee/manager — role определяет доступный
+// контент обучения, hireStatus описывает реальную ситуацию с человеком). Добавлено 2026-08-18
+// по просьбе Sagi — нужен способ пометить «не подходит» с комментарием (пример: стажёр оказался
+// несовершеннолетним, 17 лет/11 класс), не удаляя аккаунт и не путая это со сменой role.
+const HIRE_STATUSES = ['Активен', 'Не подходит', 'Не выходит на связь', 'На паузе', 'Уволен', 'Ушёл сам'];
 function checkBoss(body, res) {
   const PASS = process.env.DASHBOARD_PASSWORD || '';
   if (!PASS || (body.password || '').toString() !== PASS) { res.status(403).json({ error: 'Неверный пароль руководителя' }); return false; }
@@ -121,6 +129,24 @@ export default async function handler(req, res) {
         if (!q || hay.includes(q) || hay.includes(normPhone(q))) matches.push(safe(u));
       }
       res.status(200).json({ ok: true, totalUsers: arr.length, matches });
+      return;
+    }
+
+    // ── СБРОС ПАРОЛЯ (тем же секретом, что и adminFind) — на случай, если стажёр реально забыл
+    // пароль, а не просто перепутал «войти»/«зарегистрироваться» ──
+    if (action === 'adminResetPassword') {
+      const secret = (body.secret || '').toString();
+      if (!process.env.HH_POLL_SECRET || secret !== process.env.HH_POLL_SECRET) { res.status(403).json({ error: 'forbidden' }); return; }
+      const login = norm(body.login);
+      const newPassword = (body.newPassword || '').toString();
+      if (!login || newPassword.length < 4) { res.status(400).json({ error: 'login и newPassword (мин. 4 символа) обязательны' }); return; }
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      const salt = crypto.randomBytes(8).toString('hex');
+      u.passHash = hashPass(newPassword, salt);
+      u.salt = salt;
+      await putUser(u);
+      res.status(200).json({ ok: true, login: u.login });
       return;
     }
 
@@ -280,6 +306,23 @@ export default async function handler(req, res) {
       if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
       u.role = role;
       if (role === 'manager' && !u.promotedAt) u.promotedAt = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── СТАТУС СОТРУДНИКА/СТАЖЁРА (только руководитель, 2026-08-18) — например «Не подходит»
+    // с комментарием-причиной (несовершеннолетний и т.п.), не трогая role и не удаляя аккаунт.
+    if (action === 'setStatus') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const status = (body.status || '').toString().trim();
+      if (!HIRE_STATUSES.includes(status)) { res.status(400).json({ error: 'status должен быть одним из: ' + HIRE_STATUSES.join(', ') }); return; }
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      u.hireStatus = status;
+      u.statusComment = (body.comment || '').toString().trim().slice(0, 1000);
+      u.statusUpdatedAt = Date.now();
       await putUser(u);
       res.status(200).json({ ok: true, user: safe(u) });
       return;
