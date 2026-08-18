@@ -46,7 +46,7 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null };
 }
 function checkBoss(body, res) {
   const PASS = process.env.DASHBOARD_PASSWORD || '';
@@ -76,6 +76,26 @@ async function findCandidateAnswers(u) {
   return { text: answersText.slice(0, 4000), vacancy: match.vacancy || null, source: match.source || null, candId: match.id };
 }
 
+// 2026-08-18: двигает стадию кандидата в hr:candidates вперёд по воронке, но только если он
+// сейчас на одной из fromStages — никогда не перезаписывает «Отказ» или более позднюю ручную
+// стадию (например, если Sagi уже сам взял его на интервью в обход обычного потока).
+async function bumpCandidateStage(candId, fromStages, toStage) {
+  if (!candId) return false;
+  const raw = await redis(['LRANGE', CAND_KEY, 0, 1999]);
+  if (!Array.isArray(raw)) return false;
+  for (let i = 0; i < raw.length; i++) {
+    let rec;
+    try { rec = JSON.parse(raw[i]); } catch (e) { continue; }
+    if (rec && rec.id === candId) {
+      if (!fromStages.includes(rec.stage)) return false;
+      rec.stage = toStage;
+      await redis(['LSET', CAND_KEY, i, JSON.stringify(rec)]);
+      return true;
+    }
+  }
+  return false;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
   if (!R_URL || !R_TOK) { res.status(500).json({ error: 'База не подключена' }); return; }
@@ -103,7 +123,14 @@ export default async function handler(req, res) {
       const u = { name, login, role, salt, passHash: hashPass(password, salt), token, progress: {}, points: 0, createdAt: Date.now(), lastSeen: Date.now(), hhNegId, phone };
       try {
         const found = await findCandidateAnswers(u);
-        if (found) { u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; }
+        if (found) {
+          u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; u.candId = found.candId;
+          // 2026-08-18, по замечанию Sagi: «Стажировка» — это когда человек реально стажируется
+          // (закончил обучение, есть наставник), а не просто приглашён. Регистрация на
+          // hr.sagibonus.com — это начало ОБУЧЕНИЯ, ставим кандидату именно эту стадию (если он
+          // ещё не дальше по воронке, например уже не отказан вручную).
+          try { await bumpCandidateStage(found.candId, ['Новый', 'Ответил', 'Приглашён'], 'Обучение'); } catch (e) {}
+        }
       } catch (e) {}
       await putUser(u);
       res.status(200).json({ ok: true, user: safe(u), token });

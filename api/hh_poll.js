@@ -825,7 +825,7 @@ export default async function handler(req, res) {
   if (req.query?.setCandidateStage) {
     try {
       const id = String(req.query.setCandidateStage);
-      const stage = String(req.query.stage || 'Стажировка');
+      const stage = String(req.query.stage || 'Приглашён');
       const patch = { stage };
       if (req.query.clearVerdict) { patch.verdict = null; patch.score = null; }
       const updated = await updateCandidateRecord(id, patch);
@@ -1027,6 +1027,59 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Разовая миграция (2026-08-18, по замечанию Sagi): до сегодняшнего дня стадия «Стажировка»
+  // ставилась кандидату сразу после того, как он ответил на hh.kz и получил приглашение — то
+  // есть ДО регистрации на hr.sagibonus.com и тем более до прохождения обучения. Sagi справедливо
+  // заметил, что это неправильно: «они ведь сперва должны обучение пройти». Логика на будущее уже
+  // исправлена (см. ФАЗА B и ФАЗА E выше), этот маршрут разово приводит в порядок уже накопленные
+  // записи — понижает всех, кто помечен «Стажировка», до реального состояния:
+  //   не зарегистрировался вообще              -> «Приглашён»
+  //   зарегистрировался, но не закончил 10 модулей -> «Обучение»
+  //   закончил все 10 модулей и есть наставник  -> оставляем «Стажировка» (это правда так)
+  // Безопасно дёргать повторно.
+  if (req.query?.fixStageMislabel) {
+    try {
+      const raw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const items = raw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      const users = [];
+      for (const login of logins) {
+        const r = await redis(['GET', 'hr:user:' + login]);
+        if (!r) continue;
+        try { users.push(JSON.parse(r)); } catch (e) {}
+      }
+      // Кандидат считается «привязан к стажёру», если совпадает candId ИЛИ hhNegId.
+      const usersByCandId = new Map(), usersByHhNegId = new Map();
+      for (const u of users) {
+        if (u.candId) usersByCandId.set(u.candId, u);
+        if (u.hhNegId) usersByHhNegId.set('hh_' + u.hhNegId, u);
+      }
+      const toPriglashen = [], toObuchenie = [], keptStazhirovka = [];
+      for (const c of items) {
+        if (c.stage !== 'Стажировка') continue;
+        const u = usersByCandId.get(c.id) || usersByHhNegId.get(c.id) || null;
+        if (!u) { toPriglashen.push({ id: c.id, name: c.name }); continue; }
+        const doneCount = BASIC_MODULE_IDS.filter(id => u.progress && u.progress[id]).length;
+        const isComplete = doneCount >= BASIC_MODULE_IDS.length;
+        if (isComplete && u.mentorName) { keptStazhirovka.push({ id: c.id, name: c.name }); continue; }
+        toObuchenie.push({ id: c.id, name: c.name, doneCount });
+      }
+      if (!dryRun) {
+        for (const x of toPriglashen) await updateCandidateRecord(x.id, { stage: 'Приглашён' });
+        for (const x of toObuchenie) await updateCandidateRecord(x.id, { stage: 'Обучение' });
+      }
+      res.status(200).json({
+        ok: true, dryRun,
+        movedToPriglashen: toPriglashen.length, priglashenSample: toPriglashen.slice(0, 20),
+        movedToObuchenie: toObuchenie.length, obuchenieSample: toObuchenie.slice(0, 20),
+        keptStazhirovka: keptStazhirovka.length, keptSample: keptStazhirovka.slice(0, 20),
+      });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Разовая миграция (2026-08-17): исправляем ярлык вакансии у уже сохранённых hh.kz-записей,
   // которым при интейке подставилась заглушка «Менеджер по продажам» вместо реального названия
   // (баг, см. ?vacList=1 — hh.kz не всегда возвращает vacancy.name в самой негоциации). Сейчас
@@ -1158,7 +1211,7 @@ export default async function handler(req, res) {
             try {
               await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: c.tgChatId, text }) });
             } catch (e) {}
-            await updateCandidateRecord(c.id, { stage: 'Стажировка' });
+            await updateCandidateRecord(c.id, { stage: 'Приглашён' });
           }
           invited.push({ id: c.id, name: c.name, contact: c.contact });
         } else {
@@ -1187,7 +1240,7 @@ export default async function handler(req, res) {
       let token = null;
       for (const it of items) {
         if (it.stage === 'Ответил') {
-          it.stage = 'Стажировка'; moved++; movedNames.push(it.name);
+          it.stage = 'Приглашён'; moved++; movedNames.push(it.name);
           // Этим кандидатам раньше (до смены логики) ничего не отправляли, кроме внутренней
           // пометки — теперь реально приглашаем их в чат на hh.kz и ставим на наблюдение вопросов.
           if (String(it.id || '').startsWith('hh_')) {
@@ -1414,11 +1467,15 @@ export default async function handler(req, res) {
           replyPreview.push({ negId, hasReply: true, name, replyText: replyText.slice(0, 300), recommend: ev.recommend, summary: ev.summary, evalDebug: ev._debug || '' });
         } else {
           await redis(['SADD', REPLIED_KEY, negId]);
-          // По прямому указанию Sagi (2026-08-17): каждый ответивший сразу отправляется на
-          // стажировку — не ждём отдельного ручного решения по каждому. Вердикт ИИ и текст
-          // ответа сохраняются для контекста, но НЕ блокируют продвижение по воронке.
+          // По прямому указанию Sagi (2026-08-17): каждый ответивший сразу получает приглашение —
+          // не ждём отдельного ручного решения по каждому. Вердикт ИИ и текст ответа сохраняются
+          // для контекста, но НЕ блокируют продвижение по воронке.
+          // 2026-08-18, уточнение Sagi: стадию «Стажировка» рано ставить прямо здесь — человек
+          // ещё не зарегистрировался и тем более не прошёл обучение, это вводило в заблуждение.
+          // Реальная стажировка начинается только после регистрации (users.js/register ставит
+          // «Обучение») и завершения всех 10 базовых модулей (ФАЗА E ниже ставит «Стажировка»).
           const updated = await updateCandidateRecord('hh_' + negId, {
-            stage: 'Стажировка', verdict: ev.recommend || 'Уточнить', summary: ev.summary || '',
+            stage: 'Приглашён', verdict: ev.recommend || 'Уточнить', summary: ev.summary || '',
             strengths: ev.strengths || [], flags: ev.flags || [], replyText: replyText.slice(0, 2000),
           });
           await notifyReplied(updated || { ...existingRec, verdict: ev.recommend, summary: ev.summary }, replyText);
@@ -1512,7 +1569,7 @@ export default async function handler(req, res) {
       const normName = s => (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
       const hhCandidatesByName = new Map(); // normName -> [negId,...]
       for (const [id, rec] of candById.entries()) {
-        if (!id.startsWith('hh_') || rec.stage !== 'Стажировка') continue;
+        if (!id.startsWith('hh_') || !['Приглашён', 'Обучение', 'Стажировка'].includes(rec.stage)) continue;
         const key = normName(rec.name);
         if (!key) continue;
         if (!hhCandidatesByName.has(key)) hhCandidatesByName.set(key, []);
@@ -1541,6 +1598,11 @@ export default async function handler(req, res) {
             changed = true;
             mentorsAssigned++; actionsUsed++;
             if (!dryRun) {
+              // Вот тут реально начинается стажировка (закончил все 10 модулей, назначен
+              // наставник) — только теперь ставим кандидату стадию «Стажировка». До этого
+              // момента (просто приглашён / проходит обучение) стадия была «Приглашён»/«Обучение».
+              const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
+              if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'Стажировка' });
               if (u.hhNegId) await hhReply(u.hhNegId, token, buildMentorAssignedText(u.name, mentor.name, mentor.phone));
               else noChannelCount++;
               const traineeContact = (u.hhNegId && candById.get('hh_' + u.hhNegId)?.contact) || '—';

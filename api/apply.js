@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       answers: [{ q: 'Резюме / о себе', a: resume.slice(0, 4000) }],
       score: evaln.score, verdict: evaln.verdict, summary: evaln.summary,
       strengths: evaln.strengths, flags: evaln.flags,
-      stage: invited ? 'Стажировка' : 'Отказ', ts: Date.now(),
+      stage: invited ? 'Приглашён' : 'Отказ', ts: Date.now(),
     };
     try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); } catch (e) {}
     notifyTelegram(rec); // best-effort, не блокируем ответ

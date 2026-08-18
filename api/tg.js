@@ -256,7 +256,7 @@ async function finalize(chat, st) {
     vacancy: VAC[vac].title,
     source: 'Telegram-бот · ' + VAC[vac].title + (d.source ? ' (' + d.source + ')' : ''),
     resume: fullText.slice(0, 2000), score: ev.score, verdict: ev.verdict, summary: ev.summary,
-    strengths: [], flags: [], stage: invited ? 'Стажировка' : (ev.verdict === 'Отказ' ? 'Отказ' : 'Новый'), waMessage: waMessage(d.name), ts: Date.now(),
+    strengths: [], flags: [], stage: invited ? 'Приглашён' : (ev.verdict === 'Отказ' ? 'Отказ' : 'Новый'), waMessage: waMessage(d.name), ts: Date.now(),
   };
   try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 1999]); } catch (e) {}
   await notifyROP(rec);
