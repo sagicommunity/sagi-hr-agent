@@ -79,10 +79,6 @@
       <div class="eyebrow" id="eyebrow">Вакансия · отдел холодных продаж</div>
       <h1 id="heading">Менеджер по продажам в Sagi</h1>
       <p class="lead" id="lead">Холодный аутрич, поиск ЛПР, закрытие на встречи. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.</p>
-      <div class="vacToggle" id="vacToggle">
-        <div class="vacOpt active" data-vac="sales">Офис, Астана<small>Звонки + встречи</small></div>
-        <div class="vacOpt" data-vac="sales_remote">Удалённо<small>Звонки + онлайн-демо</small></div>
-      </div>
       <form id="applyForm">
         <div class="err" id="err"></div>
         <div class="field">
@@ -126,18 +122,16 @@ const $=s=>document.querySelector(s);
 const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+// 2026-08-18, по указанию Sagi: офисной вакансии больше нет вообще — только удалённая.
+// Раньше здесь был переключатель "Офис, Астана" / "Удалённо", убрали, форма всегда шлёт remote.
 const VAC_COPY = {
-  sales: { eyebrow:'Вакансия · отдел холодных продаж', h1:'Менеджер по продажам в Sagi', lead:'Холодный аутрич, поиск ЛПР, закрытие на встречи в офисе (Астана). Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.' },
   sales_remote: { eyebrow:'Вакансия · удалённые продажи', h1:'Менеджер по продажам в Sagi — удалённо', lead:'Холодный аутрич, поиск ЛПР, закрытие сделок через онлайн-демо. Полностью удалённо, без офиса и выездов. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку.' },
 };
-let currentVac = (new URLSearchParams(location.search).get('vacancy') === 'remote') ? 'sales_remote' : 'sales';
+const currentVac = 'sales_remote';
 function applyVac(v){
-  currentVac = v;
-  document.querySelectorAll('.vacOpt').forEach(el=>el.classList.toggle('active', el.dataset.vac===v));
   const c = VAC_COPY[v];
   $('#eyebrow').textContent = c.eyebrow; $('#heading').textContent = c.h1; $('#lead').textContent = c.lead;
 }
-document.querySelectorAll('.vacOpt').forEach(el=>el.addEventListener('click',()=>applyVac(el.dataset.vac)));
 applyVac(currentVac);
 
 $('#pdfBtn').addEventListener('click',()=>$('#pdfInput').click());

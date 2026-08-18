@@ -59,9 +59,10 @@
   .card{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
   .authbox{max-width:420px;margin:40px auto}
   label{display:block;font-size:13px;font-weight:600;margin:0 0 7px}
-  input,select{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;color:var(--text);
+  input,select,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;color:var(--text);
     font:inherit;font-size:15px;padding:12px 14px;outline:none;transition:.16s;margin-bottom:14px}
-  input:focus,select:focus{border-color:var(--brand)}
+  textarea{resize:vertical;min-height:70px}
+  input:focus,select:focus,textarea:focus{border-color:var(--brand)}
   .btn{width:100%;border:0;border-radius:13px;background:linear-gradient(140deg,var(--brand),var(--brand-2));
     color:var(--brand-ink);font:inherit;font-weight:800;font-size:15px;padding:13px;cursor:pointer;box-shadow:0 8px 22px var(--brand-glow)}
   .btn.sec{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:none;font-weight:600}
@@ -154,6 +155,8 @@
   .tag{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted)}
   .tag.tr{color:var(--blue);border-color:var(--blue-bg);background:var(--blue-bg)}
   .tag.mg{color:var(--brand);border-color:rgba(25,227,154,.3);background:rgba(25,227,154,.1)}
+  .tag.bad{color:#ff6b6b;border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.12)}
+  .tag.warn{color:var(--amber);border-color:rgba(239,159,39,.3);background:var(--amber-bg)}
   .empty{color:var(--muted);text-align:center;padding:34px;border:1px dashed var(--line-2);border-radius:14px}
 </style>
 </head>
@@ -328,6 +331,14 @@
           <button class="btn sec small" id="profPhoneSave">Сохранить</button>
         </div>
       </div>
+      <div style="margin-top:16px">
+        <label>Статус</label>
+        <div style="display:flex;gap:8px">
+          <select id="profStatus"></select>
+          <button class="btn sec small" id="profStatusSave">Сохранить</button>
+        </div>
+        <textarea id="profStatusComment" placeholder="Комментарий (необязательно) — например, причина отказа" maxlength="1000"></textarea>
+      </div>
       <div class="sub" id="profMeta" style="margin-top:14px"></div>
     </div>
     <div class="card" id="profAnswersWrap" style="margin-bottom:16px;display:none">
@@ -371,6 +382,11 @@ async function api(payload){
     return {status:r.status, ...d};
   }catch(e){ return {status:0, error:'Нет связи с сервером. Проверьте интернет.'}; }
 }
+// Статусы сотрудника/стажёра (см. HIRE_STATUSES в api/users.js — держать в синхроне).
+// 'Активен' — по умолчанию, не показываем бейджем в таблице, чтобы не захламлять. Остальные —
+// красные (реально выбыл/не подходит) или жёлтые (промежуточное состояние, требует внимания).
+const HIRE_STATUSES=['Активен','Не подходит','Не выходит на связь','На паузе','Уволен','Ушёл сам'];
+const HIRE_STATUS_CLASS={'Активен':'','Не подходит':'bad','Уволен':'bad','Ушёл сам':'bad','Не выходит на связь':'warn','На паузе':'warn'};
 const SESSION_KEY='sagiHR_session';
 function saveSession(login,token){ localStorage.setItem(SESSION_KEY, JSON.stringify({login,token})); }
 function getSession(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch{ return null; } }
@@ -621,8 +637,11 @@ function renderBoss(users, skipStatsFetch){
       // было качественно») — видно, кто проходит модули формально, а кто реально усваивает.
       const qb=u.quizBest||{}; const qKeys=Object.keys(qb);
       const quizCell=qKeys.length ? Math.round(qKeys.reduce((s,k)=>s+(qb[k].score/qb[k].total),0)/qKeys.length*100)+'% ('+qKeys.length+')' : '—';
+      const hs=u.hireStatus||'Активен';
+      const statusCell=hs==='Активен' ? '—' : '<span class="tag '+(HIRE_STATUS_CLASS[hs]||'')+'" title="'+(u.statusComment||'').replace(/"/g,'&quot;')+'">'+hs+'</span>';
       return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b><br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
         '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'">'+(u.role==='manager'?'Менеджер':'Стажёр')+'</span></td>'+
+        '<td>'+statusCell+'</td>'+
         '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
         '<td>'+done+' / '+all.length+'</td>'+
         '<td style="color:var(--muted)">'+quizCell+'</td>'+
@@ -631,7 +650,7 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn')) return;
@@ -698,6 +717,8 @@ function renderProfile(u){
   $('#profDone').textContent=done+' / '+all.length;
   $('#profPct').textContent=pct+'%';
   $('#profPhone').value=u.phone||'';
+  $('#profStatus').innerHTML=HIRE_STATUSES.map(s=>'<option value="'+s+'"'+(s===(u.hireStatus||'Активен')?' selected':'')+'>'+s+'</option>').join('');
+  $('#profStatusComment').value=u.statusComment||'';
 
   const meta=[];
   if(u.mentorName) meta.push('Наставник: '+u.mentorName+(u.mentorPhone?' ('+u.mentorPhone+')':''));
@@ -705,6 +726,7 @@ function renderProfile(u){
   else meta.push('Не привязан к hh.kz — автонапоминания и уведомления не дойдут, пока не заполнен телефон выше и с ним не свяжутся вручную.');
   if(u.createdAt) meta.push('Регистрация: '+new Date(u.createdAt).toLocaleDateString('ru-RU'));
   if(u.promotedAt) meta.push('Переведён(а) в менеджеры: '+new Date(u.promotedAt).toLocaleDateString('ru-RU'));
+  if(u.hireStatus && u.hireStatus!=='Активен' && u.statusUpdatedAt) meta.push('Статус «'+u.hireStatus+'» проставлен: '+new Date(u.statusUpdatedAt).toLocaleDateString('ru-RU'));
   if(u.lastSeen) meta.push('Последняя активность: '+new Date(u.lastSeen).toLocaleDateString('ru-RU'));
   $('#profMeta').innerHTML=meta.join('<br>');
 
@@ -757,6 +779,14 @@ function renderProfile(u){
     btn.disabled=false; btn.textContent=old;
     if(!res.ok){ alert(res.error||'Не удалось сохранить'); return; }
     u.phone=$('#profPhone').value; BOSS_USERS[u.login]=u;
+  };
+  $('#profStatusSave').onclick=async()=>{
+    const btn=$('#profStatusSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';
+    const res=await api({action:'setStatus', password:BOSS_PW, login:u.login, status:$('#profStatus').value, comment:$('#profStatusComment').value});
+    btn.disabled=false; btn.textContent=old;
+    if(!res.ok){ alert(res.error||'Не удалось сохранить статус'); return; }
+    BOSS_USERS[u.login]=res.user;
+    renderProfile(res.user);
   };
 
   show('screen-profile');
