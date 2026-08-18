@@ -104,6 +104,26 @@ export default async function handler(req, res) {
     if (typeof body === 'string') body = JSON.parse(body);
     const action = body?.action;
 
+    // ── ДИАГНОСТИЧЕСКИЙ ПОИСК (2026-08-18, разбор жалоб «логин уже занят» без пароля РОПа) ──
+    // Секрет — тот же HH_POLL_SECRET, что и у /api/hh_poll (безопасно для серверных диагностик,
+    // но не даёт доступа к паролям/хэшам — safe() их и так не отдаёт).
+    if (action === 'adminFind') {
+      const secret = (body.secret || '').toString();
+      if (!process.env.HH_POLL_SECRET || secret !== process.env.HH_POLL_SECRET) { res.status(403).json({ error: 'forbidden' }); return; }
+      const q = norm(body.q || '');
+      const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      const arr = Array.isArray(logins) ? logins : [];
+      const matches = [];
+      for (const lg of arr) {
+        const u = await getUser(lg);
+        if (!u) continue;
+        const hay = norm(u.name) + ' ' + norm(u.login) + ' ' + normPhone(u.phone);
+        if (!q || hay.includes(q) || hay.includes(normPhone(q))) matches.push(safe(u));
+      }
+      res.status(200).json({ ok: true, totalUsers: arr.length, matches });
+      return;
+    }
+
     // ── РЕГИСТРАЦИЯ ──
     if (action === 'register') {
       const name = (body.name || '').toString().trim();
