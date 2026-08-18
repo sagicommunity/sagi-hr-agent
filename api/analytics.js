@@ -40,7 +40,11 @@ async function redis(cmd) {
 }
 async function redisBatch(cmds) {
   if (!R_URL || !R_TOK) return cmds.map(() => null);
-  const r = await fetch(R_URL, {
+  // ВАЖНО (найдено 2026-08-18, баг с самого добавления воронки): Upstash REST API отдельным
+  // маршрутом обслуживает батч из нескольких команд — POST на {R_URL}/pipeline, а не на базовый
+  // R_URL (тот принимает ОДНУ команду за раз). Из-за этого все SCARD-счётчики воронки молча
+  // возвращали null -> 0 на дешборде, хотя реальные данные в Redis были.
+  const r = await fetch(R_URL + '/pipeline', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + R_TOK, 'content-type': 'application/json' },
     body: JSON.stringify(cmds),
