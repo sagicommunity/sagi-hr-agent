@@ -722,16 +722,43 @@ export default async function handler(req, res) {
   // HH_VAC_BODY_successmgr выше. Обходит WebFetch-прокси полностью: сам запрос короткий,
   // тело вакансии живёт в коде, а не в URL.
   //   &hhPublishVacancy=successmgr   — POST HH_VAC_BODY_successmgr на /vacancies
-  if (req.query?.hhPublishVacancy) {
+  //   &hhLastPublish=successmgr        — прочитать закешированный результат (без нового POST)
+  // 2026-08-18: первый вызов hhPublishVacancy словил "Read timeout" на стороне WebFetch (сама
+  // функция при этом отработала и отдала 200 согласно логам Vercel), поэтому результат теперь
+  // ВСЕГДА пишется в Redis перед ответом — так его можно прочитать отдельным быстрым запросом,
+  // даже если WebFetch не дождался тела ответа. Плюс защита от повторной публикации: если для
+  // ключа уже есть закешированный результат с ok:true, повторный вызов hhPublishVacancy НЕ шлёт
+  // новый POST, а просто возвращает то, что уже было создано.
+  if (req.query?.hhLastPublish) {
     try {
-      const key = String(req.query.hhPublishVacancy);
+      const raw = await redis(['GET', 'hh:publish_result:' + String(req.query.hhLastPublish)]);
+      res.status(200).json({ ok: true, cached: raw ? JSON.parse(raw) : null });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+  if (req.query?.hhPublishVacancy) {
+    const key = String(req.query.hhPublishVacancy);
+    const cacheKey = 'hh:publish_result:' + key;
+    try {
+      const prevRaw = await redis(['GET', cacheKey]);
+      if (prevRaw) {
+        const prev = JSON.parse(prevRaw);
+        if (prev?.ok) { res.status(200).json({ ok: true, alreadyPublished: true, data: prev.data }); return; }
+      }
       const bodies = { successmgr: HH_VAC_BODY_successmgr };
       const body = bodies[key];
       if (!body) { res.status(200).json({ ok: false, error: 'неизвестный ключ: ' + key }); return; }
       const token = await getEmployerToken();
       const pr = await hhPost('/vacancies', token, body);
-      res.status(200).json({ ok: pr.ok, status: pr.status, data: pr.data });
-    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+      const result = { ok: pr.ok, status: pr.status, data: pr.data };
+      await redis(['SET', cacheKey, JSON.stringify(result)]);
+      await redis(['EXPIRE', cacheKey, '86400']);
+      res.status(200).json(result);
+    } catch (e) {
+      const result = { ok: false, error: e.message };
+      try { await redis(['SET', cacheKey, JSON.stringify(result)]); await redis(['EXPIRE', cacheKey, '86400']); } catch (e2) {}
+      res.status(200).json(result);
+    }
     return;
   }
 
