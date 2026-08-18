@@ -792,6 +792,7 @@ export default async function handler(req, res) {
       if (!dryRun) {
         u.intakeAnswers = answersText.slice(0, 4000);
         u.intakeVacancy = match.vacancy || null;
+        u.candId = match.id; // 2026-08-18: нужен для ?fixStageMislabel, чтобы не понизить уже реально стажирующегося
         await redis(['SET', 'hr:user:' + login, JSON.stringify(u)]);
       }
       res.status(200).json({ ok: true, dryRun, login, candId, vacancy: match.vacancy, answersPreview: answersText.slice(0, 200) });
