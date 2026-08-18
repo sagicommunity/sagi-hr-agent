@@ -34,9 +34,22 @@ const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карус
 const REMINDED_KEY = 'hh:reminded_negotiations'; // кому уже отправили напоминание (шлём максимум один раз)
 const REMIND_AFTER_MS = 24 * 60 * 60 * 1000; // напомнить, если прошло больше 24 часов без ответа
 const REMINDER_TEXT = 'Добрый день! Не потерялись ли вопросы выше? Если вакансия всё ещё интересна, ответьте, пожалуйста, коротко на них, и мы продолжим 🙂 Если удобнее в WhatsApp или созвониться, пишите на +7 707 700 0087.';
-const INVITE_WATCH_KEY = 'hh:invite_watch'; // negId кандидатов, которым отправили приглашение на стажировку и ещё следим за возможными вопросами
+const INVITE_WATCH_KEY = 'hh:invite_watch'; // negId кандидатов, которым отправили приглашение на обучение и ещё следим за возможными вопросами
 const WATCH_FOR_MS = 4 * 24 * 60 * 60 * 1000; // сколько дней после приглашения ещё проверяем чат на новые сообщения (вопросы)
 const MAX_WATCH_PER_RUN = 8;
+
+// ---- Гейт-вопрос перед анкетой (2026-08-18, по замечанию Sagi) ----
+// Раньше первое сообщение сразу содержало все 5 вопросов анкеты — часть кандидатов отвечала на
+// все 5, а потом внезапно писала, что не хочет холодные звонки или не готова к удалёнке. Теряли
+// время и их, и своё. Теперь первое сообщение заканчивается ОДНИМ вопросом «интересен ли вам
+// такой формат (холодные звонки / удалёнка)» — и только если ответ не похож на отказ, отправляем
+// вторым сообщением полную анкету из 5 вопросов. Явный отказ на этом шаге — вежливо закрываем,
+// анкету не шлём.
+const GATE_HANDLED_KEY = 'hh:gate_handled'; // negId, чей ответ на гейт-вопрос уже обработан (неважно, прошёл или нет)
+const QUESTIONS_SENT_KEY = 'hh:questions_sent'; // гейт пройден, отправлена анкета из 5 вопросов, ждём ответа на неё
+const DECLINED_KEY = 'hh:declined_negotiations'; // явно отказался на гейте (не хочет холодные звонки / формат не подходит)
+const REMINDED_GATE_KEY = 'hh:reminded_gate'; // напоминание уже отправлено на этапе гейта (до анкеты)
+const GATE_CURSOR_KEY = 'hh:gate_check_cursor'; // «карусель» для фазы B1, тот же принцип, что и REPLY_CURSOR_KEY
 
 // ---- Рассылка старым откликам (архивные вакансии продаж, 2026-08-17, по прямому указанию Sagi) ----
 // Sagi: «отправляй старым в день по 50» — после того как увидел реальный масштаб (~707 старых
@@ -50,23 +63,39 @@ const ARCHIVE_QUEUED_KEY = 'hh:archive_queued_resumes'; // resume_id (или neg
 const ARCHIVE_SENT_KEY = 'hh:archive_sent'; // negId, кому реально отправлено
 function buildArchiveOutreachMessage(name) {
   const greet = name ? `${name}, здравствуйте!` : 'Здравствуйте!';
-  return `${greet}\n\nВы раньше откликались у нас на вакансию менеджера по продажам. Сейчас у нас открыта вакансия менеджера по продажам, полностью удалённо, и мы приглашаем вас сразу на стажировку, это первый шаг перед выходом на работу.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты, есть встроенный ИИ-тренажёр звонков)\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли вакансия уже не актуальна для вас или есть вопросы, можно ответить прямо здесь же, в этом чате, или написать в WhatsApp: +7 707 700 0087.`;
+  return `${greet}\n\nВы раньше откликались у нас на вакансию менеджера по продажам. Сейчас у нас открыта вакансия менеджера по продажам, полностью удалённо, и мы приглашаем вас сразу на обучение, это первый шаг перед выходом на работу.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты, есть встроенный ИИ-тренажёр звонков)\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли вакансия уже не актуальна для вас или есть вопросы, можно ответить прямо здесь же, в этом чате, или написать в WhatsApp: +7 707 700 0087.`;
 }
 
-// Приглашение на стажировку — уходит В ТОТ ЖЕ чат на hh.kz, где кандидат уже отвечал (это
-// продолжение диалога, не холодная рассылка), поэтому не выглядит спамом. Явно объясняет,
-// что делать дальше, и приглашает задавать вопросы прямо здесь же. Ссылка на регистрацию несёт
-// ?hh=<negId>, чтобы личный кабинет автоматически привязался к этой переписке на hh.kz — тогда
-// напоминания об обучении и уведомление о наставнике смогут прийти в тот же чат.
+// Приглашение на ОБУЧЕНИЕ (не на стажировку! — уточнение Sagi 2026-08-18: стажировка это когда
+// наставник подключается, после того как человек прошёл все 10 модулей базовой программы; на
+// этом шаге, сразу после ответа на анкету, речь только про обучение) — уходит В ТОТ ЖЕ чат на
+// hh.kz, где кандидат уже отвечал (это продолжение диалога, не холодная рассылка), поэтому не
+// выглядит спамом. Явно объясняет, что делать дальше, и приглашает задавать вопросы прямо здесь
+// же. Ссылка на регистрацию несёт ?hh=<negId>, чтобы личный кабинет автоматически привязался к
+// этой переписке на hh.kz — тогда напоминания об обучении и уведомление о наставнике смогут
+// прийти в тот же чат.
 function buildInviteMessage(name, negId) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, спасибо за ответы!` : 'Спасибо за ответы!';
   const regLink = negId ? `hr.sagibonus.com/?hh=${negId}` : 'hr.sagibonus.com';
-  return `${greet}\n\nПриглашаем вас на стажировку. Это первый шаг перед выходом на работу, дальше уже на практике будет понятно, насколько вам подходит эта работа.\n\nЧто нужно сделать:\n1) Перейти на ${regLink}\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике, а не только читать\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли остались вопросы или что-то нужно уточнить по условиям, можно написать здесь же, в этом чате, или в WhatsApp: +7 707 700 0087. Если удобнее созвониться и уточнить голосом, тоже пишите на этот номер, договоримся о звонке.`;
+  return `${greet}\n\nПриглашаем вас на обучение. Это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на ${regLink}\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике, а не только читать\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли остались вопросы или что-то нужно уточнить по условиям, можно написать здесь же, в этом чате, или в WhatsApp: +7 707 700 0087. Если удобнее созвониться и уточнить голосом, тоже пишите на этот номер, договоримся о звонке.`;
+}
+// Вежливый отказ на гейт-вопросе (кандидат явно не хочет холодные звонки / не подходит формат) —
+// не тратим его время на анкету из 5 вопросов, раз уже понятно, что формат не подходит.
+function buildDeclineText(name) {
+  const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, спасибо за честный ответ!` : 'Спасибо за честный ответ!';
+  return `${greet}\n\nРаз этот формат сейчас не подходит, не будем зря отнимать ваше время. Если ситуация изменится или заинтересует другая вакансия, пишите, будем рады снова быть на связи. Хорошего дня!`;
+}
+// Простая эвристика «не интересно» на гейт-вопросе. По умолчанию считаем, что кандидат ЗА —
+// та же философия Sagi, что и в остальной воронке (не отсеивать лишний раз): в отказ уводим
+// только явные фразы, а не любую неопределённость или упоминание слова «нет» не к месту.
+function looksUninterested(text) {
+  const t = (text || '').toLowerCase().trim();
+  return /(не\s+интересн|не\s+хочу|не\s+готов|не\s+буду|не\s+подходит|не\s+рассматрива|нет,?\s*спасибо|^нет\b)/.test(t);
 }
 async function notifyFollowUp(rec, questionText) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
-  const text = `❓ Вопрос от кандидата после приглашения на стажировку (HH.kz) — Sagi\n\n👤 ${rec?.name || 'Кандидат'}\n📞 ${rec?.contact || '—'}\n\n🗣 Сообщение:\n${(questionText || '').slice(0, 800)}\n\nОтветить нужно вручную, в переписке на hh.kz (автоматика больше не отвечает за этого кандидата).\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
+  const text = `❓ Вопрос от кандидата после приглашения на обучение (HH.kz) — Sagi\n\n👤 ${rec?.name || 'Кандидат'}\n📞 ${rec?.contact || '—'}\n\n🗣 Сообщение:\n${(questionText || '').slice(0, 800)}\n\nОтветить нужно вручную, в переписке на hh.kz (автоматика больше не отвечает за этого кандидата).\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 // ---- ФАЗА D (авто-ответ на частые вопросы после приглашения) ----
@@ -108,7 +137,7 @@ function buildTraineeReminderText(name, doneCount, total) {
 function buildMentorAssignedText(name, mentorName, mentorPhone) {
   const greet = name ? `${name}, поздравляем!` : 'Поздравляем!';
   const contactLine = mentorPhone ? `\n\nМожно написать ему напрямую в WhatsApp: ${mentorPhone}.` : '';
-  return `${greet} Вы прошли базовую программу обучения. 🎉\n\nДальше с вами будет работать в паре наставник — ${mentorName || 'опытный менеджер команды'}, он свяжется с вами в ближайшее время, чтобы перейти к практике на реальных звонках и встречах.${contactLine}\n\nЕсли есть вопросы, можно написать сюда же или в WhatsApp: +7 707 700 0087.`;
+  return `${greet} Вы прошли базовую программу обучения. 🎉\n\nТеперь начинается стажировка: дальше с вами будет работать в паре наставник — ${mentorName || 'опытный менеджер команды'}, он свяжется с вами в ближайшее время, чтобы перейти к практике на реальных звонках и встречах.${contactLine}\n\nЕсли есть вопросы, можно написать сюда же или в WhatsApp: +7 707 700 0087.`;
 }
 
 async function redis(cmd) {
@@ -208,9 +237,9 @@ const SCREEN_REPLY_SALES = `Ты — HR-скринер компании Sagi (lo
 Тебе дан ответ кандидата на первое сообщение (вопросы про опыт звонков, готовность работать в офисе, когда готов начать).
 ВАЖНО: НЕ придирайся к отсутствию опыта продаж — многие сильные продажники раскрываются не в резюме, а на стажировке. Твоя задача — понять,
 адекватно ли человек отвечает, связная ли речь, есть ли реальная мотивация и готовность работать, нет ли явных красных флагов (грубость,
-неадекватность, явное нежелание работать). Цель компании — довести как можно больше вменяемых кандидатов до стажировки, там уже будет видно.
+неадекватность, явное нежелание работать). Цель компании — довести как можно больше вменяемых кандидатов до обучения, там уже будет видно.
 Верни ТОЛЬКО валидный JSON без markdown:
-{"recommend": "На стажировку" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
+{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
 
 const SCREEN_REPLY_SALES_REMOTE = `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, вакансия «Менеджер по продажам — удалённо»).
 Тебе дан ответ кандидата на первое сообщение (вопросы про опыт звонков, когда готов начать).
@@ -218,9 +247,9 @@ const SCREEN_REPLY_SALES_REMOTE = `Ты — HR-скринер компании S
 отсутствие компьютера или нестабильный интернет на старте — первые 1-2 недели стажёр только звонит и назначает встречи, а саму встречу (демо по
 Zoom) проводит наставник, компьютер понадобится не с первого дня. Твоя задача — понять, адекватно ли человек отвечает, связная ли речь, есть ли
 реальная мотивация и готовность учиться, нет ли явных красных флагов (грубость, неадекватность, прямой отказ работать/учиться в принципе). Цель
-компании — довести как можно больше вменяемых кандидатов до стажировки, там уже будет видно.
+компании — довести как можно больше вменяемых кандидатов до обучения, там уже будет видно.
 Верни ТОЛЬКО валидный JSON без markdown:
-{"recommend": "На стажировку" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
+{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
 
 async function evaluateReply(vacKind, name, replyText) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -276,19 +305,23 @@ function extractPhone(resume) {
 async function notifyReplied(rec, replyText) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
-  const text = `🎓 Кандидат ответил → отправлен на стажировку (HH.kz) — Sagi\n\n🎯 Вакансия: ${rec.vacancy}\n👤 ${rec.name}\n📞 ${rec.contact || '—'}\n\n🗣 Ответ кандидата:\n${(replyText || '').slice(0, 800)}\n\n🤖 Рекомендация ИИ (для справки, на решение не влияет): ${rec.verdict || '—'}\n${rec.summary || ''}\n\nСтажёру можно отправить материалы обучения: hr.sagibonus.com (карточка «🎓 Стажёр»)\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
+  const text = `🎓 Кандидат ответил на анкету → отправлен на обучение (HH.kz) — Sagi\n\n🎯 Вакансия: ${rec.vacancy}\n👤 ${rec.name}\n📞 ${rec.contact || '—'}\n\n🗣 Ответ кандидата:\n${(replyText || '').slice(0, 800)}\n\n🤖 Рекомендация ИИ (для справки, на решение не влияет): ${rec.verdict || '—'}\n${rec.summary || ''}\n\nМатериалы обучения на hr.sagibonus.com (карточка «🎓 Стажёр»)\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 
 // Шаблон первого сообщения — фирменный стиль Sagi (тот, которым Sagi писал раньше вручную).
+// 2026-08-18, по замечанию Sagi: раньше здесь же шли все 5 вопросов анкеты, из-за чего часть
+// кандидатов проходила всю анкету и только потом писала, что холодные звонки/формат не для
+// них. Теперь сообщение заканчивается ОДНИМ гейт-вопросом (интересен ли в принципе такой
+// формат работы) — анкета из 5 вопросов уходит вторым сообщением, только если кандидат
+// откликнулся на гейт положительно (см. buildQuestionsMessage + ФАЗА B1 ниже).
 function buildFirstMessage(vacKind, name) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
   const isRemote = vacKind === 'sales_remote';
   const vacLine = isRemote ? 'Менеджер по B2B-продажам (удалённо)' : 'Менеджер по B2B-продажам';
-  const q3 = isRemote
-    ? 'Не собираетесь совмещать с другой работой или учёбой?'
-    : 'Вы находитесь в Астане и готовы работать в офисе, не совмещая с другой работой или учёбой?';
-  const q5 = isRemote ? '\n5) В каком городе вы сейчас проживаете?' : '';
+  const gateLine = isRemote
+    ? 'Скажите, пожалуйста: интересна ли вам такая работа, учитывая что это активные холодные звонки (более 50 в день) и полностью удалённый формат, из дома?'
+    : 'Скажите, пожалуйста: интересна ли вам такая работа, учитывая что это активные холодные звонки (более 50 в день), в офисе в Астане?';
   return `${greet}
 
 Вы откликнулись на нашу вакансию:
@@ -303,14 +336,27 @@ ${vacLine}
 • Доход: фикс оклад 100 тыс ₸ + KPI до 120 тыс ₸ за проведённые встречи и звонки + бонусы с продаж. Менеджеры получают от 600 тыс до 1,2 млн ₸.
 • Подробный расчёт (по шагам, с примерами): hr.sagibonus.com/usloviya.html
 
-Если вам откликается данная вакансия, ответьте, пожалуйста, на следующие вопросы, можно коротко:
+${gateLine} Если да, пришлю ещё несколько коротких вопросов, чтобы узнать о вас побольше.
+
+Если удобнее уточнить что-то в звонке или в WhatsApp, пишите: +7 707 700 0087.`;
+}
+
+// Анкета из 5 вопросов — уходит вторым сообщением, после того как кандидат ответил на гейт-
+// вопрос из первого сообщения не отказом (см. ФАЗА B1). Текст самих вопросов не поменялся,
+// просто вопрос 4 теперь честно говорит «начать обучение», а не «начать стажировку».
+function buildQuestionsMessage(vacKind, name) {
+  const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, отлично!` : 'Отлично!';
+  const isRemote = vacKind === 'sales_remote';
+  const q3 = isRemote
+    ? 'Не собираетесь совмещать с другой работой или учёбой?'
+    : 'Вы находитесь в Астане и готовы работать в офисе, не совмещая с другой работой или учёбой?';
+  const q5 = isRemote ? '\n5) В каком городе вы сейчас проживаете?' : '';
+  return `${greet} Тогда ещё несколько вопросов, можно коротко:
 
 1) Есть ли у вас опыт в активных B2B-продажах? Это были МСБ предприниматели?
 2) Имеется ли у вас опыт холодных звонков? Готовы совершать более 50 хол. звонков в день?
 3) ${q3}
-4) Если мы рассмотрим вашу кандидатуру, когда вы готовы приступить к работе / начать стажировку?${q5}
-
-Если удобнее уточнить что-то в звонке или в WhatsApp, пишите: +7 707 700 0087.`;
+4) Если мы рассмотрим вашу кандидатуру, когда вы готовы приступить к работе / начать обучение?${q5}`;
 }
 
 // Находит в hr:candidates запись по id и заменяет её (обновление, а не добавление).
@@ -1276,6 +1322,28 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Разовая миграция (2026-08-18, при введении гейт-вопроса перед анкетой): ВСЕ, кто уже есть в
+  // SEEN_KEY на момент деплоя, получили СТАРОЕ первое сообщение (условия + все 5 вопросов сразу,
+  // без отдельного гейта) — их нельзя пускать через новую ФАЗУ B1, иначе бот решит, что они ещё
+  // не проходили гейт, и после ответа на «старые» 5 вопросов пришлёт им анкету ЕЩЁ РАЗ. Копируем
+  // текущий SEEN_KEY в GATE_HANDLED_KEY (гейт для них считается пройденным задним числом) и в
+  // QUESTIONS_SENT_KEY (чтобы ФАЗА B2 продолжила проверять их ответы ровно как раньше). Новые
+  // отклики, которые появятся ПОСЛЕ этого вызова, в SEEN_KEY на момент вызова не попадут — они
+  // корректно пройдут новый гейт. Безопасно дёргать повторно (просто SUNIONSTORE поверх, ничего
+  // не отправляет и не удаляет).
+  if (req.query?.migrateGateKeys) {
+    try {
+      const before = { gateHandled: (await redis(['SCARD', GATE_HANDLED_KEY])) || 0, questionsSent: (await redis(['SCARD', QUESTIONS_SENT_KEY])) || 0, seen: (await redis(['SCARD', SEEN_KEY])) || 0 };
+      await redis(['SUNIONSTORE', GATE_HANDLED_KEY, GATE_HANDLED_KEY, SEEN_KEY]);
+      await redis(['SUNIONSTORE', QUESTIONS_SENT_KEY, QUESTIONS_SENT_KEY, SEEN_KEY]);
+      const after = { gateHandled: (await redis(['SCARD', GATE_HANDLED_KEY])) || 0, questionsSent: (await redis(['SCARD', QUESTIONS_SENT_KEY])) || 0 };
+      res.status(200).json({ ok: true, before, after });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Изолированный тестовый маршрут: пробует отправить сообщение ОДНОЙ негоциации разными
   // способами (JSON / form-urlencoded), НЕ трогая SEEN_KEY/пайплайн — только для диагностики
   // формата запроса к hh.ru, чтобы не спамить реальных кандидатов, пока не найдём рабочий формат.
@@ -1480,14 +1548,101 @@ export default async function handler(req, res) {
       }
     }
 
-    // ==== ФАЗА B: проверяем, кто уже ответил на наши вопросы ====
+    // Кандидаты пайплайна загружаются один раз на весь прогон (не по одному внутри цикла) —
+    // нужны и для гейта, и для анкеты, и для проверки «пора ли напомнить не ответившим».
+    const candRawList = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+    const candById = new Map();
+    for (const r of candRawList) { try { const o = JSON.parse(r); if (o.id) candById.set(o.id, o); } catch (e) {} }
+
+    // ==== ФАЗА B1: проверяем, кто ответил на гейт-вопрос (интересен ли формат) ====
+    // Та же «карусель»-логика, что и в B2 ниже — курсор в Redis, чтобы за несколько прогонов
+    // проверить всех ожидающих по кругу, а не всегда первых N.
+    const gateAwaitingIds = (await redis(['SDIFF', SEEN_KEY, GATE_HANDLED_KEY])) || [];
+    const gateAwaitingCount = gateAwaitingIds.length;
+    let gateCursor = parseInt(await redis(['GET', GATE_CURSOR_KEY]), 10);
+    if (!Number.isFinite(gateCursor) || gateCursor < 0) gateCursor = 0;
+    const gateToCheck = [];
+    if (gateAwaitingCount > 0) {
+      const n = Math.min(MAX_REPLIES_PER_RUN, gateAwaitingCount);
+      for (let i = 0; i < n; i++) gateToCheck.push(gateAwaitingIds[(gateCursor + i) % gateAwaitingCount]);
+    }
+    const remainingGateAwaiting = gateAwaitingCount - gateToCheck.length;
+
+    let gateChecked = 0, gatePassed = 0, gateDeclined = 0, gateRemindersSent = 0;
+    const gatePreview = [];
+    for (const negId of gateToCheck) {
+      gateChecked++;
+      try {
+        const msgsRes = await hhGet(`/negotiations/${negId}/messages`, token);
+        if (!msgsRes.ok) {
+          if (debug) errors.push({ negId, step: 'fetch_gate_messages', status: msgsRes.status, data: msgsRes.data });
+          continue;
+        }
+        const messages = msgsRes.data.items || msgsRes.data.messages || (Array.isArray(msgsRes.data) ? msgsRes.data : []);
+        const { replyText, debug: replyDebug } = extractCandidateReply(messages);
+        if (!replyText) {
+          if (dryRun && debug) gatePreview.push({ negId, hasReply: false, debug: replyDebug });
+          try {
+            const rec = candById.get('hh_' + negId);
+            const alreadyReminded = await redis(['SISMEMBER', REMINDED_GATE_KEY, negId]);
+            if (rec && rec.ts && alreadyReminded !== 1 && (Date.now() - rec.ts) >= REMIND_AFTER_MS) {
+              if (!dryRun) {
+                const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: REMINDER_TEXT });
+                await redis(['SADD', REMINDED_GATE_KEY, negId]);
+                if (rem.ok) gateRemindersSent++;
+              } else {
+                gateRemindersSent++;
+              }
+            }
+          } catch (e) {}
+          continue; // ещё не ответил на гейт — оставляем в очереди на следующий запуск
+        }
+        const existingRec = candById.get('hh_' + negId) || null;
+        const vacKind = pickVacancyKind(existingRec?.vacancy || '');
+        const name = existingRec?.name || 'Кандидат с hh.kz';
+        const uninterested = looksUninterested(replyText);
+        if (dryRun) {
+          gatePreview.push({ negId, hasReply: true, name, replyText: replyText.slice(0, 300), uninterested });
+          continue;
+        }
+        if (uninterested) {
+          const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildDeclineText(name) });
+          await redis(['SADD', GATE_HANDLED_KEY, negId]);
+          await redis(['SADD', DECLINED_KEY, negId]);
+          if (sent.ok) {
+            await updateCandidateRecord('hh_' + negId, { stage: 'Не подходит', verdict: 'Не подходит', summary: 'Отказ на гейт-вопросе (формат/холодные звонки не подходят): ' + replyText.slice(0, 300) });
+          } else {
+            errors.push({ negId, step: 'send_decline', status: sent.status, data: sent.data });
+          }
+          gateDeclined++;
+        } else {
+          const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildQuestionsMessage(vacKind, name) });
+          if (sent.ok) {
+            await redis(['SADD', GATE_HANDLED_KEY, negId]);
+            await redis(['SADD', QUESTIONS_SENT_KEY, negId]);
+            await redis(['SET', 'hh:questions_ts:' + negId, String(Date.now())]);
+            gatePassed++;
+          } else {
+            errors.push({ negId, step: 'send_questions', status: sent.status, data: sent.data });
+          }
+        }
+      } catch (e) {
+        errors.push({ negId, step: 'gate_check', error: e.message });
+      }
+    }
+    if (!dryRun) {
+      const nextGateCursor = gateAwaitingCount > 0 ? (gateCursor + gateToCheck.length) % gateAwaitingCount : 0;
+      await redis(['SET', GATE_CURSOR_KEY, String(nextGateCursor)]);
+    }
+
+    // ==== ФАЗА B2: проверяем, кто уже ответил на анкету из 5 вопросов ====
     // ВАЖНО: раньше здесь брались всегда первые N элементов awaitingIds (slice(0, N)).
     // SDIFF возвращает элементы в фиксированном порядке, который не меняется, пока состав множества
     // не изменится — то есть каждый прогон проверял ОДНИХ И ТЕХ ЖЕ первых кандидатов, а остальные
     // (условно 6-й и далее) не проверялись вообще, пока кто-то из первых не ответит. Чтобы за несколько
     // прогонов проверить ВСЕХ ожидающих по кругу, используем «карусель» — курсор в Redis, который
     // сдвигается на количество проверенных каждый боевой (не dryRun) прогон.
-    const awaitingIds = (await redis(['SDIFF', SEEN_KEY, REPLIED_KEY])) || [];
+    const awaitingIds = (await redis(['SDIFF', QUESTIONS_SENT_KEY, REPLIED_KEY])) || [];
     const awaitingCount = awaitingIds.length;
     let reviewCursor = parseInt(await redis(['GET', REPLY_CURSOR_KEY]), 10);
     if (!Number.isFinite(reviewCursor) || reviewCursor < 0) reviewCursor = 0;
@@ -1497,12 +1652,6 @@ export default async function handler(req, res) {
       for (let i = 0; i < n; i++) toCheck.push(awaitingIds[(reviewCursor + i) % awaitingCount]);
     }
     const remainingAwaiting = awaitingCount - toCheck.length;
-
-    // Кандидаты пайплайна загружаются один раз на весь прогон (не по одному внутри цикла) —
-    // нужны и для оценки ответа, и для проверки «пора ли напомнить не ответившим».
-    const candRawList = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
-    const candById = new Map();
-    for (const r of candRawList) { try { const o = JSON.parse(r); if (o.id) candById.set(o.id, o); } catch (e) {} }
 
     let repliesChecked = 0, repliesFound = 0, remindersSent = 0;
     const replyPreview = [];
@@ -1518,12 +1667,14 @@ export default async function handler(req, res) {
         const { replyText, debug: replyDebug } = extractCandidateReply(messages);
         if (!replyText) {
           if (dryRun && debug) replyPreview.push({ negId, hasReply: false, debug: replyDebug, rawSample: JSON.stringify(messages).slice(0, 300) });
-          // Напоминание: если с первого сообщения прошло больше REMIND_AFTER_MS и мы ещё не
-          // напоминали — шлём один короткий пинг. Поднимает долю ответивших без спама.
+          // Напоминание: если с момента отправки анкеты (не с первого гейт-сообщения — гейт мог
+          // ответить не сразу) прошло больше REMIND_AFTER_MS и мы ещё не напоминали — шлём один
+          // короткий пинг. Поднимает долю ответивших без спама.
           try {
-            const rec = candById.get('hh_' + negId);
+            const questionsTsRaw = await redis(['GET', 'hh:questions_ts:' + negId]);
+            const questionsTs = parseInt(questionsTsRaw, 10) || 0;
             const alreadyReminded = await redis(['SISMEMBER', REMINDED_KEY, negId]);
-            if (rec && rec.ts && alreadyReminded !== 1 && (Date.now() - rec.ts) >= REMIND_AFTER_MS) {
+            if (questionsTs && alreadyReminded !== 1 && (Date.now() - questionsTs) >= REMIND_AFTER_MS) {
               if (!dryRun) {
                 const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: REMINDER_TEXT });
                 await redis(['SADD', REMINDED_KEY, negId]);
@@ -1583,7 +1734,7 @@ export default async function handler(req, res) {
       await redis(['SET', REPLY_CURSOR_KEY, String(nextCursor)]);
     }
 
-    // ==== ФАЗА D: следим за вопросами после приглашения на стажировку ====
+    // ==== ФАЗА D: следим за вопросами после приглашения на обучение ====
     // Кандидат уже помечен REPLIED_KEY (фаза B его больше не трогает), но мог задать вопрос
     // В ОТВЕТ на приглашение. Смотрим последние MAX_WATCH_PER_RUN «под наблюдением», ищем
     // сообщения кандидата ПОСЛЕ времени приглашения (или после последнего уже обработанного
@@ -1731,6 +1882,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       ok: true, dryRun,
       intake: { totalResponses: items.length, newTotal: newItems.length, processed: intakeProcessed, remaining: remainingNew, preview: dryRun ? intakePreview : undefined },
+      gate: { awaitingTotal: gateAwaitingIds.length, checked: gateChecked, remaining: remainingGateAwaiting, passed: gatePassed, declined: gateDeclined, remindersSent: gateRemindersSent, cursor: gateCursor, preview: dryRun ? gatePreview : undefined },
       replies: { awaitingTotal: awaitingIds.length, checked: repliesChecked, remaining: remainingAwaiting, found: repliesFound, remindersSent, cursor: reviewCursor, preview: dryRun ? replyPreview : undefined },
       followUps: { checked: watchChecked, questionsFound, autoAnswered },
       trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount },
