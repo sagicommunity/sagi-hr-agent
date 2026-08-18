@@ -113,6 +113,10 @@ export default async function handler(req, res) {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       name, contact, phone: '', vacancy: vacTitle,
       source: (source ? source + ' · ' : 'форма отклика · ') + vacTitle, howFound: source || null, age: evaln.age,
+      // 2026-08-18, по запросу Sagi: помечаем кандидатов вне 20-35 лет, но НЕ авто-отклоняем —
+      // жёсткий авто-отказ по возрасту юридически рискован (ст. 6 ТК РК про дискриминацию при
+      // приёме на работу). Только пометка, финальное решение всегда за Sagi.
+      ageChecked: true, ageOutOfRange: evaln.age != null && (evaln.age < 20 || evaln.age > 35),
       resume: resume.slice(0, 2000),
       answers: [{ q: 'Резюме / о себе', a: resume.slice(0, 4000) }],
       score: evaln.score, verdict: evaln.verdict, summary: evaln.summary,

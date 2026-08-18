@@ -48,7 +48,7 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, age: (typeof u.age === 'number') ? u.age : null, ageOutOfRange: !!u.ageOutOfRange, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
 }
 
 // Статусы сотрудника/стажёра (отдельно от role trainee/manager — role определяет доступный
@@ -81,7 +81,7 @@ async function findCandidateAnswers(u) {
   if (!match) return null;
   const answersText = match.replyText || match.resume || (Array.isArray(match.answers) ? match.answers.map(a => `${a.q}: ${a.a}`).join('\n\n') : '') || '';
   if (!answersText) return null;
-  return { text: answersText.slice(0, 4000), vacancy: match.vacancy || null, source: match.source || null, candId: match.id, howFound: match.howFound || null };
+  return { text: answersText.slice(0, 4000), vacancy: match.vacancy || null, source: match.source || null, candId: match.id, howFound: match.howFound || null, age: (typeof match.age === 'number') ? match.age : null, ageOutOfRange: !!match.ageOutOfRange };
 }
 
 // 2026-08-18: двигает стадию кандидата в hr:candidates вперёд по воронке, но только если он
@@ -170,7 +170,7 @@ export default async function handler(req, res) {
       try {
         const found = await findCandidateAnswers(u);
         if (found) {
-          u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; u.candId = found.candId; u.howFound = found.howFound;
+          u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; u.candId = found.candId; u.howFound = found.howFound; u.age = found.age; u.ageOutOfRange = found.ageOutOfRange;
           // 2026-08-18, по замечанию Sagi: «Стажировка» — это когда человек реально стажируется
           // (закончил обучение, есть наставник), а не просто приглашён. Регистрация на
           // hr.sagibonus.com — это начало ОБУЧЕНИЯ, ставим кандидату именно эту стадию (если он
@@ -343,7 +343,7 @@ export default async function handler(req, res) {
         try {
           const found = await findCandidateAnswers(u);
           if (found) {
-            u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; u.howFound = found.howFound;
+            u.intakeAnswers = found.text; u.intakeVacancy = found.vacancy; u.howFound = found.howFound; u.age = found.age; u.ageOutOfRange = found.ageOutOfRange;
             await putUser(u);
             updated++;
             names.push(u.name);

@@ -349,6 +349,33 @@ async function evaluateReply(vacKind, name, replyText) {
   return out;
 }
 
+// ---- Возрастной фильтр (2026-08-18, по запросу Sagi: помечать, но НЕ авто-отказывать —
+// жёсткий авто-отказ по возрасту юридически рискован, статья 6 Трудового кодекса РК запрещает
+// дискриминацию при приёме на работу, в т.ч. по возрасту). Только пометка для ручного решения РОПа.
+const AGE_MIN = 20, AGE_MAX = 35;
+function isAgeOutOfRange(age) { return age != null && (age < AGE_MIN || age > AGE_MAX); }
+function computeAgeFromBirthDate(birthDateStr) {
+  if (!birthDateStr) return null;
+  const bd = new Date(birthDateStr);
+  if (isNaN(bd.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - bd.getFullYear();
+  const m = now.getMonth() - bd.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < bd.getDate())) age--;
+  return (age >= 10 && age <= 90) ? age : null;
+}
+// Best-effort извлечение возраста из свободного текста резюме/анкеты — для случаев, когда
+// структурированной даты рождения нет (например, резюме вставлено текстом через форму/бот).
+function extractAgeFromText(text) {
+  if (!text) return null;
+  const s = String(text);
+  let m = s.match(/(\d{1,2})\s*лет\b/i) || s.match(/(\d{1,2})\s*год(?:а)?\b/i);
+  if (m) { const n = parseInt(m[1], 10); if (n >= 14 && n <= 90) return n; }
+  m = s.match(/родил[а-я]*\s+\d{1,2}\s+[а-яё]+\s+(\d{4})/i) || s.match(/(\d{4})\s*г(?:ода)?\.?\s*рожд/i) || s.match(/дата\s+рождения[:\s]+\d{1,2}[.\/]\d{1,2}[.\/](\d{4})/i);
+  if (m) { const year = parseInt(m[1], 10); const age = computeAgeFromBirthDate(year + '-06-15'); if (age != null) return age; }
+  return null;
+}
+
 function buildResumeText(resume) {
   if (!resume) return '';
   const parts = [];
@@ -1098,6 +1125,64 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ---- Пометка «возраст вне 20-35» (2026-08-18, по запросу Sagi) ----
+  // ВАЖНО: авто-отказ по возрасту НЕ делаем — жёсткий автоматический фильтр по возрасту
+  // формально является дискриминацией по Трудовому кодексу РК (ст. 6), это только пометка
+  // для ручного решения РОПа (ageOutOfRange), финальное решение всегда за Sagi. Разовый
+  // прогон батчами по уже накопленной базе — новые кандидаты со всех каналов с этого момента
+  // получают ageChecked/age/ageOutOfRange сразу при интейке (hh.kz — ФАЗА A выше, форма/tg/wa —
+  // в своих файлах). Для hh.kz-кандидатов без сохранённого resumeId (был потерян, если у
+  // кандидата уже был указан телефон) дополнительно запрашиваем /negotiations/{id} за id резюме.
+  if (req.query?.backfillAges) {
+    try {
+      const limit = parseInt(req.query.limitAge, 10) || 15;
+      const raw = (await redis(['LRANGE', CAND_KEY, 0, -1])) || [];
+      const items = raw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const todoAll = items.filter(x => !x.ageChecked);
+      const todo = todoAll.slice(0, limit);
+      let token = null;
+      if (todo.some(x => x.id?.startsWith('hh_'))) {
+        try { token = await getEmployerToken(); } catch (e) {}
+      }
+      let updated = 0;
+      const foundOutOfRange = [];
+      for (const rec of todo) {
+        let age = null;
+        try {
+          if (rec.id?.startsWith('hh_') && token) {
+            let resumeId = rec.resumeId || null;
+            if (!resumeId) {
+              const m = String(rec.contact || '').match(/резюме\s+(\d+)/);
+              if (m) resumeId = m[1];
+            }
+            if (!resumeId) {
+              const negId = rec.id.slice(3);
+              const negRes = await hhGet('/negotiations/' + negId, token);
+              resumeId = negRes.ok ? (negRes.data?.resume?.id || null) : null;
+            }
+            if (resumeId) {
+              const rr = await hhGet('/resumes/' + resumeId, token);
+              if (rr.ok) age = computeAgeFromBirthDate(rr.data?.birth_date);
+            }
+            if (age == null) age = extractAgeFromText(rec.resume);
+          } else if (typeof rec.age === 'number') {
+            age = rec.age; // уже извлечён ИИ-скринером на входе (apply.js) — доверяем этому значению
+          } else {
+            const textPool = [rec.resume, rec.replyText, Array.isArray(rec.answers) ? rec.answers.map(a => a.a).join(' ') : ''].filter(Boolean).join(' ');
+            age = extractAgeFromText(textPool);
+          }
+        } catch (e) {}
+        const patch = { age, ageChecked: true, ageOutOfRange: isAgeOutOfRange(age) };
+        const ok = await updateCandidateRecord(rec.id, patch);
+        if (ok) { updated++; if (patch.ageOutOfRange) foundOutOfRange.push({ id: rec.id, name: rec.name, age }); }
+      }
+      res.status(200).json({ ok: true, checked: updated, remaining: Math.max(0, todoAll.length - updated), foundOutOfRange, totalMissingAgeCheck: todoAll.length });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Воронка по hh.kz (2026-08-17, по запросу Sagi): сколько всего откликов пришло на активную
   // вакансию, скольким отправили первое сообщение (SEEN_KEY), сколько из них ответили (REPLIED_KEY),
   // сколько получили приглашение на стажировку и всё ещё под наблюдением (INVITE_WATCH_KEY).
@@ -1682,17 +1767,20 @@ export default async function handler(req, res) {
         const phone = extractPhone(resumeFull);
         const resumeText = buildResumeText(resumeFull) || (it.resume?.title || '');
         const msgText = buildFirstMessage(vacKind, name);
+        const age = computeAgeFromBirthDate(resumeFull?.birth_date) ?? extractAgeFromText(resumeText);
         if (dryRun) {
-          intakePreview.push({ negId, name, vacancy: vacTitle, vacKind });
+          intakePreview.push({ negId, name, vacancy: vacTitle, vacKind, age });
         } else {
           const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
           if (!sent.ok) errors.push({ negId, step: 'send_first_message', status: sent.status, data: sent.data });
           const rec = {
             id: 'hh_' + negId, name,
             contact: phone || (resumeId ? 'hh.kz резюме ' + resumeId : ''), phone: (phone || '').replace(/\D/g, ''),
+            resumeId: resumeId || null,
             vacancy: vacTitle, source: 'HH.kz отклик · ' + vacTitle,
             resume: resumeText.slice(0, 2000), score: null, verdict: null, summary: '',
             strengths: [], flags: [], stage: 'Ожидает ответа', ts: Date.now(), messageSent: sent.ok,
+            age, ageChecked: true, ageOutOfRange: isAgeOutOfRange(age),
           };
           await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]);
           await redis(['LTRIM', CAND_KEY, 0, 1999]);

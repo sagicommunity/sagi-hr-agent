@@ -242,6 +242,13 @@ function buildTgInviteText(name) {
   const greet = n ? `${n}, спасибо за ответы!` : 'Спасибо за ответы!';
   return `${greet}\n\nПриглашаем вас на обучение. Это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли появятся вопросы, пишите сюда же или в WhatsApp: +7 707 700 0087.`;
 }
+// Возраст здесь отдельным вопросом не спрашиваем (в отличие от wa.js) — best-effort вытаскиваем
+// из свободного текста резюме/о себе, если кандидат сам его упомянул.
+function extractAgeFromText(text) {
+  const m = String(text || '').match(/(\d{1,2})\s*лет\b/i) || String(text || '').match(/(\d{1,2})\s*год(?:а)?\b/i);
+  if (m) { const n = parseInt(m[1], 10); if (n >= 14 && n <= 90) return n; }
+  return null;
+}
 async function finalize(chat, st) {
   const vac = st.vacancy || 'sales';
   const d = st.data || {};
@@ -253,9 +260,13 @@ async function finalize(chat, st) {
     ? buildTgInviteText(d.name)
     : 'Спасибо за ответы! Заявка принята, мы рассмотрим её и свяжемся с вами по указанному контакту. Хорошего дня!');
   const phone = digits(d.phone);
+  const age = extractAgeFromText(d.resume);
   const rec = {
     id: newId(), name: d.name || 'Из Telegram', contact: d.phone || '', phone, tgChatId: chat,
-    vacancy: VAC[vac].title,
+    vacancy: VAC[vac].title, age,
+    // 2026-08-18, по запросу Sagi: помечаем кандидатов вне 20-35, но НЕ авто-отклоняем (ст. 6 ТК
+    // РК про дискриминацию по возрасту при приёме) — только пометка, решение всегда за Sagi.
+    ageChecked: true, ageOutOfRange: age != null && (age < 20 || age > 35),
     source: 'Telegram-бот · ' + VAC[vac].title + (d.source ? ' (' + d.source + ')' : ''), howFound: d.source || null,
     resume: fullText.slice(0, 2000), score: ev.score, verdict: ev.verdict, summary: ev.summary,
     strengths: [], flags: [], stage: invited ? 'Приглашён' : (ev.verdict === 'Отказ' ? 'Отказ' : 'Новый'), waMessage: waMessage(d.name), ts: Date.now(),
