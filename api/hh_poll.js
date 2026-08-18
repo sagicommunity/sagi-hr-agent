@@ -966,31 +966,51 @@ export default async function handler(req, res) {
   // на hh.kz, а не то, что у нас уже долетело и сохранилось в hr:candidates.
   if (req.query?.hhFunnelStats) {
     try {
-      const [seenTotal, repliedTotal, watchTotal] = await Promise.all([
-        redis(['SCARD', SEEN_KEY]),
-        redis(['SCARD', REPLIED_KEY]),
-        redis(['SCARD', INVITE_WATCH_KEY]),
+      const [seenIds, repliedIds, watchIds] = await Promise.all([
+        redis(['SMEMBERS', SEEN_KEY]),
+        redis(['SMEMBERS', REPLIED_KEY]),
+        redis(['SMEMBERS', INVITE_WATCH_KEY]),
       ]);
+      const seenArr = Array.isArray(seenIds) ? seenIds : [];
+      const repliedArr = Array.isArray(repliedIds) ? repliedIds : [];
+      const watchArr = Array.isArray(watchIds) ? watchIds : [];
+      const repliedSet = new Set(repliedArr);
+      const awaitingArr = seenArr.filter(id => !repliedSet.has(id));
       const token = await getEmployerToken();
       const employerId = process.env.HH_EMPLOYER_ID || '';
       const vacRes = await hhGet(`/employers/${employerId}/vacancies/active?per_page=50`, token);
       const vacancies = vacRes.ok ? (vacRes.data.items || []) : [];
       const perVacancy = [];
       let totalResponses = 0;
+      let allHhIds = [];
       for (const v of vacancies) {
-        const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=1`, token);
+        // per_page=100 хватает с запасом на текущий масштаб (десятки откликов на вакансию) —
+        // и заодно даёт список id, а не только счётчик, чтобы кликом по карточке «Откликов на
+        // hh.kz» можно было увидеть КОНКРЕТНО кого, включая совсем свежих, ещё не обработанных.
+        const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=100`, token);
         const negTotal = neg.ok ? (neg.data.found ?? null) : null;
         if (typeof negTotal === 'number') totalResponses += negTotal;
+        const ids = neg.ok ? (neg.data.items || []).map(it => it.id).filter(Boolean) : [];
+        allHhIds = allHhIds.concat(ids);
         perVacancy.push({ vacancyId: v.id, vacancyName: v.name, negTotal, error: neg.ok ? null : { status: neg.status } });
       }
       res.status(200).json({
         ok: true,
         totalResponsesOnHh: totalResponses,
         perVacancy,
-        firstMessageSent: seenTotal || 0,
-        repliedToUs: repliedTotal || 0,
-        awaitingReply: Math.max(0, (seenTotal || 0) - (repliedTotal || 0)),
-        invitedToInternshipStillWatching: watchTotal || 0,
+        firstMessageSent: seenArr.length,
+        repliedToUs: repliedArr.length,
+        awaitingReply: awaitingArr.length,
+        invitedToInternshipStillWatching: watchArr.length,
+        // Списки negId по каждой цифре — фронт сам сматчит их с уже загруженным hr:candidates
+        // (id кандидата = 'hh_' + negId) и покажет конкретных людей по клику на цифру.
+        negIds: {
+          totalResponsesOnHh: allHhIds,
+          firstMessageSent: seenArr,
+          repliedToUs: repliedArr,
+          awaitingReply: awaitingArr,
+          invitedToInternshipStillWatching: watchArr,
+        },
       });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
