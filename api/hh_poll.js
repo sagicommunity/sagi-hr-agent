@@ -1465,6 +1465,32 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Ручной пропуск гейт-вопроса (2026-08-18, по просьбе Sagi): кандидат по факту уже ответил,
+  // например, написал Sagi лично в WhatsApp вместо чата hh.kz, поэтому ждать его ответа именно
+  // в hh.kz чате не нужно — сразу отправляем анкету из 5 вопросов, как будто гейт пройден.
+  // Дальше кандидат идёт по обычному пайплайну (ФАЗА B2 подхватит его ответ на анкету сама).
+  if (req.query?.manualPassGate) {
+    const negId = String(req.query.manualPassGate);
+    try {
+      const token = await getEmployerToken();
+      const candRaw3 = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      let rec = null;
+      for (const r of candRaw3) { try { const o = JSON.parse(r); if (o.id === 'hh_' + negId) { rec = o; break; } } catch (e) {} }
+      const vacKind = pickVacancyKind(rec?.vacancy || '');
+      const name = rec?.name || 'Кандидат с hh.kz';
+      const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildQuestionsMessage(vacKind, name) });
+      if (sent.ok) {
+        await redis(['SADD', GATE_HANDLED_KEY, negId]);
+        await redis(['SADD', QUESTIONS_SENT_KEY, negId]);
+        await redis(['SET', 'hh:questions_ts:' + negId, String(Date.now())]);
+      }
+      res.status(200).json({ ok: sent.ok, negId, name, status: sent.ok ? undefined : sent.status, data: sent.ok ? undefined : sent.data });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Изолированный тестовый маршрут: пробует отправить сообщение ОДНОЙ негоциации разными
   // способами (JSON / form-urlencoded), НЕ трогая SEEN_KEY/пайплайн — только для диагностики
   // формата запроса к hh.ru, чтобы не спамить реальных кандидатов, пока не найдём рабочий формат.
