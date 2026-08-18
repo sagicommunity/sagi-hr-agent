@@ -619,6 +619,52 @@ export default async function handler(req, res) {
     }
     return;
   }
+  // Чанкованная отправка большого POST-тела на api.hh.ru (2026-08-18) — WebFetch из облачной
+  // песочницы отдаёт "Invalid URL" на длинных URL (проверено: ~120 символов проходит, ~4250 —
+  // нет), а тело создания вакансии (описание на русском в base64) легко превышает лимит. Поэтому
+  // тело собирается по кусочкам в Redis, а затем публикуется отдельным маленьким запросом.
+  //   &hhStageAppend=<ключ>&hhChunk=<b64-кусочек тела>  — добавить кусочек (в порядке вызовов)
+  //   &hhStageClear=<ключ>                              — очистить перед новой сборкой
+  //   &hhStagePublish=<ключ>&hhPath=<путь>               — собрать все кусочки, POST на api.hh.ru<путь>
+  //   &hhStagePeek=<ключ>                                — посмотреть, сколько кусочков и их суммарную длину (для проверки перед publish)
+  if (req.query?.hhStageClear) {
+    try { await redis(['DEL', 'hh:vac_stage:' + String(req.query.hhStageClear)]); res.status(200).json({ ok: true }); }
+    catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+  if (req.query?.hhStageAppend) {
+    try {
+      const key = 'hh:vac_stage:' + String(req.query.hhStageAppend);
+      await redis(['RPUSH', key, String(req.query.hhChunk || '')]);
+      await redis(['EXPIRE', key, '3600']);
+      const len = await redis(['LLEN', key]);
+      res.status(200).json({ ok: true, chunks: len });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+  if (req.query?.hhStagePeek) {
+    try {
+      const key = 'hh:vac_stage:' + String(req.query.hhStagePeek);
+      const parts = (await redis(['LRANGE', key, '0', '-1'])) || [];
+      const joined = parts.join('');
+      res.status(200).json({ ok: true, chunks: parts.length, totalB64Len: joined.length });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+  if (req.query?.hhStagePublish) {
+    try {
+      const key = 'hh:vac_stage:' + String(req.query.hhStagePublish);
+      const parts = (await redis(['LRANGE', key, '0', '-1'])) || [];
+      const b64 = parts.join('');
+      let body = {};
+      try { body = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); } catch (e) { res.status(200).json({ ok: false, error: 'JSON.parse не удался: ' + e.message, b64len: b64.length }); return; }
+      const token = await getEmployerToken();
+      const path = String(req.query.hhPath || '/vacancies');
+      const pr = await hhPost(path, token, body);
+      res.status(200).json({ ok: pr.ok, status: pr.status, data: pr.data });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
 
   // Диагностика: узнать, с какого именно Telegram-бота (username) и в какой чат уходят алерты
   // РОПу по ответам на hh.kz — это ДРУГОЙ бот, чем @Sagijobsbot (careers-бот кандидатов).
