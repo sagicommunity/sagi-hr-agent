@@ -1296,6 +1296,62 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Восстановительный маршрут (2026-08-18): чинит кандидатов, которых старая версия кода выше
+  // (см. правку в ФАЗЕ B) уже успела «потерять» — negId есть в REPLIED_KEY (раньше туда писали
+  // ДО проверки результата отправки), а реального сообщения-приглашения в hh.kz чате нет, потому
+  // что отправка могла тихо не удаться и это никак не проверялось и не логировалось. Sagi заметил
+  // это по живым кандидатам (Гульжан Шужикбаева и другие ответили на вопросы, но не получили
+  // приглашения). Смотрит последнее сообщение в переписке каждого «отвеченного» негоциации: если
+  // последнее сообщение — от кандидата (а не от нас), значит приглашение не дошло, дошлём сейчас.
+  // ?dryrun=1 — только показать, кого не дослали, ничего не отправлять. Безопасно дёргать повторно.
+  if (req.query?.resendMissingInvites) {
+    const scanLimit = Math.min(parseInt(req.query.scanLimit, 10) || 200, 300);
+    const sendLimit = Math.min(parseInt(req.query.sendLimit, 10) || 25, 40);
+    try {
+      const token = await getEmployerToken();
+      const repliedIds = (await redis(['SMEMBERS', REPLIED_KEY])) || [];
+      const candRaw2 = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const candById2 = new Map();
+      for (const r of candRaw2) { try { const o = JSON.parse(r); if (o.id) candById2.set(o.id, o); } catch (e) {} }
+      const missing = [];
+      let checked2 = 0;
+      for (const negId of repliedIds) {
+        if (checked2 >= scanLimit) break;
+        checked2++;
+        try {
+          const msgsRes = await hhGet(`/negotiations/${negId}/messages`, token);
+          if (!msgsRes.ok) continue;
+          const messages = msgsRes.data.items || msgsRes.data.messages || (Array.isArray(msgsRes.data) ? msgsRes.data : []);
+          if (!messages.length) continue;
+          const withTime = messages.map(m => ({ author: m.author?.participant_type || '', ts: m.created_at ? Date.parse(m.created_at) : 0 }));
+          withTime.sort((a, b) => a.ts - b.ts);
+          const last = withTime[withTime.length - 1];
+          if (last && /applicant/i.test(last.author)) {
+            const rec = candById2.get('hh_' + negId);
+            missing.push({ negId, name: rec?.name || 'Кандидат' });
+          }
+        } catch (e) {}
+      }
+      let sentCount = 0;
+      const results = [];
+      if (!dryRun) {
+        for (const m of missing.slice(0, sendLimit)) {
+          const sent = await hhPostForm('/negotiations/' + m.negId + '/messages', token, { message: buildInviteMessage(m.name, m.negId) });
+          results.push({ negId: m.negId, name: m.name, ok: sent.ok, status: sent.ok ? undefined : sent.status });
+          if (sent.ok) {
+            sentCount++;
+            await redis(['SADD', INVITE_WATCH_KEY, m.negId]);
+            await redis(['SET', 'hh:invite_ts:' + m.negId, String(Date.now())]);
+          }
+        }
+      }
+      res.status(200).json({ ok: true, dryRun, repliedTotal: repliedIds.length, scanned: checked2, missingFound: missing.length, missingSample: missing.slice(0, 40), sentCount, results });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   if (req.query?.testSend) {
     const negId = String(req.query.testSend);
     const testText = 'Тест доставки сообщения от Sagi HR-бота, можно игнорировать.';
@@ -1489,7 +1545,6 @@ export default async function handler(req, res) {
         if (dryRun) {
           replyPreview.push({ negId, hasReply: true, name, replyText: replyText.slice(0, 300), recommend: ev.recommend, summary: ev.summary, evalDebug: ev._debug || '' });
         } else {
-          await redis(['SADD', REPLIED_KEY, negId]);
           // По прямому указанию Sagi (2026-08-17): каждый ответивший сразу получает приглашение —
           // не ждём отдельного ручного решения по каждому. Вердикт ИИ и текст ответа сохраняются
           // для контекста, но НЕ блокируют продвижение по воронке.
@@ -1502,11 +1557,22 @@ export default async function handler(req, res) {
             strengths: ev.strengths || [], flags: ev.flags || [], replyText: replyText.slice(0, 2000),
           });
           await notifyReplied(updated || { ...existingRec, verdict: ev.recommend, summary: ev.summary }, replyText);
-          // Приглашение уходит В ТОТ ЖЕ чат — не спам, продолжение диалога. Дальше несколько
-          // дней следим, не появится ли вопрос от кандидата (см. ФАЗА D ниже).
-          await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildInviteMessage(name, negId) });
-          await redis(['SADD', INVITE_WATCH_KEY, negId]);
-          await redis(['SET', 'hh:invite_ts:' + negId, String(Date.now())]);
+          // 2026-08-18, найден и исправлен баг: раньше negId добавлялся в REPLIED_KEY ДО отправки
+          // приглашения, а результат отправки вообще не проверялся. Если hh.kz на секунду
+          // отклонял запрос (или падал сетевой вызов), кандидат навсегда оставался без реального
+          // сообщения в hh.kz чате, хотя у нас в базе уже стояло «Приглашён» — Sagi заметил это
+          // по нескольким живым кандидатам (Гульжан Шужикбаева и другие ответили, но ответа от нас
+          // не получили). Теперь: в REPLIED_KEY (и в список «больше не проверять») кандидат
+          // попадает только ПОСЛЕ реально успешной отправки; если отправка не удалась — оставляем
+          // его в очереди «ожидающих», следующий прогон опроса попробует отправить снова.
+          const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildInviteMessage(name, negId) });
+          if (sent.ok) {
+            await redis(['SADD', REPLIED_KEY, negId]);
+            await redis(['SADD', INVITE_WATCH_KEY, negId]);
+            await redis(['SET', 'hh:invite_ts:' + negId, String(Date.now())]);
+          } else {
+            errors.push({ negId, step: 'send_invite', status: sent.status, data: sent.data });
+          }
         }
       } catch (e) {
         errors.push({ negId, step: 'reply_check', error: e.message });
