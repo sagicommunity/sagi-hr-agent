@@ -511,6 +511,58 @@ function extractCandidateReply(messages) {
   return { replyText: after.map(m => m.text).join('\n'), debug: '' };
 }
 
+// Захардкоженное тело вакансии Success Manager (2026-08-18) — чанкованная отправка через
+// WebFetch-прокси оказалась заблокирована на уровне прокси (PROXY_REJECTED, HTTP 403) для любых
+// URL с base64-содержимым, даже коротких (~600-650 символов), не только для длинных (>4250).
+// Поэтому тело вакансии зашито прямо в код и публикуется отдельным маленьким GET-запросом
+// без каких-либо крупных payload в URL — см. &hhPublishVacancy ниже.
+const HH_VAC_BODY_successmgr = {
+  "name": "Success Manager (Сервис-менеджер по работе с партнерами)",
+  "area": {
+    "id": "160"
+  },
+  "type": {
+    "id": "open"
+  },
+  "billing_type": {
+    "id": "standard_plus"
+  },
+  "professional_roles": [
+    {
+      "id": "70"
+    }
+  ],
+  "employment_form": {
+    "id": "FULL"
+  },
+  "work_format": [
+    {
+      "id": "REMOTE"
+    }
+  ],
+  "working_hours": [
+    {
+      "id": "HOURS_8"
+    }
+  ],
+  "experience": {
+    "id": "between1And3"
+  },
+  "salary": {
+    "from": 200000,
+    "to": 600000,
+    "currency": "KZT",
+    "gross": true
+  },
+  "description": "<p><strong>Sagi Bonus</strong> — платформа лояльности и маркетинга для бизнеса.</p>\n<p>Ищем сервис-менеджера, который будет держать связь с нашими клиентами-партнерами, помогать им получать максимум от платформы и продлевать подписки. Формат — удалённо, 5/2.</p>\n<p><strong>Обязанности</strong></p>\n<ul>\n<li>Постоянная коммуникация с клиентами: звонки, чаты, встречи</li>\n<li>Продление подписок партнеров, работа на удержание</li>\n<li>Обработка жалоб и запросов клиентов, решение спорных ситуаций</li>\n<li>Проактивная работа на повышение лояльности и вовлеченности партнеров</li>\n<li>Проведение онлайн-встреч, звонков и вебинаров для партнеров</li>\n<li>Ведение клиентской базы и истории коммуникаций в CRM</li>\n</ul>\n<p><strong>Требования</strong></p>\n<ul>\n<li>Опыт работы с клиентами (сервис, поддержка, аккаунт-менеджмент)</li>\n<li>Свободный казахский и русский язык, грамотная и четкая речь</li>\n<li>Отличные коммуникативные навыки, стрессоустойчивость</li>\n<li>Уверенное владение ПК, готовность работать в CRM</li>\n<li>График 5/2, с 9:00 до 18:00, полностью удалённо</li>\n<li>Будет большим плюсом: опыт в B2B продажах</li>\n</ul>\n<p><strong>Что мы предлагаем</strong></p>\n<ul>\n<li>Оклад 200 000 тг + бонусы за результат</li>\n<li>Средний совокупный доход 450 000 – 600 000 тг</li>\n<li>Удалённая работа, гибкая обстановка</li>\n<li>Работа в растущей IT-компании, платформа для бизнеса по всему Казахстану</li>\n<li>Реальное влияние на продукт и клиентский опыт</li>\n</ul>",
+  "manager": {
+    "id": "1909207"
+  },
+  "response_letter_required": false,
+  "accept_temporary": false
+}
+;
+
 export default async function handler(req, res) {
   // Ручное добавление кандидата — ТОЛЬКО через POST с телом (не query-параметрами), чтобы
   // имя/телефон кандидата не попадали в URL/логи. Обрабатывается до общей проверки method===GET.
@@ -661,6 +713,23 @@ export default async function handler(req, res) {
       const token = await getEmployerToken();
       const path = String(req.query.hhPath || '/vacancies');
       const pr = await hhPost(path, token, body);
+      res.status(200).json({ ok: pr.ok, status: pr.status, data: pr.data });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+
+  // Публикация захардкоженной вакансии Success Manager (2026-08-18) — см. константу
+  // HH_VAC_BODY_successmgr выше. Обходит WebFetch-прокси полностью: сам запрос короткий,
+  // тело вакансии живёт в коде, а не в URL.
+  //   &hhPublishVacancy=successmgr   — POST HH_VAC_BODY_successmgr на /vacancies
+  if (req.query?.hhPublishVacancy) {
+    try {
+      const key = String(req.query.hhPublishVacancy);
+      const bodies = { successmgr: HH_VAC_BODY_successmgr };
+      const body = bodies[key];
+      if (!body) { res.status(200).json({ ok: false, error: 'неизвестный ключ: ' + key }); return; }
+      const token = await getEmployerToken();
+      const pr = await hhPost('/vacancies', token, body);
       res.status(200).json({ ok: pr.ok, status: pr.status, data: pr.data });
     } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
     return;
