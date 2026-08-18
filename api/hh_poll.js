@@ -296,15 +296,9 @@ async function hhPostForm(path, token, params) {
 // обратная: ищем явные признаки ОФИСНОЙ вакансии, а по умолчанию считаем удалённой.
 function pickVacancyKind(title) {
   const s = (title || '').toLowerCase();
-  if (/success manager|сервис.?менедж|аккаунт.?менедж|account manager|customer success|работе с партн[её]р/.test(s)) return 'success_manager';
   if (/удал[её]н|дистанц|из дома|remote/.test(s)) return 'sales_remote';
   if (/\bофис|очно/.test(s)) return 'sales';
   return 'sales_remote';
-}
-
-function canonicalVacTitle(vacKind) {
-  if (vacKind === 'success_manager') return 'Success Manager (Сервис-менеджер по работе с партнёрами)';
-  return vacKind === 'sales_remote' ? 'Менеджер по продажам, удалённо' : 'Менеджер по продажам';
 }
 
 // ---- ИИ-оценка ОТВЕТА кандидата (не резюме!) ----
@@ -328,18 +322,12 @@ Zoom) проводит наставник, компьютер понадобит
 Верни ТОЛЬКО валидный JSON без markdown:
 {"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
 
-const SCREEN_REPLY_SUCCESS = `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, вакансия «Success Manager / Сервис-менеджер по работе с партнёрами», полностью удалённо, график 5/2 09:00-18:00).
-Тебе дан ответ кандидата на первое сообщение (вопросы про опыт работы с клиентами, владение казахским/русским языками, ПК/CRM, готовность к графику 5/2 удалённо без совмещения).
-ЧТО ВАЖНО: грамотная связная речь на русском (в идеале и на казахском), клиентоориентированность, стрессоустойчивость, дисциплина для удалённой работы без офисного контроля. Формальный опыт в B2B-продажах — плюс, но не обязателен, НЕ придирайся к его отсутствию.
-Верни ТОЛЬКО валидный JSON без markdown:
-{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
-
 async function evaluateReply(vacKind, name, replyText) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   let out = { recommend: null, summary: '', strengths: [], flags: [], _debug: '' };
   if (!apiKey) { out._debug = 'no ANTHROPIC_API_KEY'; return out; }
   if (!replyText) { out._debug = 'empty replyText'; return out; }
-  const sys = vacKind === 'success_manager' ? SCREEN_REPLY_SUCCESS : vacKind === 'sales_remote' ? SCREEN_REPLY_SALES_REMOTE : SCREEN_REPLY_SALES;
+  const sys = vacKind === 'sales_remote' ? SCREEN_REPLY_SALES_REMOTE : SCREEN_REPLY_SALES;
   try {
     const ar = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -385,15 +373,10 @@ function extractPhone(resume) {
 }
 
 // Алерт РОПу — теперь только когда кандидат РЕАЛЬНО ответил (не на входе).
-// autoInvited=false (Success Manager, 2026-08-18): для этой роли пока нет отдельной программы
-// обучения на hr.sagibonus.com (она заточена под продажи), поэтому кандидату НЕ уходит авто-
-// приглашение туда — решение и связь с кандидатом полностью на Sagi, текст алерта это отражает.
-async function notifyReplied(rec, replyText, autoInvited) {
+async function notifyReplied(rec, replyText) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
-  const header = autoInvited === false ? '💬 Кандидат ответил (HH.kz) — Sagi' : '🎓 Кандидат ответил на анкету → отправлен на обучение (HH.kz) — Sagi';
-  const footer = autoInvited === false ? 'Автоприглашения на обучение для этой роли нет — нужен ручной контакт с кандидатом.' : 'Материалы обучения на hr.sagibonus.com (карточка «🎓 Стажёр»)';
-  const text = `${header}\n\n🎯 Вакансия: ${rec.vacancy}\n👤 ${rec.name}\n📞 ${rec.contact || '—'}\n\n🗣 Ответ кандидата:\n${(replyText || '').slice(0, 800)}\n\n🤖 Рекомендация ИИ (для справки, на решение не влияет): ${rec.verdict || '—'}\n${rec.summary || ''}\n\n${footer}\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
+  const text = `🎓 Кандидат ответил на анкету → отправлен на обучение (HH.kz) — Sagi\n\n🎯 Вакансия: ${rec.vacancy}\n👤 ${rec.name}\n📞 ${rec.contact || '—'}\n\n🗣 Ответ кандидата:\n${(replyText || '').slice(0, 800)}\n\n🤖 Рекомендация ИИ (для справки, на решение не влияет): ${rec.verdict || '—'}\n${rec.summary || ''}\n\nМатериалы обучения на hr.sagibonus.com (карточка «🎓 Стажёр»)\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 
@@ -403,38 +386,7 @@ async function notifyReplied(rec, replyText, autoInvited) {
 // них. Теперь сообщение заканчивается ОДНИМ гейт-вопросом (интересен ли в принципе такой
 // формат работы) — анкета из 5 вопросов уходит вторым сообщением, только если кандидат
 // откликнулся на гейт положительно (см. buildQuestionsMessage + ФАЗА B1 ниже).
-// Success Manager (2026-08-18): для этой роли нет проблемы «согласился на анкету, а потом
-// отказался от формата» (не было причины заводить гейт), поэтому первое сообщение сразу
-// содержит все вопросы одним куском — Фаза A ниже отдельно помечает такого кандидата как
-// прошедшего гейт и получившего анкету сразу же (см. вызов buildFirstMessage в Фазе A).
-function buildSuccessFirstMessage(name) {
-  const greet = (name && name !== 'Кандидат с hh.kz') ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
-  return `${greet}
-
-Вы откликнулись на нашу вакансию:
-Success Manager (Сервис-менеджер по работе с партнёрами)
-
-Это IT-компания Sagi — платформа лояльности и маркетинга для бизнеса (sagi.kz). Наш Instagram: @sagi.bonus
-
-Формат — полностью удалённо, график 5/2 с 09:00 до 18:00.
-
-Финансовые условия:
-• Оклад 200 000 ₸ + бонусы за результат. Средний совокупный доход 450 000-600 000 ₸.
-• Подробности обсудим на созвоне.
-
-Если вам откликается вакансия, ответьте, пожалуйста, на следующие вопросы, можно коротко:
-
-1) Есть ли у вас опыт работы с клиентами (сервис, поддержка, аккаунт-менеджмент)? Расскажите коротко.
-2) Насколько свободно вы говорите на казахском и русском языках?
-3) Уверенно ли вы работаете на компьютере, есть ли опыт работы в CRM?
-4) Формат полностью удалённый, график 5/2 с 09:00 до 18:00 — подходит ли вам, не планируете совмещать с другой постоянной работой?
-5) Когда вы готовы приступить к работе?
-
-Если удобнее уточнить что-то в звонке или в WhatsApp, пишите: +7 707 700 0087.`;
-}
-
 function buildFirstMessage(vacKind, name) {
-  if (vacKind === 'success_manager') return buildSuccessFirstMessage(name);
   const greet = (name && name !== 'Кандидат с hh.kz') ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
   const isRemote = vacKind === 'sales_remote';
   const vacLine = isRemote ? 'Менеджер по B2B-продажам (удалённо)' : 'Менеджер по B2B-продажам';
@@ -511,58 +463,6 @@ function extractCandidateReply(messages) {
   return { replyText: after.map(m => m.text).join('\n'), debug: '' };
 }
 
-// Захардкоженное тело вакансии Success Manager (2026-08-18) — чанкованная отправка через
-// WebFetch-прокси оказалась заблокирована на уровне прокси (PROXY_REJECTED, HTTP 403) для любых
-// URL с base64-содержимым, даже коротких (~600-650 символов), не только для длинных (>4250).
-// Поэтому тело вакансии зашито прямо в код и публикуется отдельным маленьким GET-запросом
-// без каких-либо крупных payload в URL — см. &hhPublishVacancy ниже.
-const HH_VAC_BODY_successmgr = {
-  "name": "Success Manager (Сервис-менеджер по работе с партнерами)",
-  "area": {
-    "id": "160"
-  },
-  "type": {
-    "id": "open"
-  },
-  "billing_type": {
-    "id": "standard_plus"
-  },
-  "professional_roles": [
-    {
-      "id": "70"
-    }
-  ],
-  "employment_form": {
-    "id": "FULL"
-  },
-  "work_format": [
-    {
-      "id": "REMOTE"
-    }
-  ],
-  "working_hours": [
-    {
-      "id": "HOURS_8"
-    }
-  ],
-  "experience": {
-    "id": "between1And3"
-  },
-  "salary": {
-    "from": 200000,
-    "to": 600000,
-    "currency": "KZT",
-    "gross": true
-  },
-  "description": "<p><strong>Sagi Bonus</strong> — платформа лояльности и маркетинга для бизнеса.</p>\n<p>Ищем сервис-менеджера, который будет держать связь с нашими клиентами-партнерами, помогать им получать максимум от платформы и продлевать подписки. Формат — удалённо, 5/2.</p>\n<p><strong>Обязанности</strong></p>\n<ul>\n<li>Постоянная коммуникация с клиентами: звонки, чаты, встречи</li>\n<li>Продление подписок партнеров, работа на удержание</li>\n<li>Обработка жалоб и запросов клиентов, решение спорных ситуаций</li>\n<li>Проактивная работа на повышение лояльности и вовлеченности партнеров</li>\n<li>Проведение онлайн-встреч, звонков и вебинаров для партнеров</li>\n<li>Ведение клиентской базы и истории коммуникаций в CRM</li>\n</ul>\n<p><strong>Требования</strong></p>\n<ul>\n<li>Опыт работы с клиентами (сервис, поддержка, аккаунт-менеджмент)</li>\n<li>Свободный казахский и русский язык, грамотная и четкая речь</li>\n<li>Отличные коммуникативные навыки, стрессоустойчивость</li>\n<li>Уверенное владение ПК, готовность работать в CRM</li>\n<li>График 5/2, с 9:00 до 18:00, полностью удалённо</li>\n<li>Будет большим плюсом: опыт в B2B продажах</li>\n</ul>\n<p><strong>Что мы предлагаем</strong></p>\n<ul>\n<li>Оклад 200 000 тг + бонусы за результат</li>\n<li>Средний совокупный доход 450 000 – 600 000 тг</li>\n<li>Удалённая работа, гибкая обстановка</li>\n<li>Работа в растущей IT-компании, платформа для бизнеса по всему Казахстану</li>\n<li>Реальное влияние на продукт и клиентский опыт</li>\n</ul>",
-  "manager": {
-    "id": "1909207"
-  },
-  "response_letter_required": false,
-  "accept_temporary": false
-}
-;
-
 export default async function handler(req, res) {
   // Ручное добавление кандидата — ТОЛЬКО через POST с телом (не query-параметрами), чтобы
   // имя/телефон кандидата не попадали в URL/логи. Обрабатывается до общей проверки method===GET.
@@ -596,171 +496,6 @@ export default async function handler(req, res) {
   if (!process.env.HH_POLL_SECRET || (req.query?.secret || '') !== process.env.HH_POLL_SECRET) { res.status(403).json({ error: 'forbidden' }); return; }
   const debug = req.query?.debug === '1';
   const dryRun = req.query?.dryrun === '1';
-
-  // Универсальный отладочный прокси к api.hh.ru от имени работодателя (2026-08-18, добавлено
-  // чтобы можно было проверять словари/квоты/публикацию вакансий без похода в реальный Terminal —
-  // облачная песочница не достаёт до hh.ru напрямую, а Vercel достаёт). Защищено тем же
-  // HH_POLL_SECRET, что и весь остальной файл (проверка выше). Только GET к api.hh.ru — для
-  // изменяющих вызовов (создание вакансии и т.п.) см. &hhPostPath ниже.
-  //   &hhGet=<path>                     — GET https://api.hh.ru<path>
-  //   &hhPostPath=<path>&hhBody=<b64>   — POST https://api.hh.ru<path>, hhBody — JSON-тело в base64
-  if (req.query?.hhGet) {
-    try {
-      const token = await getEmployerToken();
-      const r = await hhGet(String(req.query.hhGet), token);
-      res.status(200).json({ ok: r.ok, status: r.status, data: r.data });
-    } catch (e) {
-      res.status(200).json({ ok: false, error: e.message });
-    }
-    return;
-  }
-  if (req.query?.hhPostPath) {
-    try {
-      const token = await getEmployerToken();
-      let body = {};
-      if (req.query.hhBody) { try { body = JSON.parse(Buffer.from(String(req.query.hhBody), 'base64').toString('utf8')); } catch (e) {} }
-      const r = await hhPost(String(req.query.hhPostPath), token, body);
-      res.status(200).json({ ok: r.ok, status: r.status, data: r.data });
-    } catch (e) {
-      res.status(200).json({ ok: false, error: e.message });
-    }
-    return;
-  }
-  // Узкий поиск по /professional_roles на СТОРОНЕ сервера (2026-08-18) — полный ответ этого
-  // эндпоинта (и /dictionaries, и полный GET /vacancies/{id}) слишком большой и стабильно
-  // приводит к таймауту при проксировании через WebFetch из облачной песочницы, поэтому здесь
-  // фильтруем на месте и отдаём только совпадения, чтобы ответ был маленьким.
-  //   &hhFindRole=<текст для поиска, регистронезависимо, по названию роли>
-  if (req.query?.hhFindRole) {
-    try {
-      const token = await getEmployerToken();
-      const r = await hhGet('/professional_roles', token);
-      const needle = String(req.query.hhFindRole).toLowerCase();
-      const matches = [];
-      for (const cat of (r.data?.categories || [])) {
-        for (const role of (cat.roles || [])) {
-          if (String(role.name || '').toLowerCase().includes(needle)) {
-            matches.push({ category_id: cat.id, category_name: cat.name, role_id: role.id, role_name: role.name });
-          }
-        }
-      }
-      res.status(200).json({ ok: r.ok, status: r.status, matches });
-    } catch (e) {
-      res.status(200).json({ ok: false, error: e.message });
-    }
-    return;
-  }
-  // Узкая выжимка полей одной вакансии (тот же мотив, что у &hhFindRole — GET /vacancies/{id}
-  // целиком слишком большой и таймаутится через WebFetch-прокси).
-  //   &hhVacFields=<id вакансии>
-  if (req.query?.hhVacFields) {
-    try {
-      const token = await getEmployerToken();
-      const r = await hhGet('/vacancies/' + String(req.query.hhVacFields), token);
-      const v = r.data || {};
-      const slim = {
-        id: v.id, name: v.name, area: v.area, type: v.type, billing_type: v.billing_type,
-        professional_roles: v.professional_roles, employment: v.employment, schedule: v.schedule,
-        experience: v.experience, department: v.department, manager: v.manager,
-        driver_license_types: v.driver_license_types, accept_temporary: v.accept_temporary,
-        work_format: v.work_format, working_hours: v.working_hours, employment_form: v.employment_form,
-      };
-      res.status(200).json({ ok: r.ok, status: r.status, data: slim });
-    } catch (e) {
-      res.status(200).json({ ok: false, error: e.message });
-    }
-    return;
-  }
-  // Чанкованная отправка большого POST-тела на api.hh.ru (2026-08-18) — WebFetch из облачной
-  // песочницы отдаёт "Invalid URL" на длинных URL (проверено: ~120 символов проходит, ~4250 —
-  // нет), а тело создания вакансии (описание на русском в base64) легко превышает лимит. Поэтому
-  // тело собирается по кусочкам в Redis, а затем публикуется отдельным маленьким запросом.
-  //   &hhStageAppend=<ключ>&hhChunk=<b64-кусочек тела>  — добавить кусочек (в порядке вызовов)
-  //   &hhStageClear=<ключ>                              — очистить перед новой сборкой
-  //   &hhStagePublish=<ключ>&hhPath=<путь>               — собрать все кусочки, POST на api.hh.ru<путь>
-  //   &hhStagePeek=<ключ>                                — посмотреть, сколько кусочков и их суммарную длину (для проверки перед publish)
-  if (req.query?.hhStageClear) {
-    try { await redis(['DEL', 'hh:vac_stage:' + String(req.query.hhStageClear)]); res.status(200).json({ ok: true }); }
-    catch (e) { res.status(200).json({ ok: false, error: e.message }); }
-    return;
-  }
-  if (req.query?.hhStageAppend) {
-    try {
-      const key = 'hh:vac_stage:' + String(req.query.hhStageAppend);
-      await redis(['RPUSH', key, String(req.query.hhChunk || '')]);
-      await redis(['EXPIRE', key, '3600']);
-      const len = await redis(['LLEN', key]);
-      res.status(200).json({ ok: true, chunks: len });
-    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
-    return;
-  }
-  if (req.query?.hhStagePeek) {
-    try {
-      const key = 'hh:vac_stage:' + String(req.query.hhStagePeek);
-      const parts = (await redis(['LRANGE', key, '0', '-1'])) || [];
-      const joined = parts.join('');
-      res.status(200).json({ ok: true, chunks: parts.length, totalB64Len: joined.length });
-    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
-    return;
-  }
-  if (req.query?.hhStagePublish) {
-    try {
-      const key = 'hh:vac_stage:' + String(req.query.hhStagePublish);
-      const parts = (await redis(['LRANGE', key, '0', '-1'])) || [];
-      const b64 = parts.join('');
-      let body = {};
-      try { body = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); } catch (e) { res.status(200).json({ ok: false, error: 'JSON.parse не удался: ' + e.message, b64len: b64.length }); return; }
-      const token = await getEmployerToken();
-      const path = String(req.query.hhPath || '/vacancies');
-      const pr = await hhPost(path, token, body);
-      res.status(200).json({ ok: pr.ok, status: pr.status, data: pr.data });
-    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
-    return;
-  }
-
-  // Публикация захардкоженной вакансии Success Manager (2026-08-18) — см. константу
-  // HH_VAC_BODY_successmgr выше. Обходит WebFetch-прокси полностью: сам запрос короткий,
-  // тело вакансии живёт в коде, а не в URL.
-  //   &hhPublishVacancy=successmgr   — POST HH_VAC_BODY_successmgr на /vacancies
-  //   &hhLastPublish=successmgr        — прочитать закешированный результат (без нового POST)
-  // 2026-08-18: первый вызов hhPublishVacancy словил "Read timeout" на стороне WebFetch (сама
-  // функция при этом отработала и отдала 200 согласно логам Vercel), поэтому результат теперь
-  // ВСЕГДА пишется в Redis перед ответом — так его можно прочитать отдельным быстрым запросом,
-  // даже если WebFetch не дождался тела ответа. Плюс защита от повторной публикации: если для
-  // ключа уже есть закешированный результат с ok:true, повторный вызов hhPublishVacancy НЕ шлёт
-  // новый POST, а просто возвращает то, что уже было создано.
-  if (req.query?.hhLastPublish) {
-    try {
-      const raw = await redis(['GET', 'hh:publish_result:' + String(req.query.hhLastPublish)]);
-      res.status(200).json({ ok: true, cached: raw ? JSON.parse(raw) : null });
-    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
-    return;
-  }
-  if (req.query?.hhPublishVacancy) {
-    const key = String(req.query.hhPublishVacancy);
-    const cacheKey = 'hh:publish_result:' + key;
-    try {
-      const prevRaw = await redis(['GET', cacheKey]);
-      if (prevRaw) {
-        const prev = JSON.parse(prevRaw);
-        if (prev?.ok) { res.status(200).json({ ok: true, alreadyPublished: true, data: prev.data }); return; }
-      }
-      const bodies = { successmgr: HH_VAC_BODY_successmgr };
-      const body = bodies[key];
-      if (!body) { res.status(200).json({ ok: false, error: 'неизвестный ключ: ' + key }); return; }
-      const token = await getEmployerToken();
-      const pr = await hhPost('/vacancies', token, body);
-      const result = { ok: pr.ok, status: pr.status, data: pr.data };
-      await redis(['SET', cacheKey, JSON.stringify(result)]);
-      await redis(['EXPIRE', cacheKey, '86400']);
-      res.status(200).json(result);
-    } catch (e) {
-      const result = { ok: false, error: e.message };
-      try { await redis(['SET', cacheKey, JSON.stringify(result)]); await redis(['EXPIRE', cacheKey, '86400']); } catch (e2) {}
-      res.status(200).json(result);
-    }
-    return;
-  }
 
   // Диагностика: узнать, с какого именно Telegram-бота (username) и в какой чат уходят алерты
   // РОПу по ответам на hh.kz — это ДРУГОЙ бот, чем @Sagijobsbot (careers-бот кандидатов).
@@ -1191,9 +926,18 @@ export default async function handler(req, res) {
   if (req.query?.searchCandidate) {
     try {
       const q = String(req.query.searchCandidate || '').trim().toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
       const raw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
       const items = raw.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
-      const found = items.filter(c => (c.name || '').toLowerCase().includes(q))
+      const found = items.filter(c => {
+        const nameMatch = (c.name || '').toLowerCase().includes(q);
+        if (nameMatch) return true;
+        if (!qDigits) return false;
+        const candDigits = String(c.phone || c.contact || '').replace(/\D/g, '');
+        if (!candDigits) return false;
+        // сравниваем последние 10 цифр, чтобы не зависеть от +7/8 в начале номера
+        return candDigits.slice(-10) === qDigits.slice(-10) && qDigits.length >= 7;
+      })
         .map(c => ({ id: c.id, name: c.name, contact: c.contact, phone: c.phone, vacancy: c.vacancy, stage: c.stage, verdict: c.verdict, score: c.score, source: c.source, ts: c.ts, hasAnswers: !!(c.replyText || c.resume) }));
       res.status(200).json({ ok: true, count: found.length, found });
     } catch (e) {
@@ -1894,7 +1638,7 @@ export default async function handler(req, res) {
         const vacKind = pickVacancyKind(realVacTitle);
         // Храним каноничное имя (то же, что использует Telegram-бот/apply.js/wa.js), а не сырое
         // hh.kz-название — чтобы фильтр по вакансии в пайплайне группировал их вместе.
-        const vacTitle = canonicalVacTitle(vacKind);
+        const vacTitle = vacKind === 'sales_remote' ? 'Менеджер по продажам, удалённо' : 'Менеджер по продажам';
         const resumeId = it.resume?.id;
         let resumeFull = null;
         if (resumeId) {
@@ -1910,14 +1654,6 @@ export default async function handler(req, res) {
         } else {
           const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
           if (!sent.ok) errors.push({ negId, step: 'send_first_message', status: sent.status, data: sent.data });
-          // Success Manager: первое сообщение уже содержит всю анкету (нет отдельного гейт-вопроса,
-          // см. buildSuccessFirstMessage) — сразу помечаем как «гейт пройден + анкета отправлена»,
-          // чтобы ФАЗА B1 (гейт) её не трогала, а ФАЗА B2 (анкета) сразу ждала ответ.
-          if (vacKind === 'success_manager') {
-            await redis(['SADD', GATE_HANDLED_KEY, negId]);
-            await redis(['SADD', QUESTIONS_SENT_KEY, negId]);
-            await redis(['SET', 'hh:questions_ts:' + negId, String(Date.now())]);
-          }
           const rec = {
             id: 'hh_' + negId, name,
             contact: phone || (resumeId ? 'hh.kz резюме ' + resumeId : ''), phone: (phone || '').replace(/\D/g, ''),
@@ -2091,15 +1827,11 @@ export default async function handler(req, res) {
           // ещё не зарегистрировался и тем более не прошёл обучение, это вводило в заблуждение.
           // Реальная стажировка начинается только после регистрации (users.js/register ставит
           // «Обучение») и завершения всех 10 базовых модулей (ФАЗА E ниже ставит «Стажировка»).
-          // Success Manager (2026-08-18): нет своей программы обучения на hr.sagibonus.com, поэтому
-          // НЕ отправляем авто-приглашение туда (см. buildFirstMessage/canonicalVacTitle выше) —
-          // только благодарим и передаём Sagi решение вручную, стадия «Ответил» вместо «Приглашён».
-          const isSalesKind = vacKind === 'sales' || vacKind === 'sales_remote';
           const updated = await updateCandidateRecord('hh_' + negId, {
-            stage: isSalesKind ? 'Приглашён' : 'Ответил', verdict: ev.recommend || 'Уточнить', summary: ev.summary || '',
+            stage: 'Приглашён', verdict: ev.recommend || 'Уточнить', summary: ev.summary || '',
             strengths: ev.strengths || [], flags: ev.flags || [], replyText: replyText.slice(0, 2000),
           });
-          await notifyReplied(updated || { ...existingRec, verdict: ev.recommend, summary: ev.summary }, replyText, isSalesKind);
+          await notifyReplied(updated || { ...existingRec, verdict: ev.recommend, summary: ev.summary }, replyText);
           // 2026-08-18, найден и исправлен баг: раньше negId добавлялся в REPLIED_KEY ДО отправки
           // приглашения, а результат отправки вообще не проверялся. Если hh.kz на секунду
           // отклонял запрос (или падал сетевой вызов), кандидат навсегда оставался без реального
@@ -2108,15 +1840,11 @@ export default async function handler(req, res) {
           // не получили). Теперь: в REPLIED_KEY (и в список «больше не проверять») кандидат
           // попадает только ПОСЛЕ реально успешной отправки; если отправка не удалась — оставляем
           // его в очереди «ожидающих», следующий прогон опроса попробует отправить снова.
-          const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, {
-            message: isSalesKind ? buildInviteMessage(name, negId) : 'Спасибо за ответы! Передал их рекрутеру, дальше он свяжется с вами по этому же чату или по контакту в резюме.',
-          });
+          const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildInviteMessage(name, negId) });
           if (sent.ok) {
             await redis(['SADD', REPLIED_KEY, negId]);
-            if (isSalesKind) {
-              await redis(['SADD', INVITE_WATCH_KEY, negId]);
-              await redis(['SET', 'hh:invite_ts:' + negId, String(Date.now())]);
-            }
+            await redis(['SADD', INVITE_WATCH_KEY, negId]);
+            await redis(['SET', 'hh:invite_ts:' + negId, String(Date.now())]);
           } else {
             errors.push({ negId, step: 'send_invite', status: sent.status, data: sent.data });
           }
