@@ -152,7 +152,7 @@ async function finalize(wa, st) {
   const phone = digits(st.phone || '');
   const rec = {
     id: newId(), name: d.name || 'Из WhatsApp', contact: phone ? '+' + phone : '', phone, age,
-    source: 'WhatsApp-бот' + (d.source ? ' (' + d.source + ')' : ''),
+    source: 'WhatsApp-бот' + (d.source ? ' (' + d.source + ')' : ''), howFound: d.source || null,
     resume: fullText.slice(0, 2000), answers, score: ev.score, verdict: ev.verdict, summary: ev.summary,
     strengths: [], flags: [], stage: invited ? 'Приглашён' : 'Отказ', waMessage: waMessage(d.name), ts: Date.now(),
   };

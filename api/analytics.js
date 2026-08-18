@@ -97,6 +97,15 @@ export default async function handler(req, res) {
     // ---- Общий пайплайн ----
     const byStage = STAGES.map(s => ({ key: s, count: candidates.filter(c => (c.stage || 'Новый') === s).length }));
     const byChannel = tally(candidates, channelOf);
+    // 2026-08-18, по просьбе Sagi «спрашивай откуда узнали о вакансии, для анализа» — howFound
+    // теперь спрашивается во всех каналах (см. поле howFound в hh_poll.js/tg.js/wa.js/apply.js).
+    // Отличается от byChannel: канал — это ЧЕРЕЗ ЧТО откликнулся (hh.kz/Telegram-бот/форма),
+    // howFound — ГДЕ УВИДЕЛ вакансию (Instagram, рекомендация, hh.kz и т.п.), не всегда совпадают.
+    const byHowFound = tally(
+      candidates.filter(c => c.howFound),
+      c => (c.howFound || '').toString().trim().replace(/^./, ch => ch.toUpperCase()),
+      'Не указано'
+    );
     const byVacancy = tally(candidates, c => c.vacancy, 'Не указана');
     const byVerdict = tally(candidates, c => c.verdict, 'Без вердикта');
     const scored = candidates.filter(c => typeof c.score === 'number');
@@ -194,6 +203,7 @@ export default async function handler(req, res) {
         avgScore,
         byStage,
         byChannel,
+        byHowFound,
         byVacancy,
         byVerdict,
         daily: days,

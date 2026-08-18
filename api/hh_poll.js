@@ -309,8 +309,9 @@ const SCREEN_REPLY_SALES = `Ты — HR-скринер компании Sagi (lo
 ВАЖНО: НЕ придирайся к отсутствию опыта продаж — многие сильные продажники раскрываются не в резюме, а на стажировке. Твоя задача — понять,
 адекватно ли человек отвечает, связная ли речь, есть ли реальная мотивация и готовность работать, нет ли явных красных флагов (грубость,
 неадекватность, явное нежелание работать). Цель компании — довести как можно больше вменяемых кандидатов до обучения, там уже будет видно.
+В конце ответа кандидат также говорит, откуда узнал о вакансии — вытащи это коротко в поле howFound (например: "hh.kz", "Instagram", "рекомендация от друга"), или null если не упомянул.
 Верни ТОЛЬКО валидный JSON без markdown:
-{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
+{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."], "howFound": "<кратко откуда узнал, или null>"}`;
 
 const SCREEN_REPLY_SALES_REMOTE = `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, вакансия «Менеджер по продажам — удалённо»).
 Тебе дан ответ кандидата на первое сообщение (вопросы про опыт звонков, когда готов начать).
@@ -319,12 +320,13 @@ const SCREEN_REPLY_SALES_REMOTE = `Ты — HR-скринер компании S
 Zoom) проводит наставник, компьютер понадобится не с первого дня. Твоя задача — понять, адекватно ли человек отвечает, связная ли речь, есть ли
 реальная мотивация и готовность учиться, нет ли явных красных флагов (грубость, неадекватность, прямой отказ работать/учиться в принципе). Цель
 компании — довести как можно больше вменяемых кандидатов до обучения, там уже будет видно.
+В конце ответа кандидат также говорит, откуда узнал о вакансии — вытащи это коротко в поле howFound (например: "hh.kz", "Instagram", "рекомендация от друга"), или null если не упомянул.
 Верни ТОЛЬКО валидный JSON без markdown:
-{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."]}`;
+{"recommend": "На обучение" | "Уточнить" | "Не подходит", "summary": "<2-3 предложения по ответу кандидата>", "strengths": ["..."], "flags": ["..."], "howFound": "<кратко откуда узнал, или null>"}`;
 
 async function evaluateReply(vacKind, name, replyText) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  let out = { recommend: null, summary: '', strengths: [], flags: [], _debug: '' };
+  let out = { recommend: null, summary: '', strengths: [], flags: [], howFound: null, _debug: '' };
   if (!apiKey) { out._debug = 'no ANTHROPIC_API_KEY'; return out; }
   if (!replyText) { out._debug = 'empty replyText'; return out; }
   const sys = vacKind === 'sales_remote' ? SCREEN_REPLY_SALES_REMOTE : SCREEN_REPLY_SALES;
@@ -338,7 +340,7 @@ async function evaluateReply(vacKind, name, replyText) {
     if (ar.ok) {
       const txt = (ad.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
       const m = txt.match(/\{[\s\S]*\}/);
-      if (m) { const o = JSON.parse(m[0]); out = { recommend: o.recommend || null, summary: o.summary || '', strengths: o.strengths || [], flags: o.flags || [] }; }
+      if (m) { const o = JSON.parse(m[0]); out = { recommend: o.recommend || null, summary: o.summary || '', strengths: o.strengths || [], flags: o.flags || [], howFound: o.howFound || null }; }
       else out._debug = 'no JSON match in response: ' + txt.slice(0, 200);
     } else {
       out._debug = 'anthropic api error ' + ar.status + ': ' + JSON.stringify(ad).slice(0, 300);
@@ -415,6 +417,9 @@ ${gateLine} Если да, пришлю ещё несколько коротки
 // Анкета из 5 вопросов — уходит вторым сообщением, после того как кандидат ответил на гейт-
 // вопрос из первого сообщения не отказом (см. ФАЗА B1). Текст самих вопросов не поменялся,
 // просто вопрос 4 теперь честно говорит «начать обучение», а не «начать стажировку».
+// 2026-08-18, по просьбе Sagi «спрашивай откуда узнали о вакансии, для анализа» — добавлен
+// последний вопрос про источник (hh.kz и так канал понятен, но интересно, реклама/рекомендация
+// и т.п. — если человек, например, увидел вакансию в Instagram, а откликнулся на hh.kz).
 function buildQuestionsMessage(vacKind, name) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, отлично!` : 'Отлично!';
   const isRemote = vacKind === 'sales_remote';
@@ -422,12 +427,14 @@ function buildQuestionsMessage(vacKind, name) {
     ? 'Не собираетесь совмещать с другой работой или учёбой?'
     : 'Вы находитесь в Астане и готовы работать в офисе, не совмещая с другой работой или учёбой?';
   const q5 = isRemote ? '\n5) В каком городе вы сейчас проживаете?' : '';
+  const qLast = isRemote ? 6 : 5;
   return `${greet} Тогда ещё несколько вопросов, можно коротко:
 
 1) Есть ли у вас опыт в активных B2B-продажах? Это были МСБ предприниматели?
 2) Имеется ли у вас опыт холодных звонков? Готовы совершать более 50 хол. звонков в день?
 3) ${q3}
-4) Если мы рассмотрим вашу кандидатуру, когда вы готовы приступить к работе / начать обучение?${q5}`;
+4) Если мы рассмотрим вашу кандидатуру, когда вы готовы приступить к работе / начать обучение?${q5}
+${qLast}) Как вы о нас узнали (hh.kz, Instagram, рекомендация и т.д.)?`;
 }
 
 // Находит в hr:candidates запись по id и заменяет её (обновление, а не добавление).
@@ -1856,6 +1863,7 @@ export default async function handler(req, res) {
           const updated = await updateCandidateRecord('hh_' + negId, {
             stage: 'Приглашён', verdict: ev.recommend || 'Уточнить', summary: ev.summary || '',
             strengths: ev.strengths || [], flags: ev.flags || [], replyText: replyText.slice(0, 2000),
+            howFound: ev.howFound || null,
           });
           await notifyReplied(updated || { ...existingRec, verdict: ev.recommend, summary: ev.summary }, replyText);
           // 2026-08-18, найден и исправлен баг: раньше negId добавлялся в REPLIED_KEY ДО отправки

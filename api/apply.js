@@ -112,7 +112,7 @@ export default async function handler(req, res) {
     const rec = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       name, contact, phone: '', vacancy: vacTitle,
-      source: (source ? source + ' · ' : 'форма отклика · ') + vacTitle, age: evaln.age,
+      source: (source ? source + ' · ' : 'форма отклика · ') + vacTitle, howFound: source || null, age: evaln.age,
       resume: resume.slice(0, 2000),
       answers: [{ q: 'Резюме / о себе', a: resume.slice(0, 4000) }],
       score: evaln.score, verdict: evaln.verdict, summary: evaln.summary,
