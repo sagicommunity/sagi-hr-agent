@@ -287,6 +287,10 @@
       <div class="stat"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
     </div>
 
+    <div class="sectitle">Воронка по вакансии (hh.kz)</div>
+    <div class="sub" id="funnelMeta" style="margin:-6px 0 10px"></div>
+    <div id="funnelWrap"></div>
+
     <div class="sectitle">Инструменты найма</div>
     <div class="g3">
       <a class="tile" href="/pipeline.html"><div class="ti">🗂</div><div><h4>Пайплайн</h4><p>Карточки кандидатов и стадии найма.</p></div></a>
@@ -599,6 +603,7 @@ function renderBoss(users, skipStatsFetch){
   });
   $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
   if(!skipStatsFetch) loadTrainerStatsAll(); // не блокируем первую отрисовку — догружаем и перерисовываем
+  loadFunnel();
 
   const wrap=$('#bossTableWrap');
   if(!users.length){ wrap.innerHTML='<div class="empty">Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.</div>'; }
@@ -648,6 +653,29 @@ function renderBoss(users, skipStatsFetch){
     });
   }
   show('screen-boss');
+}
+
+// 2026-08-18, по запросу Sagi «добавь сюда всю воронку по вакансии, сколько было откликов и
+// конверсия» — данные берём из /api/analytics (тот же пароль руководителя, что уже введён).
+let FUNNEL_LOADED=false;
+async function loadFunnel(){
+  const wrap=$('#funnelWrap'); if(!wrap) return;
+  if(!FUNNEL_LOADED) wrap.innerHTML='<div class="empty">Загружаем…</div>';
+  try{
+    const r=await fetch('/api/analytics',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:BOSS_PW})});
+    const d=await r.json().catch(()=>({}));
+    if(!d.ok){ wrap.innerHTML='<div class="empty">Не удалось загрузить воронку'+(d.error?': '+d.error:'')+'.</div>'; return; }
+    FUNNEL_LOADED=true;
+    const hh=d.hhkz||{}; const rows=hh.funnel||[];
+    $('#funnelMeta').textContent='Обновлено '+new Date(d.generatedAt).toLocaleString('ru-RU')+' · откликов по вакансии: '+(hh.totalSeen||0)+' · из них отказались на первом вопросе: '+(hh.totalDeclined||0);
+    if(!rows.length){ wrap.innerHTML='<div class="empty">Пока нет данных по воронке.</div>'; return; }
+    wrap.innerHTML='<table><thead><tr><th>Этап</th><th style="text-align:right">Кандидатов</th><th style="text-align:right">От предыдущего этапа</th><th style="text-align:right">От первого отклика</th></tr></thead><tbody>'+
+      rows.map((r,i)=>{
+        const fromPrev = r.fromPrevPct==null ? '—' : r.fromPrevPct+'%';
+        return '<tr><td>'+r.key+'</td><td style="text-align:right">'+r.count+'</td><td style="text-align:right">'+fromPrev+'</td><td style="text-align:right">'+r.fromStartPct+'%</td></tr>';
+      }).join('')+
+      '</tbody></table>';
+  }catch(e){ wrap.innerHTML='<div class="empty">Не удалось загрузить воронку.</div>'; }
 }
 
 /* ---- ПРОФИЛЬ СОТРУДНИКА (вид руководителя) ---- */
