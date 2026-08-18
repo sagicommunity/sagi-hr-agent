@@ -639,6 +639,7 @@ function renderBoss(users, skipStatsFetch){
       const quizCell=qKeys.length ? Math.round(qKeys.reduce((s,k)=>s+(qb[k].score/qb[k].total),0)/qKeys.length*100)+'% ('+qKeys.length+')' : '—';
       const hs=u.hireStatus||'Активен';
       const statusCell=hs==='Активен' ? '—' : '<span class="tag '+(HIRE_STATUS_CLASS[hs]||'')+'" title="'+(u.statusComment||'').replace(/"/g,'&quot;')+'">'+hs+'</span>';
+      const howFoundCell=u.howFound ? u.howFound : '—';
       return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b><br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
         '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'">'+(u.role==='manager'?'Менеджер':'Стажёр')+'</span></td>'+
         '<td>'+statusCell+'</td>'+
@@ -647,10 +648,11 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">'+quizCell+'</td>'+
         '<td style="color:var(--muted)">'+trainerCell+'</td>'+
         '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
+        '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn')) return;
@@ -721,6 +723,7 @@ function renderProfile(u){
   $('#profStatusComment').value=u.statusComment||'';
 
   const meta=[];
+  if(u.howFound) meta.push('Откуда узнал(а) о вакансии: '+u.howFound);
   if(u.mentorName) meta.push('Наставник: '+u.mentorName+(u.mentorPhone?' ('+u.mentorPhone+')':''));
   if(u.hhNegId) meta.push('Привязан к переписке на hh.kz — напоминания и уведомления приходят автоматически.');
   else meta.push('Не привязан к hh.kz — автонапоминания и уведомления не дойдут, пока не заполнен телефон выше и с ним не свяжутся вручную.');

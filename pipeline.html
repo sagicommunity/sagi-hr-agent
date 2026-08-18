@@ -253,7 +253,7 @@ function render(){
       '<div class="body" data-open="'+c.id+'">'+
         '<div class="nm">'+esc(c.name)+'<span class="open">💬 ответы боту →</span></div>'+
         (c.vacancy?'<div class="vactag">🎯 '+esc(c.vacancy)+'</div>':'')+
-        '<div class="meta">'+(c.phone?'📱 '+esc(c.phone):'<span style="color:#ff9b9b">нет номера</span>')+(c.contact&&c.contact!==c.phone?' · '+esc(c.contact):'')+' · '+esc(c.source)+'</div>'+
+        '<div class="meta">'+(c.phone?'📱 '+esc(c.phone):'<span style="color:#ff9b9b">нет номера</span>')+(c.contact&&c.contact!==c.phone?' · '+esc(c.contact):'')+' · '+esc(c.source)+(c.howFound?' · узнал(а): '+esc(c.howFound):'')+'</div>'+
         '<span class="verdict '+verdictCls(c.verdict)+'">'+esc(c.verdict)+'</span>'+
         (c.summary?'<div class="sum">'+esc(c.summary)+'</div>':'')+
         '<div class="acts">'+
