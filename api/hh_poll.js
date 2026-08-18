@@ -984,15 +984,24 @@ export default async function handler(req, res) {
       let totalResponses = 0;
       let allHhIds = [];
       for (const v of vacancies) {
-        // per_page=100 хватает с запасом на текущий масштаб (десятки откликов на вакансию) —
-        // и заодно даёт список id, а не только счётчик, чтобы кликом по карточке «Откликов на
-        // hh.kz» можно было увидеть КОНКРЕТНО кого, включая совсем свежих, ещё не обработанных.
-        const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=100`, token);
-        const negTotal = neg.ok ? (neg.data.found ?? null) : null;
+        // hh.ru отклоняет per_page>50 на этом эндпоинте (400 bad_argument) — берём максимум
+        // разрешённый (50) и, если откликов больше, дотягиваем следующими страницами (до 4
+        // страниц = 200 откликов с запасом на рост). Список id нужен не только для счётчика,
+        // а чтобы кликом по карточке «Откликов на hh.kz» увидеть КОНКРЕТНО кого, включая
+        // совсем свежих, ещё не обработанных.
+        const ids = [];
+        let negTotal = null, negErr = null;
+        for (let page = 0; page < 4; page++) {
+          const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=50&page=${page}`, token);
+          if (!neg.ok) { negErr = { status: neg.status }; break; }
+          if (page === 0) negTotal = neg.data.found ?? null;
+          const pageIds = (neg.data.items || []).map(it => it.id).filter(Boolean);
+          ids.push(...pageIds);
+          if (pageIds.length < 50) break; // последняя страница
+        }
         if (typeof negTotal === 'number') totalResponses += negTotal;
-        const ids = neg.ok ? (neg.data.items || []).map(it => it.id).filter(Boolean) : [];
         allHhIds = allHhIds.concat(ids);
-        perVacancy.push({ vacancyId: v.id, vacancyName: v.name, negTotal, error: neg.ok ? null : { status: neg.status } });
+        perVacancy.push({ vacancyId: v.id, vacancyName: v.name, negTotal, idsCollected: ids.length, error: negErr });
       }
       res.status(200).json({
         ok: true,
