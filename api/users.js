@@ -46,7 +46,7 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {} };
 }
 function checkBoss(body, res) {
   const PASS = process.env.DASHBOARD_PASSWORD || '';
@@ -168,6 +168,25 @@ export default async function handler(req, res) {
       const id = (body.moduleId || '').toString();
       if (!id) { res.status(400).json({ error: 'moduleId required' }); return; }
       if (body.done) u.progress[id] = true; else delete u.progress[id];
+
+      // Реальные результаты теста (2026-08-18, задача Sagi «чтобы обучение было качественно») —
+      // раньше хранили только да/нет прошёл модуль. Теперь сохраняем КАЖДУЮ попытку (в том числе
+      // неудачную) — сколько верно из скольки, какие вопросы промахнул, и лучший результат.
+      // Так видно, кто проходит тесты с трудом (даже если в итоге прошёл) — это как раз кандидаты
+      // на усиленное внимание наставника, а не просто «прошёл/не прошёл».
+      const qScore = body.quizScore, qTotal = body.quizTotal;
+      if (typeof qScore === 'number' && typeof qTotal === 'number' && qTotal > 0) {
+        u.quizAttempts = u.quizAttempts || {};
+        const attempts = Array.isArray(u.quizAttempts[id]) ? u.quizAttempts[id] : [];
+        const missed = Array.isArray(body.quizMissed) ? body.quizMissed.slice(0, 20).map(s => String(s).slice(0, 300)) : [];
+        attempts.push({ score: qScore, total: qTotal, passed: !!body.done, missed, ts: Date.now() });
+        u.quizAttempts[id] = attempts.slice(-10); // последние 10 попыток, не растим бесконечно
+        u.quizBest = u.quizBest || {};
+        const pct = qScore / qTotal;
+        const bestPct = u.quizBest[id] ? (u.quizBest[id].score / u.quizBest[id].total) : -1;
+        if (pct > bestPct) u.quizBest[id] = { score: qScore, total: qTotal };
+      }
+
       u.points = Object.keys(u.progress).length * 10;
       u.lastSeen = Date.now();
       await putUser(u);

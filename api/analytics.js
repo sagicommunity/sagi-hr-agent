@@ -18,7 +18,7 @@ const TG_SOURCES_KEY = 'hr:tg:stat:sources';
 // Ответил (написал в ответ на первое сообщение) -> Приглашён (отправлено приглашение, ждём
 // регистрации) -> Обучение (зарегистрировался на hr.sagibonus.com, проходит базовую программу)
 // -> Стажировка (закончил все 10 модулей, назначен наставник, реально стажируется).
-const STAGES = ['Новый', 'Ответил', 'Приглашён', 'Обучение', 'Стажировка', 'На связи', 'Квалификация', 'Интервью', 'Оффер', 'Отказ'];
+const STAGES = ['Новый', 'Ответил', 'Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен', 'На связи', 'Квалификация', 'Интервью', 'Оффер', 'Отказ', 'Ушёл'];
 
 async function redis(cmd) {
   if (!R_URL || !R_TOK) return null;
@@ -117,6 +117,20 @@ export default async function handler(req, res) {
       return { key: src, starts, completed, conversionPct: starts ? Math.round((completed / starts) * 1000) / 10 : 0 };
     }).sort((a, b) => b.starts - a.starts);
 
+    // ---- Отток (2026-08-18, задача Sagi «сократить отток сотрудников») ----
+    // employedAt/leftAt/exitReason проставляются в api/pipeline.js при смене стадии на
+    // «Трудоустроен»/«Ушёл». Считаем, сколько реально вышедших сотрудников до сих пор работают,
+    // сколько ушли, средний срок работы до ухода (в днях) и по каким причинам уходят чаще всего.
+    const everEmployed = candidates.filter(c => c.employedAt);
+    const leftCandidates = candidates.filter(c => c.stage === 'Ушёл');
+    const stillEmployed = candidates.filter(c => c.stage === 'Трудоустроен');
+    const tenureDays = leftCandidates
+      .filter(c => c.employedAt && c.leftAt && c.leftAt > c.employedAt)
+      .map(c => Math.round((c.leftAt - c.employedAt) / DAY));
+    const avgTenureDays = tenureDays.length ? Math.round((tenureDays.reduce((s, x) => s + x, 0) / tenureDays.length) * 10) / 10 : null;
+    const exitReasons = tally(leftCandidates.filter(c => c.exitReason), c => c.exitReason, 'Без причины');
+    const churnRatePct = everEmployed.length ? Math.round((leftCandidates.length / everEmployed.length) * 1000) / 10 : 0;
+
     // ---- Динамика по дням (последние 14 дней, по общему пайплайну) ----
     const days = [];
     for (let i = 13; i >= 0; i--) {
@@ -140,6 +154,14 @@ export default async function handler(req, res) {
         byVacancy,
         byVerdict,
         daily: days,
+      },
+      retention: {
+        employedTotal: everEmployed.length,
+        stillEmployed: stillEmployed.length,
+        left: leftCandidates.length,
+        churnRatePct,
+        avgTenureDays,
+        exitReasons,
       },
       hhkz: {
         totalSeen: hhTotalSeen,

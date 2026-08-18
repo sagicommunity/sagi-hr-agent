@@ -105,12 +105,20 @@ async function loadCandidates() {
   } catch (e) { return []; }
 }
 
+// 2026-08-18, по запросу Sagi («ИИ-тренажёр обещаем в приглашениях, но он не привязан к
+// аккаунту стажёра») — группируем ПО login, когда он есть (реальный аккаунт из hr:user), а
+// не только по свободному имени, которое кто угодно мог ввести как угодно. Старые события без
+// login (до этой правки) продолжают группироваться по имени, чтобы не потерять историю.
 function aggregate(events) {
   const byMgr = {};
   for (const e of events) {
+    const login = (e.login || '').trim();
     const m = (e.manager || '—').trim() || '—';
-    byMgr[m] = byMgr[m] || { manager: m, count: 0, scores: [], skills: {}, types: {} };
-    const g = byMgr[m];
+    const key = login || ('name:' + m);
+    byMgr[key] = byMgr[key] || { manager: m, login: login || null, count: 0, scores: [], skills: {}, types: {} };
+    const g = byMgr[key];
+    if (!g.login && login) g.login = login;
+    if (m && m !== '—') g.manager = m;
     g.count++;
     const sc = Number(e.score);
     if (!isNaN(sc)) g.scores.push(sc);
@@ -120,6 +128,7 @@ function aggregate(events) {
   const avg = a => (a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : null);
   return Object.values(byMgr).map(g => ({
     manager: g.manager,
+    login: g.login,
     events: g.count,
     overall: avg(g.scores),
     bySkill: Object.fromEntries(Object.entries(g.skills).map(([k, v]) => [k, avg(v)])),
@@ -232,8 +241,37 @@ export default async function handler(req, res) {
     let body = req.body;
     if (typeof body === 'string') body = JSON.parse(body);
     const userName = (body?.userName || '').toString().slice(0, 60).trim();
+    const userLogin = (body?.login || '').toString().slice(0, 60).trim();
     const dashPass = (body?.dashboardPassword || '').toString();
     const period = (body?.period || 'all').toString();
+
+    // Лёгкий маршрут статистики (2026-08-18): отдаёт агрегированные результаты тренажёра по
+    // конкретному login БЕЗ обращения к Anthropic — нужен, чтобы кабинет стажёра (index.html) и
+    // панель руководителя могли показать «пройдено тренировок / средний балл», не гоняя это
+    // через диалог с ИИ. Пароль не требуется — отдаём только агрегаты по ОДНОМУ конкретному
+    // login, который и так известен вызывающей стороне (это не чужие данные).
+    if (body?.action === 'stats') {
+      const login = (body?.login || '').toString().slice(0, 60).trim();
+      if (!login) { res.status(200).json({ ok: false, error: 'login обязателен' }); return; }
+      const all = await loadEvents();
+      const mine = all.filter(e => (e.login || '').trim() === login);
+      const agg = aggregate(mine);
+      const stats = agg[0] || { manager: '', login, events: 0, overall: null, bySkill: {}, byType: {} };
+      res.status(200).json({ ok: true, stats });
+      return;
+    }
+
+    // Массовая версия для панели руководителя (index.html/boss) — один запрос вместо одного на
+    // каждого стажёра. Защищена тем же паролем, что и остальной дешборд, т.к. отдаёт заметки/
+    // баллы по всем сразу, а не по одному человеку, который и так знает свои данные.
+    if (body?.action === 'statsAll') {
+      const PASS2 = process.env.DASHBOARD_PASSWORD || '';
+      if (!PASS2 || dashPass !== PASS2) { res.status(200).json({ ok: false, error: 'Неверный пароль РОПа' }); return; }
+      const all = await loadEvents();
+      res.status(200).json({ ok: true, stats: aggregate(all) });
+      return;
+    }
+
     const incoming = Array.isArray(body?.messages) ? body.messages : [];
     const messages = incoming
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -276,6 +314,7 @@ export default async function handler(req, res) {
 
     const sysSuffix =
       `\n\n— Текущий пользователь: имя=${userName || 'не указано'}.` +
+      (userLogin ? ` (аккаунт подтверждён, login=${userLogin})` : '') +
       (isDashboard ? ' Роль: руководитель (доступ к дешборду подтверждён). Построй дешборд строго из блока <DATA>.' : '') +
       dataBlock + kbBlock;
 
@@ -304,7 +343,7 @@ export default async function handler(req, res) {
     }
     const { events, clean } = extractSaves(raw);
     if (events.length) {
-      const fixed = events.map(e => ({ ...e, manager: (e.manager && String(e.manager).trim()) || userName || '—' }));
+      const fixed = events.map(e => ({ ...e, manager: (e.manager && String(e.manager).trim()) || userName || '—', login: userLogin || null }));
       saveEvents(fixed); // best-effort, не блокируем ответ
     }
     res.status(200).json({ reply: clean || '(пустой ответ)', saved: events.length });

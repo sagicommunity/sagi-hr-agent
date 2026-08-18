@@ -34,6 +34,33 @@ const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карус
 const REMINDED_KEY = 'hh:reminded_negotiations'; // кому уже отправили напоминание (шлём максимум один раз)
 const REMIND_AFTER_MS = 24 * 60 * 60 * 1000; // напомнить, если прошло больше 24 часов без ответа
 const REMINDER_TEXT = 'Добрый день! Не потерялись ли вопросы выше? Если вакансия всё ещё интересна, ответьте, пожалуйста, коротко на них, и мы продолжим 🙂 Если удобнее в WhatsApp или созвониться, пишите на +7 707 700 0087.';
+
+// ---- Многоступенчатая реанимация (2026-08-18, по запросу Sagi «увеличить количество новых
+// менеджеров») ----
+// Раньше напоминание на этапах гейта и анкеты уходило РОВНО ОДИН раз через 24 часа, а дальше
+// кандидат забывался навсегда, даже если просто не заметил сообщение. Теперь — до 3 касаний по
+// нарастающей (сутки, потом ещё через 2 дня, потом ещё через 4), с разным текстом на каждом
+// шаге, чтобы не выглядело как один и тот же спам. Счётчик касаний — 'hh:gate_remind_n:'+negId
+// / 'hh:anketa_remind_n:'+negId, а не boolean-флаг, как было раньше.
+const REMIND_SCHEDULE_MS = [24 * 60 * 60 * 1000, 3 * 24 * 60 * 60 * 1000, 7 * 24 * 60 * 60 * 1000];
+function reminderTextByTouch(touchIndex) {
+  if (touchIndex === 0) return REMINDER_TEXT;
+  if (touchIndex === 1) return 'Ещё раз на всякий случай: вопросы выше всё ещё актуальны. Если интересно, ответьте, пожалуйста, коротко, и продолжим. Если решили, что вакансия не подходит — тоже дайте знать, буду в курсе и больше не побеспокою.';
+  return 'Последний раз напомню про вопросы выше — если пока не готовы отвечать, ничего страшного, больше писать по этому поводу не буду. Если вдруг станет актуально, этот чат никуда не денется, пишите в любой момент.';
+}
+// Приглашён на обучение (buildInviteMessage отправлен), но так и не зарегистрировался на
+// hr.sagibonus.com — раньше про таких просто забывали навсегда (наблюдение в ФАЗЕ D снимается
+// через WATCH_FOR_MS и на этом всё). До 3 лёгких напоминаний по нарастающей, после чего
+// оставляем в покое (см. ФАЗА D2 ниже).
+const REG_NUDGE_SCHEDULE_MS = [2 * 24 * 60 * 60 * 1000, 5 * 24 * 60 * 60 * 1000, 10 * 24 * 60 * 60 * 1000];
+const MAX_REG_NUDGES_PER_RUN = 5;
+function buildRegNudgeText(name, negId, touchIndex) {
+  const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, привет!` : 'Привет!';
+  const regLink = negId ? `hr.sagibonus.com/?hh=${negId}` : 'hr.sagibonus.com';
+  if (touchIndex === 0) return `${greet}\n\nНапоминаю про регистрацию на обучение: ${regLink}, карточка «🎓 Стажёр». Займёт минуту, дальше уже сами модули в своём темпе.`;
+  if (touchIndex === 1) return `${greet}\n\nЕщё раз про обучение, ссылка та же: ${regLink}. Если появились вопросы или не получается зарегистрироваться, напишите, помогу разобраться.`;
+  return `${greet}\n\nПоследнее напоминание про обучение (${regLink}) — если пока не актуально, ничего страшного, больше писать не буду. Если станет интересно, ссылка всегда рабочая, пишите в любой момент.`;
+}
 const INVITE_WATCH_KEY = 'hh:invite_watch'; // negId кандидатов, которым отправили приглашение на обучение и ещё следим за возможными вопросами
 const WATCH_FOR_MS = 4 * 24 * 60 * 60 * 1000; // сколько дней после приглашения ещё проверяем чат на новые сообщения (вопросы)
 const MAX_WATCH_PER_RUN = 8;
@@ -138,6 +165,42 @@ function buildMentorAssignedText(name, mentorName, mentorPhone) {
   const greet = name ? `${name}, поздравляем!` : 'Поздравляем!';
   const contactLine = mentorPhone ? `\n\nМожно написать ему напрямую в WhatsApp: ${mentorPhone}.` : '';
   return `${greet} Вы прошли базовую программу обучения. 🎉\n\nТеперь начинается стажировка: дальше с вами будет работать в паре наставник — ${mentorName || 'опытный менеджер команды'}, он свяжется с вами в ближайшее время, чтобы перейти к практике на реальных звонках и встречах.${contactLine}\n\nЕсли есть вопросы, можно написать сюда же или в WhatsApp: +7 707 700 0087.`;
+}
+
+// ---- ФАЗА F (контроль нагрузки на наставников) ----
+// 2026-08-18, задача Sagi «сократить отток сотрудников»: перегруженный наставник физически не
+// успевает уделять внимание всем стажёрам, а без внимания новые сотрудники быстрее уходят.
+const MENTOR_OVERLOAD_THRESHOLD = 5; // сколько «живых» стажёров на одного наставника уже считаем перегрузом
+const MENTOR_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // не спамим чаще раза в сутки на одного наставника
+
+// ---- ФАЗА G (пульс-проверки после трудоустройства, retention) ----
+// 2026-08-18, задача Sagi «сократить отток сотрудников»: коротко спрашиваем сотрудника, как
+// дела, на 14/30/90 день после реального выхода на работу (employedAt, см. api/pipeline.js).
+// Ответ ловит api/wa.js (ключ hr:pulse_wait:<телефон>) и при тревожных словах сразу сигналит
+// Sagi в Telegram — чтобы узнать о риске ухода ДО того, как человек уже решил уйти, а не после.
+const PULSE_SCHEDULE_DAYS = [14, 30, 90];
+const MAX_PULSES_PER_RUN = 8;
+const PULSE_WAIT_TTL_SEC = 7 * 24 * 60 * 60;
+const WA_TOKEN = process.env.WHATSAPP_TOKEN || '';
+const WA_PHONE_ID = process.env.WHATSAPP_PHONE_ID || '';
+function digitsOnly(s) { return String(s || '').replace(/[^\d]/g, ''); }
+function buildPulseText(name, day) {
+  const n = (name || '').trim().split(/\s+/)[0] || '';
+  const greet = n ? `${n}, привет` : 'Привет';
+  if (day === 14) return `${greet}! 👋 Вы уже 2 недели в команде Sagi. Как вам, всё нравится, освоились на месте? Если что-то смущает или нужна помощь, напишите прямо сюда, поможем.`;
+  if (day === 30) return `${greet}! Уже месяц как вы в команде 🙌 Как ощущения, комфортно работать? Если есть сложности (с наставником, задачами, чем угодно), дайте знать, разберёмся.`;
+  return `${greet}! Вы с нами уже 3 месяца 🎉 Как в целом ощущения от работы? Всё устраивает, или есть что улучшить? Будем рады честной обратной связи.`;
+}
+async function waSendPulse(to, text) {
+  if (!WA_TOKEN || !WA_PHONE_ID || !to) return false;
+  try {
+    const r = await fetch(`https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + WA_TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text, preview_url: false } }),
+    });
+    return r.ok;
+  } catch (e) { return false; }
 }
 
 async function redis(cmd) {
@@ -1028,6 +1091,16 @@ export default async function handler(req, res) {
       const watchArr = Array.isArray(watchIds) ? watchIds : [];
       const repliedSet = new Set(repliedArr);
       const awaitingArr = seenArr.filter(id => !repliedSet.has(id));
+
+      // 2026-08-18, по запросу Sagi («воронка обрывается на приглашении, дальше не видно») —
+      // добавляем шаги ПОСЛЕ приглашения: зарегистрировался и проходит обучение, закончил все
+      // 10 модулей и получил наставника. Источник — стадия кандидата в hr:candidates (её ставят
+      // users.js при регистрации и ФАЗА E в этом файле при завершении обучения), не сам hh.kz.
+      const rawCandsForFunnel = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const candListForFunnel = rawCandsForFunnel.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const hhStageByNegId = new Map(candListForFunnel.filter(c => (c.id || '').startsWith('hh_')).map(c => [c.id.slice(3), c.stage]));
+      const registeredArr = repliedArr.filter(negId => hhStageByNegId.get(negId) === 'Обучение' || hhStageByNegId.get(negId) === 'Стажировка');
+      const completedArr = repliedArr.filter(negId => hhStageByNegId.get(negId) === 'Стажировка');
       const token = await getEmployerToken();
       const employerId = process.env.HH_EMPLOYER_ID || '';
       const vacRes = await hhGet(`/employers/${employerId}/vacancies/active?per_page=50`, token);
@@ -1063,6 +1136,8 @@ export default async function handler(req, res) {
         repliedToUs: repliedArr.length,
         awaitingReply: awaitingArr.length,
         invitedToInternshipStillWatching: watchArr.length,
+        registeredForTraining: registeredArr.length,
+        completedTraining: completedArr.length,
         // Списки negId по каждой цифре — фронт сам сматчит их с уже загруженным hr:candidates
         // (id кандидата = 'hh_' + negId) и покажет конкретных людей по клику на цифру.
         negIds: {
@@ -1071,6 +1146,8 @@ export default async function handler(req, res) {
           repliedToUs: repliedArr,
           awaitingReply: awaitingArr,
           invitedToInternshipStillWatching: watchArr,
+          registeredForTraining: registeredArr,
+          completedTraining: completedArr,
         },
       });
     } catch (e) {
@@ -1584,11 +1661,13 @@ export default async function handler(req, res) {
           if (dryRun && debug) gatePreview.push({ negId, hasReply: false, debug: replyDebug });
           try {
             const rec = candById.get('hh_' + negId);
-            const alreadyReminded = await redis(['SISMEMBER', REMINDED_GATE_KEY, negId]);
-            if (rec && rec.ts && alreadyReminded !== 1 && (Date.now() - rec.ts) >= REMIND_AFTER_MS) {
+            const touchesDone = parseInt(await redis(['GET', 'hh:gate_remind_n:' + negId]), 10) || 0;
+            const dueMs = REMIND_SCHEDULE_MS[touchesDone];
+            if (rec && rec.ts && dueMs != null && (Date.now() - rec.ts) >= dueMs) {
               if (!dryRun) {
-                const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: REMINDER_TEXT });
-                await redis(['SADD', REMINDED_GATE_KEY, negId]);
+                const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: reminderTextByTouch(touchesDone) });
+                await redis(['SET', 'hh:gate_remind_n:' + negId, String(touchesDone + 1)]);
+                await redis(['SADD', REMINDED_GATE_KEY, negId]); // сохраняем и старый флаг для обратной совместимости диагностики
                 if (rem.ok) gateRemindersSent++;
               } else {
                 gateRemindersSent++;
@@ -1667,16 +1746,17 @@ export default async function handler(req, res) {
         const { replyText, debug: replyDebug } = extractCandidateReply(messages);
         if (!replyText) {
           if (dryRun && debug) replyPreview.push({ negId, hasReply: false, debug: replyDebug, rawSample: JSON.stringify(messages).slice(0, 300) });
-          // Напоминание: если с момента отправки анкеты (не с первого гейт-сообщения — гейт мог
-          // ответить не сразу) прошло больше REMIND_AFTER_MS и мы ещё не напоминали — шлём один
-          // короткий пинг. Поднимает долю ответивших без спама.
+          // Напоминание: с момента отправки анкеты (не с первого гейт-сообщения — гейт мог
+          // ответить не сразу), до 3 касаний по нарастающей — см. REMIND_SCHEDULE_MS выше.
           try {
             const questionsTsRaw = await redis(['GET', 'hh:questions_ts:' + negId]);
             const questionsTs = parseInt(questionsTsRaw, 10) || 0;
-            const alreadyReminded = await redis(['SISMEMBER', REMINDED_KEY, negId]);
-            if (questionsTs && alreadyReminded !== 1 && (Date.now() - questionsTs) >= REMIND_AFTER_MS) {
+            const touchesDone = parseInt(await redis(['GET', 'hh:anketa_remind_n:' + negId]), 10) || 0;
+            const dueMs = REMIND_SCHEDULE_MS[touchesDone];
+            if (questionsTs && dueMs != null && (Date.now() - questionsTs) >= dueMs) {
               if (!dryRun) {
-                const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: REMINDER_TEXT });
+                const rem = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: reminderTextByTouch(touchesDone) });
+                await redis(['SET', 'hh:anketa_remind_n:' + negId, String(touchesDone + 1)]);
                 await redis(['SADD', REMINDED_KEY, negId]);
                 if (rem.ok) remindersSent++;
               } else {
@@ -1788,6 +1868,40 @@ export default async function handler(req, res) {
       }
     } catch (e) {}
 
+    // ==== ФАЗА D2: напоминания приглашённым, кто так и не зарегистрировался (2026-08-18, по
+    // запросу Sagi «увеличить количество новых менеджеров») ====
+    // Раньше приглашённого, который не кликнул по ссылке регистрации, просто забывали навсегда.
+    // Теперь до 3 напоминаний по нарастающей (см. REG_NUDGE_SCHEDULE_MS), пока стадия остаётся
+    // «Приглашён» (как только человек регистрируется, users.js сам ставит «Обучение», и нудж
+    // сюда больше не попадает — SDIFF/фильтр по stage ниже это отсекает).
+    let regNudgeChecked = 0, regNudgeSent = 0;
+    try {
+      const repliedAll = (await redis(['SMEMBERS', REPLIED_KEY])) || [];
+      const notRegistered = repliedAll.filter(negId => (candById.get('hh_' + negId) || {}).stage === 'Приглашён');
+      const toNudge = notRegistered.slice(0, MAX_REG_NUDGES_PER_RUN);
+      for (const negId of toNudge) {
+        regNudgeChecked++;
+        try {
+          const inviteTsRaw = await redis(['GET', 'hh:invite_ts:' + negId]);
+          const inviteTs = parseInt(inviteTsRaw, 10) || 0;
+          if (!inviteTs) continue;
+          const touchesDone = parseInt(await redis(['GET', 'hh:reg_nudge_n:' + negId]), 10) || 0;
+          const dueMs = REG_NUDGE_SCHEDULE_MS[touchesDone];
+          if (dueMs == null || (Date.now() - inviteTs) < dueMs) continue;
+          const rec = candById.get('hh_' + negId);
+          if (!dryRun) {
+            const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildRegNudgeText(rec?.name, negId, touchesDone) });
+            if (sent.ok) { await redis(['SET', 'hh:reg_nudge_n:' + negId, String(touchesDone + 1)]); regNudgeSent++; }
+            else errors.push({ negId, step: 'reg_nudge', status: sent.status, data: sent.data });
+          } else {
+            regNudgeSent++;
+          }
+        } catch (e) {
+          errors.push({ negId, step: 'reg_nudge', error: e.message });
+        }
+      }
+    } catch (e) {}
+
     // ==== ФАЗА E: напоминания стажёрам о застрявшем обучении + распределение наставников ====
     // По прямому указанию Sagi (2026-08-17): «они должны обучение пройти, и мы должны подтянуть
     // уже на стажировку» — не просто пригласить, а довести до реального прохождения программы.
@@ -1879,13 +1993,85 @@ export default async function handler(req, res) {
       errors.push({ step: 'trainee_nudges', error: e.message });
     }
 
+    // ==== ФАЗА F: контроль нагрузки на наставников ====
+    let mentorLoad = {};
+    try {
+      const logins2 = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      const loadByMentor = new Map(MENTORS.map(m => [m.name, 0]));
+      for (const login of logins2) {
+        const raw = await redis(['GET', 'hr:user:' + login]);
+        if (!raw) continue;
+        let u; try { u = JSON.parse(raw); } catch (e) { continue; }
+        if (!u.mentorName) continue;
+        const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
+        const stage = linkedCandId ? candById.get(linkedCandId)?.stage : null;
+        if (stage === 'Ушёл') continue; // такого стажёра наставник уже фактически не ведёт
+        loadByMentor.set(u.mentorName, (loadByMentor.get(u.mentorName) || 0) + 1);
+      }
+      mentorLoad = Object.fromEntries(loadByMentor);
+      if (!dryRun) {
+        for (const m of MENTORS) {
+          const count = loadByMentor.get(m.name) || 0;
+          if (count < MENTOR_OVERLOAD_THRESHOLD) continue;
+          const alertKey = 'hr:mentor_overload_alert:' + m.name;
+          const lastAlert = parseInt(await redis(['GET', alertKey]), 10) || 0;
+          if (Date.now() - lastAlert < MENTOR_ALERT_COOLDOWN_MS) continue;
+          await redis(['SET', alertKey, String(Date.now())]);
+          const tok = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
+          if (tok && chat) {
+            const txt = `⚠️ Наставник ${m.name} сейчас ведёт ${count} стажёров одновременно — многовато, есть риск, что кому-то не хватит внимания и он уйдёт. Стоит подключить ещё одного наставника или перераспределить нагрузку.`;
+            try { await fetch(`https://api.telegram.org/bot${tok}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: txt, disable_web_page_preview: true }) }); } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      errors.push({ step: 'mentor_load', error: e.message });
+    }
+
+    // ==== ФАЗА G: пульс-проверки после трудоустройства (retention) ====
+    let pulsesChecked = 0, pulsesSent = 0;
+    try {
+      const employedCands = [...candById.values()].filter(c => c.employedAt && c.stage === 'Трудоустроен');
+      let pulsesUsed = 0;
+      for (const c of employedCands) {
+        if (pulsesUsed >= MAX_PULSES_PER_RUN) break;
+        pulsesChecked++;
+        const daysSince = Math.floor((Date.now() - c.employedAt) / (24 * 60 * 60 * 1000));
+        const phone = digitsOnly(c.phone || c.contact || '');
+        if (!phone) continue;
+        for (const d of PULSE_SCHEDULE_DAYS) {
+          if (daysSince < d) break; // расписание по возрастанию — дальше рано, ждём
+          const sentKey = 'hr:pulse_sent:' + c.id + ':' + d;
+          const already = await redis(['GET', sentKey]);
+          if (already) continue; // этот день уже отправляли, проверяем следующий по расписанию
+          pulsesUsed++;
+          if (!dryRun) {
+            const ok = await waSendPulse(phone, buildPulseText(c.name, d));
+            if (ok) {
+              pulsesSent++;
+              await redis(['SET', sentKey, String(Date.now())]);
+              await redis(['SET', 'hr:pulse_wait:' + phone, JSON.stringify({ candId: c.id, day: d, name: c.name }), 'EX', PULSE_WAIT_TTL_SEC]);
+            }
+          } else {
+            pulsesSent++;
+          }
+          break; // один пульс за прогон на одного сотрудника
+        }
+      }
+    } catch (e) {
+      errors.push({ step: 'retention_pulse', error: e.message });
+    }
+
     res.status(200).json({
       ok: true, dryRun,
       intake: { totalResponses: items.length, newTotal: newItems.length, processed: intakeProcessed, remaining: remainingNew, preview: dryRun ? intakePreview : undefined },
       gate: { awaitingTotal: gateAwaitingIds.length, checked: gateChecked, remaining: remainingGateAwaiting, passed: gatePassed, declined: gateDeclined, remindersSent: gateRemindersSent, cursor: gateCursor, preview: dryRun ? gatePreview : undefined },
       replies: { awaitingTotal: awaitingIds.length, checked: repliesChecked, remaining: remainingAwaiting, found: repliesFound, remindersSent, cursor: reviewCursor, preview: dryRun ? replyPreview : undefined },
       followUps: { checked: watchChecked, questionsFound, autoAnswered },
+      regNudges: { checked: regNudgeChecked, sent: regNudgeSent },
       trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount },
+      mentorLoad,
+      retentionPulse: { checked: pulsesChecked, sent: pulsesSent },
       errors: debug ? errors : errors.length,
     });
   } catch (e) {

@@ -35,6 +35,34 @@ async function waSend(to, text) {
 function digits(s) { return String(s || '').replace(/[^\d]/g, ''); }
 function parseAge(s) { const m = String(s || '').match(/\b(1[4-9]|[2-6]\d|70)\b/); return m ? parseInt(m[1], 10) : null; }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+// ---- Пульс-проверки после трудоустройства (retention) ----
+// Вопрос отправляет ФАЗА G в api/hh_poll.js (на 14/30/90 день после employedAt), ставит ключ
+// hr:pulse_wait:<телефон> на 7 дней. Здесь только ловим ответ, пока ждём именно его.
+function looksAtRisk(text) {
+  return /(увольня|уволю|уйти с работ|ухожу с работ|не нравится работа|не нравиться работа|устал[а]?\s+от|тяжело работать|не тян|не справляюсь|хочу уволиться|ищу друг(ую|ое)\s+работ|подыскиваю\s+друг|не устраивает работа|разочаров|выгора|плохой наставник|нет поддержки|хочу уйти|думаю уйти|скоро уйду|наверное уйду)/i.test(text || '');
+}
+async function appendPulseReply(id, entry) {
+  const raw = await redis(['LRANGE', CAND_KEY, 0, -1]);
+  if (!Array.isArray(raw)) return false;
+  for (let i = 0; i < raw.length; i++) {
+    let rec; try { rec = JSON.parse(raw[i]); } catch (e) { continue; }
+    if (rec && rec.id === id) {
+      const pulseReplies = Array.isArray(rec.pulseReplies) ? rec.pulseReplies : [];
+      pulseReplies.push(entry);
+      const updated = { ...rec, pulseReplies };
+      await redis(['LSET', CAND_KEY, i, JSON.stringify(updated)]);
+      return updated;
+    }
+  }
+  return false;
+}
+async function notifyAtRisk(rec, day, text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
+  if (!token || !chat) return;
+  const msg = `⚠️ Возможный риск ухода сотрудника — Sagi\n\n👤 ${rec?.name || '—'}\n📅 День ${day} после трудоустройства\n\n🗣 Ответ на пульс-проверку:\n${(text || '').slice(0, 800)}\n\nСтоит связаться лично, пока не поздно.\n\nПайплайн: ${SITE}/pipeline.html`;
+  try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: msg, disable_web_page_preview: true }) }); } catch (e) {}
+}
 function waMessage(name) { const n = (name || '').trim().split(/\s+/)[0] || ''; return `Здравствуйте${n ? ', ' + n : ''}! 👋 Меня зовут [ваше имя], я из Sagi. Мы расширяем отдел продаж и заинтересовались вашим опытом. Удобно ответить на пару вопросов?`; }
 
 const SCREEN_SYS = `Ты — HR-скринер Sagi (loyalty-платформа для B2B МСБ). Оцениваешь кандидата на менеджера по ХОЛОДНЫМ продажам (аутрич, звонки, поиск ЛПР, работа с возражениями, закрытие на встречу). Работа: офис в Астане.
@@ -158,6 +186,25 @@ export default async function handler(req, res) {
     const wa = msg.from; // номер кандидата в WhatsApp (служит телефоном)
     const profileName = value?.contacts?.[0]?.profile?.name || '';
     let text = (msg.text?.body || '').trim();
+
+    // Если ждём ответ именно на пульс-проверку (retention) — обрабатываем его отдельно и не
+    // пускаем в обычный флоу анкеты кандидата.
+    try {
+      const pulseRaw = await redis(['GET', 'hr:pulse_wait:' + wa]);
+      if (pulseRaw && text) {
+        let pulse; try { pulse = JSON.parse(pulseRaw); } catch (e) { pulse = null; }
+        if (pulse && pulse.candId) {
+          await redis(['DEL', 'hr:pulse_wait:' + wa]);
+          const atRisk = looksAtRisk(text);
+          const rec = await appendPulseReply(pulse.candId, { day: pulse.day, text: text.slice(0, 1000), ts: Date.now(), atRisk });
+          if (atRisk) await notifyAtRisk(rec || { name: pulse.name }, pulse.day, text);
+          await waSend(wa, atRisk
+            ? 'Спасибо, что честно ответили 🙏 Передал(а) это HR-менеджеру, с вами свяжутся, чтобы разобраться и помочь.'
+            : 'Спасибо за ответ! Рады, что всё хорошо 🙌 Если что-то понадобится, пишите в любой момент.');
+          res.status(200).json({ ok: true }); return;
+        }
+      }
+    } catch (e) {}
 
     if (text === '/start' || /^(начать|заново|restart)$/i.test(text)) {
       await setState(wa, { step: 'name', data: {}, phone: wa });
