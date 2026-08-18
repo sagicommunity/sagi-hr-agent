@@ -61,6 +61,7 @@
   .scorecol{display:flex;flex-direction:column;align-items:center;gap:5px;flex:0 0 46px}
   .agetag{font-size:11px;font-weight:700;color:var(--muted);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:2px 6px;white-space:nowrap;line-height:1.2;text-align:center}
   .agetag.none{color:var(--faint)}
+  .agetag.warn{color:#ff9b3d;border-color:rgba(255,155,61,.4);background:rgba(255,155,61,.12)}
   .card .body{flex:1;min-width:0;cursor:pointer}
   .card .nm{font-weight:700;font-size:15.5px;display:inline-flex;align-items:center;gap:7px}
   .card .nm .open{font-size:11px;font-weight:600;color:var(--brand);opacity:0;transition:.16s}
@@ -173,6 +174,7 @@
     <select id="fStage"><option value="">Все стадии</option></select>
     <select id="fSort"><option value="score">Сортировка: по баллу</option><option value="ts">по дате</option><option value="vacancy">по вакансии</option></select>
     <input id="fSearch" placeholder="Поиск по имени/телефону…" />
+    <select id="fAge"><option value="">Все возрасты</option><option value="out">⚠️ Вне 20–35 лет</option></select>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -231,8 +233,8 @@ function verdictCls(v){ return /брать/i.test(v)?'v-take':(/отказ/i.tes
 
 function render(){
   const grid=$('#grid'); grid.innerHTML='';
-  const fs=$('#fStage').value, fv=$('#fVacancy').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value;
-  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!fv||c.vacancy===fv)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q)));
+  const fs=$('#fStage').value, fv=$('#fVacancy').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value, fa=$('#fAge').value;
+  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!fv||c.vacancy===fv)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q))&&(!fa||(c.age!=null&&c.age!==''&&(c.age<20||c.age>35))));
   items.sort((a,b)=>{
     if(sort==='ts') return b.ts-a.ts;
     if(sort==='vacancy'){ const v=(a.vacancy||'').localeCompare(b.vacancy||''); return v!==0 ? v : ((b.score??-1)-(a.score??-1)); }
@@ -245,10 +247,11 @@ function render(){
     const wa=c.phone?('https://wa.me/'+c.phone+'?text='+encodeURIComponent(c.waMessage||'')):'';
     const stageOpts=STAGES.map(s=>'<option'+(s===c.stage?' selected':'')+'>'+s+'</option>').join('');
     const ageTxt=(c.age!=null&&c.age!=='')?(esc(c.age)+' '+yearsWord(c.age)):'возраст —';
+    const ageOut=(c.age!=null&&c.age!=='')&&(c.age<20||c.age>35);
     card.innerHTML=
       '<div class="scorecol">'+
         '<div class="score '+scoreCls(c.score)+'">'+(c.score??'—')+'</div>'+
-        '<div class="agetag'+((c.age!=null&&c.age!=='')?'':' none')+'">'+ageTxt+'</div>'+
+        '<div class="agetag'+((c.age!=null&&c.age!=='')?(ageOut?' warn':''):' none')+'" title="'+(ageOut?'Вне диапазона 20–35 лет — не автоотказ, решение за тобой':'')+'">'+ageTxt+(ageOut?' ⚠️':'')+'</div>'+
       '</div>'+
       '<div class="body" data-open="'+c.id+'">'+
         '<div class="nm">'+esc(c.name)+'<span class="open">💬 ответы боту →</span></div>'+
@@ -411,7 +414,7 @@ $('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
 })();
 
 // controls
-['#fVacancy','#fStage','#fSort','#fSearch'].forEach(s=>$(s).addEventListener('input',render));
+['#fVacancy','#fStage','#fSort','#fSearch','#fAge'].forEach(s=>$(s).addEventListener('input',render));
 $('#addBtn').addEventListener('click',()=>{ const b=$('#addbox'); b.style.display=b.style.display==='block'?'none':'block'; });
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); t.classList.add('on');

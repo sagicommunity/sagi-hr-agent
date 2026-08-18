@@ -640,7 +640,10 @@ function renderBoss(users, skipStatsFetch){
       const hs=u.hireStatus||'Активен';
       const statusCell=hs==='Активен' ? '—' : '<span class="tag '+(HIRE_STATUS_CLASS[hs]||'')+'" title="'+(u.statusComment||'').replace(/"/g,'&quot;')+'">'+hs+'</span>';
       const howFoundCell=u.howFound ? u.howFound : '—';
-      return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b><br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
+      // 2026-08-18, по запросу Sagi: помечаем возраст вне 20-35 лет — НЕ авто-отказ, просто
+      // видимая пометка для ручного решения (юридически рискованно жёстко отклонять по возрасту).
+      const ageBadge=u.ageOutOfRange ? ' <span class="tag warn" title="Вне диапазона 20-35 лет — не автоотказ, решение за тобой">'+(u.age!=null?u.age+' лет':'возраст')+' ⚠️</span>' : '';
+      return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b>'+ageBadge+'<br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
         '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'">'+(u.role==='manager'?'Менеджер':'Стажёр')+'</span></td>'+
         '<td>'+statusCell+'</td>'+
         '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
@@ -723,6 +726,7 @@ function renderProfile(u){
   $('#profStatusComment').value=u.statusComment||'';
 
   const meta=[];
+  if(u.age!=null) meta.push('Возраст: '+u.age+' лет'+(u.ageOutOfRange?' ⚠️ (вне диапазона 20-35, не автоотказ — решение за тобой)':''));
   if(u.howFound) meta.push('Откуда узнал(а) о вакансии: '+u.howFound);
   if(u.mentorName) meta.push('Наставник: '+u.mentorName+(u.mentorPhone?' ('+u.mentorPhone+')':''));
   if(u.hhNegId) meta.push('Привязан к переписке на hh.kz — напоминания и уведомления приходят автоматически.');
