@@ -4,11 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sagi — Отклик на вакансию менеджера по продажам</title>
-<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi (офис или удалённо). Оставьте контакт и резюме — мы свяжемся." />
+<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi, полностью удалённо. Пара коротких вопросов вместо резюме — мы свяжемся." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root{
     --bg:#0a0c10; --panel:rgba(255,255,255,.035); --panel-solid:#11151c; --panel-2:rgba(255,255,255,.06);
@@ -39,14 +38,16 @@
     background:linear-gradient(180deg,#fff,#aeb9c6);-webkit-background-clip:text;background-clip:text;color:transparent}
   .lead{color:var(--muted);text-align:center;line-height:1.6;margin:0 auto 26px;max-width:500px}
   form{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.4)}
-  label{display:block;font-size:13px;font-weight:600;color:var(--text);margin:0 0 7px}
+  label{display:block;font-size:13px;font-weight:600;color:var(--text);margin:0 0 9px}
   label .req{color:var(--brand)}
+  label .opt{color:var(--faint);font-weight:500}
   .field{margin-bottom:18px}
   input,textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:13px;color:var(--text);font:inherit;font-size:15px;padding:12px 14px;outline:none;transition:.16s}
   input:focus,textarea:focus{border-color:rgba(25,227,154,.55);box-shadow:0 0 0 4px rgba(25,227,154,.1)}
   input::placeholder,textarea::placeholder{color:var(--faint)}
-  textarea{resize:vertical;min-height:160px;line-height:1.55}
+  textarea{resize:vertical;min-height:90px;line-height:1.55}
   .hint{color:var(--faint);font-size:12px;margin-top:6px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   button.submit{width:100%;border:0;border-radius:14px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:800;font-size:15.5px;padding:14px;cursor:pointer;transition:.16s;box-shadow:0 8px 22px var(--brand-glow)}
   button.submit:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
   button.submit:not(:disabled):hover{transform:translateY(-1px)}
@@ -56,11 +57,12 @@
   .result h2{font-family:var(--display);font-weight:700;font-size:22px;margin:0 0 8px}
   .result p{color:var(--muted);line-height:1.6;margin:0 auto;max-width:420px;white-space:pre-line;text-align:left}
   .err{display:none;background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:11px 14px;border-radius:12px;margin-bottom:16px}
-  .vacToggle{display:flex;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px}
-  .vacOpt{flex:1;text-align:center;padding:12px 10px;border-radius:12px;border:1px solid var(--line);cursor:pointer;font-size:13.5px;font-weight:700;color:var(--muted);transition:.16s}
-  .vacOpt.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.1);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
-  .vacOpt small{display:block;font-weight:500;color:var(--faint);font-size:11px;margin-top:3px}
-  @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--muted);font:inherit;font-size:13.5px;font-weight:700;padding:10px 14px;border-radius:11px;cursor:pointer;transition:.16s}
+  .chip:hover{border-color:var(--line-2);color:var(--text)}
+  .chip.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.12);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
+  .chipOther{margin-top:10px}
+  @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}.row2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -76,34 +78,86 @@
 <div class="wrap">
   <div class="card">
     <div id="formView">
-      <div class="eyebrow" id="eyebrow">Вакансия · отдел холодных продаж</div>
-      <h1 id="heading">Менеджер по продажам в Sagi</h1>
-      <p class="lead" id="lead">Холодный аутрич, поиск ЛПР, закрытие на встречи. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку, и мы свяжемся с подходящими кандидатами.</p>
+      <div class="eyebrow">Вакансия · удалённые продажи</div>
+      <h1>Менеджер по продажам в Sagi — удалённо</h1>
+      <p class="lead">Средний доход менеджера — от 600 000 до 1 200 000 ₸ в месяц: оклад + KPI за звонки и встречи + % с продаж без потолка. Работа из дома: холодные звонки, поиск ЛПР, закрытие сделок через онлайн-демо. Резюме не нужно — ответьте на несколько коротких вопросов, ИИ-рекрутер сразу рассмотрит заявку.</p>
       <form id="applyForm">
         <div class="err" id="err"></div>
-        <div class="field">
-          <label>Имя <span class="req">*</span></label>
-          <input id="name" maxlength="80" placeholder="Например: Айгерим Нурлановна" required />
+
+        <div class="row2">
+          <div class="field">
+            <label>Имя <span class="req">*</span></label>
+            <input id="name" maxlength="80" placeholder="Айгерим Нурлановна" required />
+          </div>
+          <div class="field">
+            <label>Возраст <span class="opt">(необязательно)</span></label>
+            <input id="age" type="number" min="14" max="75" placeholder="27" />
+          </div>
         </div>
+
         <div class="field">
-          <label>Контакт <span class="req">*</span></label>
-          <input id="contact" maxlength="120" placeholder="Телефон / WhatsApp / Telegram / email" required />
+          <label>Телефон / WhatsApp <span class="req">*</span></label>
+          <input id="contact" maxlength="120" placeholder="+7 7__ ___ __ __" required />
         </div>
+
         <div class="field">
-          <label>Откуда узнали о вакансии</label>
-          <input id="source" maxlength="80" placeholder="HH, Instagram, по рекомендации…" />
+          <label>Город <span class="req">*</span></label>
+          <div class="chips" data-field="city">
+            <button type="button" class="chip" data-value="Астана">Астана</button>
+            <button type="button" class="chip" data-value="Алматы">Алматы</button>
+            <button type="button" class="chip" data-value="Шымкент">Шымкент</button>
+            <button type="button" class="chip" data-value="__other">Другой город</button>
+          </div>
+          <input class="chipOther" data-for="city" style="display:none" placeholder="Впишите город" />
         </div>
+
         <div class="field">
-          <label>Ссылка на резюме</label>
-          <input id="resumeUrl" maxlength="300" placeholder="hh.kz / LinkedIn / Google Drive — если есть" />
+          <label>Откуда узнали о вакансии <span class="req">*</span></label>
+          <div class="chips" data-field="source">
+            <button type="button" class="chip" data-value="HH.kz">HH.kz</button>
+            <button type="button" class="chip" data-value="Instagram">Instagram</button>
+            <button type="button" class="chip" data-value="Telegram">Telegram</button>
+            <button type="button" class="chip" data-value="Рекомендация">Рекомендация</button>
+            <button type="button" class="chip" data-value="__other">Другое</button>
+          </div>
+          <input class="chipOther" data-for="source" style="display:none" placeholder="Откуда узнали" />
         </div>
+
         <div class="field">
-          <label>Резюме / о себе <span class="req">*</span></label>
-          <textarea id="resume" maxlength="12000" placeholder="Вставьте резюме текстом, или загрузите PDF ниже, или дайте ссылку выше."></textarea>
-          <div style="margin-top:8px"><button type="button" class="submit" id="pdfBtn" style="width:auto;padding:9px 16px;font-size:13.5px;font-weight:700;box-shadow:none;background:var(--panel);color:var(--text);border:1px solid var(--line)">📄 Загрузить PDF-резюме</button></div>
-          <input type="file" id="pdfInput" accept="application/pdf" style="display:none" />
-          <div class="hint" id="pdfHint">Можно вставить текст, дать ссылку выше или загрузить PDF — что удобнее.</div>
+          <label>Есть опыт в продажах / холодных звонках? <span class="req">*</span></label>
+          <div class="chips" data-field="expSales">
+            <button type="button" class="chip" data-value="Есть опыт в продажах и холодных звонках">Да, есть опыт</button>
+            <button type="button" class="chip" data-value="Опыта нет, но готов(а) учиться">Опыта нет, готов(а) учиться</button>
+            <button type="button" class="chip" data-value="Холодные звонки — не моё">Холодные звонки — не моё</button>
+          </div>
         </div>
+
+        <div class="field">
+          <label>Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч? <span class="req">*</span></label>
+          <div class="chips" data-field="techReady">
+            <button type="button" class="chip" data-value="Да, есть компьютер и стабильный интернет">Да</button>
+            <button type="button" class="chip" data-value="Нет">Нет</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Будете совмещать с другой работой или учёбой? <span class="req">*</span></label>
+          <div class="chips" data-field="noCombine">
+            <button type="button" class="chip" data-value="Не буду совмещать, это будет основная занятость">Нет, не буду совмещать</button>
+            <button type="button" class="chip" data-value="Буду совмещать с другой работой/учёбой">Буду совмещать</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Когда готовы приступить? <span class="req">*</span></label>
+          <input id="startWhen" maxlength="120" placeholder="Например: сразу / через неделю" required />
+        </div>
+
+        <div class="field">
+          <label>Хотите что-то добавить о себе? <span class="opt">(необязательно)</span></label>
+          <textarea id="comment" maxlength="2000" placeholder="Любой дополнительный контекст, если важен"></textarea>
+        </div>
+
         <button class="submit" id="submitBtn" type="submit">Откликнуться</button>
         <div class="foot">Нажимая «Откликнуться», вы соглашаетесь на обработку данных для целей подбора персонала Sagi.</div>
       </form>
@@ -120,22 +174,9 @@
 <script>
 const $=s=>document.querySelector(s);
 const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
-if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// 2026-08-18, по указанию Sagi: офисной вакансии больше нет вообще — только удалённая.
-// Раньше здесь был переключатель "Офис, Астана" / "Удалённо", убрали, форма всегда шлёт remote.
-const VAC_COPY = {
-  sales_remote: { eyebrow:'Вакансия · удалённые продажи', h1:'Менеджер по продажам в Sagi — удалённо', lead:'Средний доход менеджера — от 600 000 до 1 200 000 ₸ в месяц: оклад + KPI за звонки и встречи + % с продаж без потолка. Работа из дома: холодные звонки, поиск ЛПР, закрытие сделок через онлайн-демо. Оставьте контакт и резюме — ИИ-рекрутер сразу рассмотрит вашу заявку.' },
-};
-const currentVac = 'sales_remote';
-function applyVac(v){
-  const c = VAC_COPY[v];
-  $('#eyebrow').textContent = c.eyebrow; $('#heading').textContent = c.h1; $('#lead').textContent = c.lead;
-}
-applyVac(currentVac);
-
-// 2026-08-19: ссылку на эту форму теперь шлют hh.kz-бот и Telegram-бот вместо того, чтобы
-// задавать вопросы в самой переписке (см. api/hh_poll.js, api/tg.js). ?src=hh&neg=<negId> или
+// 2026-08-19: ссылку на эту форму шлют hh.kz-бот и Telegram-бот вместо того, чтобы задавать
+// вопросы в самой переписке (см. api/hh_poll.js, api/tg.js). ?src=hh&neg=<negId> или
 // ?src=tg&chat=<chatId> в адресной строке — собираем это в refId и шлём вместе с формой, чтобы
 // api/apply.js обновил уже существующую запись кандидата, а не создал дубликат.
 const qs = new URLSearchParams(location.search);
@@ -143,51 +184,78 @@ const refSrc = qs.get('src') || '';
 let refId = '';
 if (refSrc === 'hh' && qs.get('neg')) refId = 'hh_' + qs.get('neg');
 else if (refSrc === 'tg' && qs.get('chat')) refId = 'tg_' + qs.get('chat');
-const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram-бот' };
-if (SRC_LABEL[refSrc] && !$('#source').value) $('#source').value = SRC_LABEL[refSrc];
+const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram' };
 
-$('#pdfBtn').addEventListener('click',()=>$('#pdfInput').click());
-$('#pdfInput').addEventListener('change',async e=>{
-  const f=e.target.files[0]; if(!f) return;
-  $('#pdfHint').textContent='Читаю PDF: '+f.name+'…';
-  try{
-    const buf=await f.arrayBuffer();
-    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-    let text='';
-    for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); text+=tc.items.map(i=>i.str).join(' ')+'\n'; }
-    const cur=$('#resume').value.trim();
-    $('#resume').value=(cur?cur+'\n\n':'')+text.trim();
-    $('#pdfHint').textContent='✅ Резюме из PDF загружено ('+f.name+'). Можно отправлять.';
-  }catch(ex){ $('#pdfHint').textContent='⚠️ Не удалось прочитать PDF. Вставьте текст или дайте ссылку.'; }
-  e.target.value='';
+// 2026-08-19, по указанию Sagi: вместо резюме — короткая структурированная анкета (те же
+// вопросы, что раньше задавались в переписке hh.kz/Telegram). Готовые варианты ответа (chips)
+// вместо свободного текста там, где это уместно — быстрее заполнять с телефона.
+const chipState = {};
+document.querySelectorAll('.chips').forEach(group => {
+  const field = group.dataset.field;
+  const otherInput = document.querySelector(`.chipOther[data-for="${field}"]`);
+  group.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      group.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      chipState[field] = chip.dataset.value;
+      if (otherInput) {
+        if (chip.dataset.value === '__other') { otherInput.style.display = 'block'; otherInput.focus(); }
+        else { otherInput.style.display = 'none'; }
+      }
+    });
+  });
+  // Предзаполнение источника, если пришли по ссылке из hh.kz/Telegram — кандидат может поменять.
+  if (field === 'source' && SRC_LABEL[refSrc]) {
+    const preset = group.querySelector(`.chip[data-value="${SRC_LABEL[refSrc]}"]`);
+    if (preset) { preset.classList.add('active'); chipState.source = SRC_LABEL[refSrc]; }
+  }
 });
+function chipValue(field) {
+  const v = chipState[field];
+  if (!v) return '';
+  if (v === '__other') {
+    const otherInput = document.querySelector(`.chipOther[data-for="${field}"]`);
+    return (otherInput?.value || '').trim();
+  }
+  return v;
+}
 
-form.addEventListener('submit',async e=>{
+form.addEventListener('submit', async e => {
   e.preventDefault();
-  err.style.display='none';
-  const payload={
-    name:$('#name').value.trim(),
-    contact:$('#contact').value.trim(),
-    source:$('#source').value.trim(),
-    resumeUrl:$('#resumeUrl').value.trim(),
-    resume:($('#resume').value.trim()+($('#resumeUrl').value.trim()?'\n\nСсылка на резюме: '+$('#resumeUrl').value.trim():'')).trim(),
-    vacancy: currentVac,
+  err.style.display = 'none';
+  const payload = {
+    name: $('#name').value.trim(),
+    contact: $('#contact').value.trim(),
+    age: $('#age').value ? parseInt($('#age').value, 10) : null,
+    city: chipValue('city'),
+    source: chipValue('source'),
+    expSales: chipValue('expSales'),
+    techReady: chipValue('techReady'),
+    noCombine: chipValue('noCombine'),
+    startWhen: $('#startWhen').value.trim(),
+    comment: $('#comment').value.trim(),
+    vacancy: 'sales_remote',
     refId: refId,
   };
-  if(!payload.name||!payload.contact||!payload.resume){ err.textContent='Заполните имя, контакт и резюме.'; err.style.display='block'; return; }
-  btn.disabled=true; btn.textContent='Отправляем…';
-  try{
-    const r=await fetch('/api/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const d=await r.json();
-    if(!r.ok||d.error) throw new Error(d.error||('Ошибка '+r.status));
-    $('#formView').style.display='none';
-    $('#resultView').style.display='block';
+  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen) {
+    err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
+    err.style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Отправляем…';
+  try {
+    const r = await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || ('Ошибка ' + r.status));
+    $('#formView').style.display = 'none';
+    $('#resultView').style.display = 'block';
     $('#resultText').textContent = d.message || 'Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
-    window.scrollTo({top:0,behavior:'smooth'});
-  }catch(ex){
-    err.textContent='⚠️ '+(ex.message||'Не удалось отправить. Попробуйте ещё раз.');
-    err.style.display='block';
-    btn.disabled=false; btn.textContent='Откликнуться';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (ex) {
+    err.textContent = '⚠️ ' + (ex.message || 'Не удалось отправить. Попробуйте ещё раз.');
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Откликнуться';
   }
 });
 </script>
