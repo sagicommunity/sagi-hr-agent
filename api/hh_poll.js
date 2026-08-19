@@ -809,16 +809,27 @@ export default async function handler(req, res) {
       const limit = parseInt(req.query.limit || '50', 10) || 50;
       let sent = 0, failed = 0;
       const results = [];
+      // 2026-08-19, найден и исправлен баг: раньше LPOP выполнялся ДАЖЕ в dryrun=1 — то есть
+      // тестовый прогон без параметра dryrun ничего не отправлял, но НАВСЕГДА выкидывал записи
+      // из очереди (buildArchiveQueue дедуплицирует по resume_id и повторно их уже не добавит).
+      // При проверке перед подключением ежедневной scheduled-задачи так потерялось ~50 кандидатов
+      // из очереди рассылки. Теперь в dryRun только читаем очередь (LRANGE), не трогая её.
+      if (dryRun) {
+        const preview = (await redis(['LRANGE', ARCHIVE_QUEUE_KEY, 0, limit - 1])) || [];
+        for (const raw of preview) {
+          let entry; try { entry = JSON.parse(raw); } catch (e) { continue; }
+          sent++;
+          results.push({ negId: entry.negId, name: entry.name, vacName: entry.vacName, dryRun: true });
+        }
+        const remaining = await redis(['LLEN', ARCHIVE_QUEUE_KEY]);
+        res.status(200).json({ ok: true, dryRun, sent, failed, remainingInQueue: remaining, results });
+        return;
+      }
       for (let i = 0; i < limit; i++) {
         const raw = await redis(['LPOP', ARCHIVE_QUEUE_KEY]);
         if (!raw) break;
         let entry; try { entry = JSON.parse(raw); } catch (e) { continue; }
         const text = buildArchiveOutreachMessage(entry.name);
-        if (dryRun) {
-          sent++;
-          results.push({ negId: entry.negId, name: entry.name, vacName: entry.vacName, dryRun: true });
-          continue;
-        }
         const r = await hhReply(entry.negId, token, text);
         if (r.ok) {
           await redis(['SADD', ARCHIVE_SENT_KEY, entry.negId]);
