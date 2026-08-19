@@ -3,7 +3,7 @@
 // выявить нужные моменты через вопросы») — вместо одного поля «резюме/о себе» форма (apply.html)
 // теперь задаёт короткую структурированную анкету (те же вопросы, что раньше шли в переписке
 // hh.kz/Telegram) с готовыми вариантами ответа (chips) там, где это уместно, плюс возраст и город.
-// POST { name, contact, age?, city, source, expSales, techReady, noCombine, startWhen, comment?, vacancy, refId? }
+// POST { name, contact, age?, city, source, expSales, techReady, noCombine, startWhen, comment?, referrerName?, referrerPhone?, vacancy, refId? }
 //   → { ok, score, verdict, summary }
 
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
@@ -83,13 +83,14 @@ async function notifyTelegram(rec) {
   const chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
   const strong = rec.verdict === 'Брать на интервью' || (typeof rec.score === 'number' && rec.score >= 7);
+  const refLine = rec.referrerPhone ? `\n🎁 По рекомендации: ${rec.referrerName || '—'}, ${rec.referrerPhone}` : '';
   const text =
     `${strong ? '🔥 Сильный кандидат' : '💬 Новая заявка'} (форма отклика) — Sagi\n\n` +
     `🎯 Вакансия: ${rec.vacancy}\n` +
     `👤 ${rec.name}\n` +
     `⭐ ${rec.score != null ? rec.score + '/10' : '—'} · ${rec.verdict}\n` +
     `📞 ${rec.contact}\n` +
-    `📍 Источник: ${rec.source}\n\n` +
+    `📍 Источник: ${rec.source}${refLine}\n\n` +
     `${rec.summary || ''}\n\n` +
     `Открыть пайплайн: https://hr.sagibonus.com/pipeline.html`;
   try {
@@ -119,6 +120,12 @@ export default async function handler(req, res) {
     const noCombine = (body?.noCombine || '').toString().slice(0, 200).trim();
     const startWhen = (body?.startWhen || '').toString().slice(0, 120).trim();
     const comment = (body?.comment || '').toString().slice(0, 2000).trim();
+    // 2026-08-19, реферальная программа (по указанию Sagi): друг указывает, кто из сотрудников/
+    // стажёров его порекомендовал — имя и телефон, БЕЗ сверки с базой сотрудников («без проверки»,
+    // решение Sagi). $50 начисляется, если этот друг проработает от 2 месяцев ИЛИ сделает продажу
+    // в первый месяц — это считает api/pipeline.js (computeReferralStatus) и вручную отмечает Sagi.
+    const referrerName = (body?.referrerName || '').toString().slice(0, 80).trim();
+    const referrerPhone = (body?.referrerPhone || '').toString().slice(0, 60).trim();
     const vacancy = (body?.vacancy === 'sales_remote') ? 'sales_remote' : 'sales';
     const isRemote = vacancy === 'sales_remote';
     const vacTitle = VAC_TITLES[vacancy];
@@ -178,6 +185,15 @@ export default async function handler(req, res) {
       score: evaln.score, verdict: evaln.verdict, summary: evaln.summary,
       strengths: evaln.strengths, flags: evaln.flags,
       stage: invited ? 'Приглашён' : 'Отказ', ts: Date.now(),
+      // Реферальная программа: поля ниже заполняются, только если кандидат указал, кто его
+      // порекомендовал. Статус пересчитывается автоматически в api/pipeline.js по мере того, как
+      // кандидат продвигается (трудоустройство, 2 месяца стажа) или Sagi вручную отмечает продажу
+      // в первый месяц — см. computeReferralStatus там же.
+      referrerName: referrerName || '', referrerPhone: referrerPhone || '',
+      referralBonusAmount: referrerPhone ? 50 : null,
+      saleInFirstMonth: false,
+      referralBonusStatus: referrerPhone ? 'ожидает' : null,
+      referralPaidAt: null,
     };
     // Если пришли по ссылке из hh.kz/Telegram (refId = hh_<negId> / tg_<chatId>) — обновляем уже
     // существующую запись, созданную при интейке, вместо того чтобы плодить дубликат (см. комментарий
@@ -189,7 +205,7 @@ export default async function handler(req, res) {
     } catch (e) {}
     notifyTelegram(saved || rec); // best-effort, не блокируем ответ
 
-    const inviteText = `${name}, спасибо за отклик! По вашим ответам приглашаем вас на обучение — это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли появятся вопросы, пишите в WhatsApp: +7 707 700 0087.`;
+    const inviteText = `${name}, спасибо за отклик! По вашим ответам приглашаем вас на обучение — это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nКстати: когда начнёте работать, приводите друзей — за каждого, кто проработает от 2 месяцев (или сделает продажу уже в первый месяц), $50 вам.\n\nЕсли появятся вопросы, пишите в WhatsApp: +7 707 700 0087.`;
     const declineText = `${name}, спасибо за отклик! Сейчас, судя по ответам, эта позиция не очень совпадает с тем, что нужно для этой роли. Если что-то изменится или откроется другая подходящая позиция, обязательно свяжемся. Удачи!`;
 
     res.status(200).json({ ok: true, score: evaln.score, verdict: evaln.verdict, summary: evaln.summary, invited, message: invited ? inviteText : declineText });

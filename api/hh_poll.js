@@ -890,6 +890,48 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ---- Реферальная программа: авто-уведомление Sagi, когда бонус $50 «созрел» ----
+  // 2026-08-19, по указанию Sagi. api/pipeline.js уже пересчитывает статус (computeReferralStatus)
+  // при каждой загрузке pipeline.html, но Sagi туда не заходит каждый день — а бонус может
+  // «созреть» (стаж перевалил за 2 месяца) в любой момент, без его действия. Этот маршрут
+  // отдельно сканирует hr:candidates и шлёт Telegram-алерт РАЗ на каждую запись, как только она
+  // впервые квалифицируется (referralNotifiedAt — метка, чтобы не спамить повторно при каждом
+  // запуске). Вызывается по расписанию (см. память проекта) — не из общего часового прогона.
+  const REFERRAL_TENURE_MS = 60 * 24 * 60 * 60 * 1000;
+  async function notifyReferralReady(rec) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
+    if (!token || !chat) return;
+    const text = `🎁 Реферальный бонус готов к выплате — Sagi\n\n👤 Кандидат: ${rec.name} (${rec.contact || rec.phone || '—'})\n🙋 Привёл(а): ${rec.referrerName || '—'}, ${rec.referrerPhone}\n💵 Сумма: $${rec.referralBonusAmount || 50}\n${rec.saleInFirstMonth ? 'Причина: продажа в первый месяц (отмечено вручную)' : 'Причина: стаж 2+ месяца'}\n\nОтметить выплаченным можно в карточке кандидата: https://hr.sagibonus.com/pipeline.html`;
+    try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
+  }
+  if (req.query?.referralCheck) {
+    try {
+      const raw = (await redis(['LRANGE', CAND_KEY, 0, -1])) || [];
+      let checked = 0, notified = 0;
+      const results = [];
+      for (const s of raw) {
+        let c; try { c = JSON.parse(s); } catch (e) { continue; }
+        if (!c || !c.referrerPhone) continue;
+        if (c.referralBonusStatus === 'выплачено') continue;
+        if (c.referralNotifiedAt) continue; // уже уведомляли один раз
+        checked++;
+        const tenureMs = c.employedAt ? (c.leftAt || Date.now()) - c.employedAt : 0;
+        const qualifies = !!c.saleInFirstMonth || tenureMs >= REFERRAL_TENURE_MS;
+        if (!qualifies) continue;
+        if (!dryRun) {
+          await notifyReferralReady(c);
+          await updateCandidateRecord(c.id, { referralBonusStatus: 'к выплате', referralNotifiedAt: Date.now() });
+        }
+        notified++;
+        results.push({ id: c.id, name: c.name, referrerName: c.referrerName, referrerPhone: c.referrerPhone, saleInFirstMonth: !!c.saleInFirstMonth });
+      }
+      res.status(200).json({ ok: true, dryRun, checked, notified, results });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Диагностика (2026-08-17): реальный список активных вакансий на hh.kz + для каждой немного
   // сырых негоциаций как есть от API — чтобы проверить, действительно ли «Менеджер по продажам»
   // (59 карточек без «удалённо») это отдельная вакансия, или просто у части негоциаций hh.kz не

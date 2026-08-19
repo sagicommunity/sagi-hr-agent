@@ -57,6 +57,21 @@ function waMessage(name) {
   return `Здравствуйте${n ? ', ' + n : ''}! 👋 Меня зовут [ваше имя], я из компании Sagi (платформа лояльности для бизнеса). Мы расширяем отдел продаж и заинтересовались вашим опытом. Можете уделить пару минут — задам 3 коротких вопроса по позиции менеджера по продажам?`;
 }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+// 2026-08-19, реферальная программа (по указанию Sagi): $50 сотруднику/стажёру, если приведённый
+// им друг проработает от 2 месяцев (employedAt + 60 дней, при условии что не «Ушёл» раньше этого
+// срока) ИЛИ сделал продажу в первый месяц — второе условие Sagi отмечает вручную (action
+// 'referralSale' ниже), т.к. данных о продажах в HR-системе нет. Статус пересчитывается каждый
+// раз в normalize(), поэтому не может «протухнуть» — как только выполняется условие, при
+// следующей загрузке pipeline.html статус сам станет «к выплате».
+const REFERRAL_TENURE_MS = 60 * 24 * 60 * 60 * 1000;
+function computeReferralStatus(c) {
+  if (!c.referrerPhone) return null;
+  if (c.referralBonusStatus === 'выплачено') return 'выплачено';
+  const tenureMs = c.employedAt ? (c.leftAt || Date.now()) - c.employedAt : 0;
+  const qualifies = !!c.saleInFirstMonth || tenureMs >= REFERRAL_TENURE_MS;
+  return qualifies ? 'к выплате' : 'ожидает';
+}
 function parseAge(s) {
   const t = String(s || '');
   const m = t.match(/(\d{1,2})\s*(?:лет|год[а]?|г\.?)\b/i) || t.match(/возраст[^\d]{0,8}(\d{1,2})/i);
@@ -125,6 +140,12 @@ function normalize(c) {
     stage: STAGES.includes(c.stage) ? c.stage : 'Новый',
     waMessage: c.waMessage || waMessage(c.name),
     ts: c.ts || Date.now(),
+    referrerName: c.referrerName || '',
+    referrerPhone: c.referrerPhone || '',
+    referralBonusAmount: c.referrerPhone ? (c.referralBonusAmount || 50) : null,
+    saleInFirstMonth: !!c.saleInFirstMonth,
+    referralBonusStatus: computeReferralStatus(c),
+    referralPaidAt: c.referralPaidAt || null,
   };
 }
 
@@ -183,6 +204,25 @@ export default async function handler(req, res) {
         const exitReason = (body?.exitReason || '').toString().slice(0, 500).trim();
         if (exitReason) items[idx].exitReason = exitReason;
       }
+      await saveAll(items);
+      res.status(200).json({ ok: true, item: items[idx] });
+      return;
+    }
+
+    // Реферальная программа — ручные отметки Sagi (см. computeReferralStatus/normalize выше).
+    // 'referralSale': кандидат-реферал сделал продажу в первый месяц — второе условие выплаты,
+    // это Sagi видит сам в CRM/у наставника, в HR-системе таких данных нет, поэтому только вручную.
+    // 'referralPaid': Sagi реально перевёл $50 — фиксируем это здесь только как отметку/памятку,
+    // сам перевод делает Sagi, автоматика деньги не переводит.
+    if (action === 'referralSale' || action === 'referralPaid') {
+      const id = (body?.id || '').toString();
+      const items = (await loadAll()).map(normalize);
+      const idx = items.findIndex(x => x.id === id);
+      if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
+      if (!items[idx].referrerPhone) { res.status(400).json({ error: 'У этого кандидата не указан реферер' }); return; }
+      if (action === 'referralSale') items[idx].saleInFirstMonth = true;
+      if (action === 'referralPaid') { items[idx].referralBonusStatus = 'выплачено'; items[idx].referralPaidAt = Date.now(); }
+      items[idx] = normalize(items[idx]);
       await saveAll(items);
       res.status(200).json({ ok: true, item: items[idx] });
       return;
