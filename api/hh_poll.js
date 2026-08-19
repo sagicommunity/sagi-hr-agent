@@ -994,7 +994,7 @@ export default async function handler(req, res) {
       const vacancies = (vacRes.data.items || []).map(v => ({ id: v.id, name: v.name }));
       const perVacancy = [];
       for (const v of vacancies) {
-        const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=5&order_by=created_at`, token);
+        const neg = await hhGet(`/negotiations?vacancy_id=${v.id}&per_page=5&order_by=created_at`, token);
         const sampleItems = (neg.ok ? (neg.data.items || []) : []).map(it => ({ negId: it.id, vacancyNamePresent: !!it.vacancy?.name, vacancyName: it.vacancy?.name || null }));
         perVacancy.push({ vacancyId: v.id, vacancyName: v.name, negTotal: neg.ok ? (neg.data.found ?? neg.data.items?.length ?? null) : null, sample: sampleItems, error: neg.ok ? null : { status: neg.status, data: neg.data } });
       }
@@ -1439,10 +1439,17 @@ export default async function handler(req, res) {
         // страниц = 200 откликов с запасом на рост). Список id нужен не только для счётчика,
         // а чтобы кликом по карточке «Откликов на hh.kz» увидеть КОНКРЕТНО кого, включая
         // совсем свежих, ещё не обработанных.
+        // 2026-08-19: раньше здесь дёргали /negotiations/response — это НЕ «все отклики по
+        // вакансии», а только те, что ещё лежат в самой первой «неразобранной» коллекции
+        // (response). Как только мы (см. hhMoveState выше) начали сами двигать отклики дальше
+        // по воронке hh.kz («Первичный контакт» и т.д.), они пропадали из этой коллекции и
+        // totalResponsesOnHh начал резко занижать реальное число (в моменте показал 0 вместо
+        // ~80+ после первого же массового бэкфилла статусов). Простой /negotiations (без
+        // /response) без фильтра status отдаёт ВСЕ коллекции по вакансии, независимо от стадии.
         const ids = [];
         let negTotal = null, negErr = null;
         for (let page = 0; page < 4; page++) {
-          const neg = await hhGet(`/negotiations/response?vacancy_id=${v.id}&per_page=50&page=${page}`, token);
+          const neg = await hhGet(`/negotiations?vacancy_id=${v.id}&per_page=50&page=${page}`, token);
           if (!neg.ok) { negErr = { status: neg.status }; break; }
           if (page === 0) negTotal = neg.data.found ?? null;
           const pageIds = (neg.data.items || []).map(it => it.id).filter(Boolean);
