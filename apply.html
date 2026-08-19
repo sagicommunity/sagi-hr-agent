@@ -62,6 +62,9 @@
   .chip:hover{border-color:var(--line-2);color:var(--text)}
   .chip.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.12);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
   .chipOther{margin-top:10px}
+  .refBox{border:1px dashed var(--line-2);border-radius:14px;padding:14px 16px 16px;margin:6px 0 18px;background:rgba(255,255,255,.02)}
+  .refAd{max-width:600px;margin:16px auto 0;padding:16px 18px;border-radius:16px;border:1px solid rgba(25,227,154,.28);background:rgba(25,227,154,.07);color:var(--muted);font-size:13px;line-height:1.6;text-align:center}
+  .refAd b{color:var(--text)}
   @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}.row2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -158,9 +161,22 @@
           <textarea id="comment" maxlength="2000" placeholder="Любой дополнительный контекст, если важен"></textarea>
         </div>
 
+        <div class="refBox">
+          <label style="margin-bottom:4px">Вас порекомендовал сотрудник или стажёр Sagi? <span class="opt">(необязательно)</span></label>
+          <div class="hint" style="margin:0 0 12px">Если вас кто-то посоветовал к нам — укажите его имя и телефон, мы поблагодарим его бонусом.</div>
+          <div class="row2">
+            <input id="referrerName" maxlength="80" placeholder="Имя того, кто порекомендовал" />
+            <input id="referrerPhone" maxlength="60" placeholder="Его телефон" />
+          </div>
+        </div>
+
         <button class="submit" id="submitBtn" type="submit">Откликнуться</button>
         <div class="foot">Нажимая «Откликнуться», вы соглашаетесь на обработку данных для целей подбора персонала Sagi.</div>
       </form>
+
+      <div class="refAd">
+        🎁 <b>Приведи друга — получи $50.</b> После того как выйдете на обучение, вы сможете рекомендовать эту вакансию друзьям. Если ваш друг присоединится и проработает от 2 месяцев (или сделает продажу уже в первый месяц) — вы получите $50 за него. Друг просто указывает ваше имя и телефон в этой же форме.
+      </div>
     </div>
 
     <div class="result" id="resultView">
@@ -234,6 +250,8 @@ form.addEventListener('submit', async e => {
     noCombine: chipValue('noCombine'),
     startWhen: $('#startWhen').value.trim(),
     comment: $('#comment').value.trim(),
+    referrerName: $('#referrerName').value.trim(),
+    referrerPhone: $('#referrerPhone').value.trim(),
     vacancy: 'sales_remote',
     refId: refId,
   };
