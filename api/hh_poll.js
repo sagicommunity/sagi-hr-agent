@@ -1071,7 +1071,7 @@ export default async function handler(req, res) {
       const path = req.query.plain ? `/negotiations?vacancy_id=${vacId}&per_page=5&order_by=created_at` : `/negotiations/response?vacancy_id=${vacId}&per_page=3&order_by=created_at`;
       const r = await hhGet(path, token);
       const items = r.ok ? (r.data.items || []).map(it => ({ id: it.id, state: it.state, employer_state: it.employer_state, funnel_stage: it.funnel_stage, hasActions: Array.isArray(it.actions) })) : null;
-      res.status(200).json({ ok: r.ok, status: r.status, path, found: r.ok ? r.data.found : null, items, rawData: r.ok ? undefined : r.data, rawKeysOfFirst: r.ok && r.data.items?.[0] ? Object.keys(r.data.items[0]) : null });
+      res.status(200).json({ ok: r.ok, status: r.status, dataFound: r.ok ? (r.data.found ?? 'MISSING') : null, dataKeys: r.ok ? Object.keys(r.data || {}) : null, items, errorData: r.ok ? null : r.data });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
