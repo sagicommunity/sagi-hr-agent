@@ -258,6 +258,19 @@
       </div>
     </div>
 
+    <!-- 2026-08-19, по указанию Sagi: жёсткий срок 3 часа с момента регистрации на прохождение
+         базовой программы — таймер держит стажёра в тонусе, не даёт забыть/отложить. Показывается
+         только стажёрам (не менеджерам), пока не пройдено всё и статус не помечен вручную. Сервер
+         (api/hh_poll.js, тот же часовой прогон) проверяет срок независимо от того, открыт ли у
+         человека кабинет — если время вышло, статус сам уйдёт в «Не подходит», а Sagi решит. -->
+    <div class="card" id="deadlineCard" style="display:none;margin-bottom:6px;border:1px solid rgba(255,159,67,.35)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>⏰ Осталось на обучение</b>
+        <span id="deadlineTimer" style="font-weight:800;font-size:18px">--</span>
+      </div>
+      <div class="sub" style="margin-top:6px">На базовую программу даётся 3 часа с момента регистрации — постарайтесь закончить все модули, пока время не истекло.</div>
+    </div>
+
     <div class="sectitle">🎧 Тренажёр</div>
     <div class="sub" style="margin:-6px 0 4px">Практика с ИИ — прогресс виден руководителю.</div>
     <div class="sub" id="trainerStats" style="margin:0 0 12px"></div>
@@ -484,6 +497,29 @@ function moduleRow(m, done, locked){
   }
   return div;
 }
+// 2026-08-19, по указанию Sagi: 3 часа с регистрации на базовую программу (10 модулей), чтобы
+// стажёры не теряли фокус и не откладывали. Реальная деадлайн-логика (авто-статус «Не подходит»
+// по истечении срока) — на сервере (hh_poll.js), этот таймер только показывает обратный отсчёт.
+const TRAINEE_DEADLINE_MS=3*60*60*1000;
+let deadlineInterval=null;
+function updateDeadlineTimer(u, doneCount, totalCount){
+  const card=$('#deadlineCard');
+  if(deadlineInterval){ clearInterval(deadlineInterval); deadlineInterval=null; }
+  const flagged = u.hireStatus && u.hireStatus!=='Активен';
+  if(u.role==='manager' || flagged || doneCount>=totalCount || !u.createdAt){ card.style.display='none'; return; }
+  const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
+  const tick=()=>{
+    const left = deadlineAt - Date.now();
+    if(left<=0){ card.style.display='none'; if(deadlineInterval){ clearInterval(deadlineInterval); deadlineInterval=null; } return; }
+    card.style.display='block';
+    const h=Math.floor(left/3600000), m=Math.floor((left%3600000)/60000), s=Math.floor((left%60000)/1000);
+    const timerEl=$('#deadlineTimer');
+    timerEl.textContent=(h>0?h+'ч ':'')+String(m).padStart(2,'0')+'м '+String(s).padStart(2,'0')+'с';
+    timerEl.style.color = left<30*60*1000 ? '#ff7a7a' : '#ffcf66';
+  };
+  tick();
+  deadlineInterval=setInterval(tick,1000);
+}
 function renderCabinet(u){
   if(!u){ show('screen-entry'); return; }
   $('#whoChip').classList.remove('hidden'); $('#whoChip').innerHTML='👤 <b>'+u.name+'</b>';
@@ -500,6 +536,7 @@ function renderCabinet(u){
   $('#progPct').textContent=pct+'%'; $('#progFill').style.width=pct+'%';
   $('#stDone').textContent=doneCount+' / '+all.length;
   $('#stPts').textContent=(u.points||0);
+  updateDeadlineTimer(u, doneCount, all.length);
 
   const mb=$('#modBasic'); mb.innerHTML='';
   BASIC.forEach(m=>mb.appendChild(moduleRow(m, !!prog[m.id], false)));
