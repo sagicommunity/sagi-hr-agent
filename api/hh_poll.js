@@ -326,6 +326,32 @@ async function hhPostForm(path, token, params) {
   const d = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, data: d };
 }
+async function hhPutForm(path, token, params) {
+  const r = await fetch('https://api.hh.ru' + path, {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/x-www-form-urlencoded', 'User-Agent': HH_UA },
+    body: new URLSearchParams(params || {}),
+  });
+  const d = await r.json().catch(() => (null));
+  return { ok: r.ok, status: r.status, data: d };
+}
+// Двигаем отклик по воронке подбора hh.kz (2026-08-19, по прямому указанию Sagi «сам двигай
+// статусы» — увидел «5 неотвеченных» в интерфейсе hh.kz, хотя мы уже ответили; выяснилось, что
+// это просто счётчик «неразобранных» самого hh.kz, никак не связанный с тем, отправили мы
+// сообщение или нет — двигается он только вручную через кнопки в интерфейсе). actionId — один
+// из id действия, полученных из поля actions[] конкретной негоциации: 'phone_interview'
+// («Первичный контакт» — двигаем сюда сразу после нашего первого автосообщения),
+// 'discard_by_employer' («Не подходит»), 'hired' («Выход на работу») и т.д. Не критично для
+// бизнес-логики (это только визуальная сортировка в интерфейсе hh.kz для Sagi) — поэтому всегда
+// best-effort и никогда не бросает исключение наружу, чтобы не ронять основной пайплайн.
+async function hhMoveState(negId, actionId, token) {
+  try {
+    const r = await hhPutForm(`/negotiations/${actionId}/${negId}`, token, {});
+    return { ok: r.ok, status: r.status };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
 
 // Сейчас у Sagi активна только удалённая вакансия продаж (реальный заголовок на hh.kz —
 // «Менеджер по продажам (B2B клиенты)» — без слова «удалённо» в названии!). Поэтому логика
@@ -890,6 +916,7 @@ export default async function handler(req, res) {
         const r = await hhReply(entry.negId, token, text);
         if (r.ok) {
           await redis(['SADD', ARCHIVE_SENT_KEY, entry.negId]);
+          await hhMoveState(entry.negId, 'phone_interview', token);
           sent++;
           results.push({ negId: entry.negId, name: entry.name, vacName: entry.vacName });
         } else {
@@ -993,6 +1020,50 @@ export default async function handler(req, res) {
     }
     return;
   }
+  // Разовый бэкфилл (2026-08-19, по прямому указанию Sagi «сам двигай статусы»): у всех уже
+  // существующих откликов, которым мы уже отправили первое сообщение, но которые в интерфейсе
+  // hh.kz всё ещё висят в «Отклик»/«неразобранные» (потому что раньше это никак не двигалось),
+  // переводим статус в «Первичный контакт». НЕ трогает тех, кто уже двигался дальше (Тестовое
+  // задание/Собеседование/отказ и т.д.) — только тех, кто всё ещё в самом первом состоянии
+  // 'response'. Безопасно дёргать повторно и по частям (&limit=N, по умолчанию 60 за вызов, чтобы
+  // не упереться в таймаут serverless-функции). &dryrun=1 — только посчитать, ничего не менять.
+  if (req.query?.fixFunnelStages) {
+    try {
+      const token = await getEmployerToken();
+      const employerId = process.env.HH_EMPLOYER_ID || '';
+      const vacRes = await hhGet(`/employers/${employerId}/vacancies/active?per_page=50`, token);
+      if (!vacRes.ok) { res.status(200).json({ ok: false, step: 'vacancies', status: vacRes.status, data: vacRes.data }); return; }
+      const vacancyIds = (vacRes.data.items || []).map(v => v.id).filter(Boolean);
+      const limit = Math.min(parseInt(req.query.limit, 10) || 60, 100);
+      let moved = 0, alreadyOk = 0, failed = 0, scanned = 0;
+      const results = [];
+      outer:
+      for (const vid of vacancyIds) {
+        let page = 0;
+        for (let i = 0; i < 10; i++) {
+          const neg = await hhGet(`/negotiations/response?vacancy_id=${vid}&per_page=50&page=${page}&order_by=created_at`, token);
+          if (!neg.ok) break;
+          const items = neg.data.items || [];
+          for (const it of items) {
+            if (moved >= limit) break outer;
+            scanned++;
+            const stateId = it.state?.id || it.employer_state?.id;
+            if (stateId !== 'response') { alreadyOk++; continue; }
+            if (dryRun) { moved++; continue; }
+            const r = await hhMoveState(it.id, 'phone_interview', token);
+            if (r.ok) moved++; else { failed++; results.push({ negId: it.id, status: r.status }); }
+          }
+          if (items.length < 50) break;
+          page++;
+        }
+      }
+      res.status(200).json({ ok: true, dryRun, scanned, moved, alreadyOk, failed, resultsSample: results.slice(0, 20) });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   if (req.query?.negListSample) {
     try {
       const token = await getEmployerToken();
@@ -1869,7 +1940,7 @@ export default async function handler(req, res) {
         const vacKind = pickVacancyKind(rec.vacancy || '');
         const msgText = buildFormRedirectMessage(vacKind, rec.name, negId);
         const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
-        if (sent.ok) { await updateCandidateRecord(rec.id, { messageSent: true }); await redis(['SADD', GATE_HANDLED_KEY, negId]); }
+        if (sent.ok) { await updateCandidateRecord(rec.id, { messageSent: true }); await redis(['SADD', GATE_HANDLED_KEY, negId]); await hhMoveState(negId, 'phone_interview', token); }
         results.push({ negId, name: rec.name, ok: sent.ok, status: sent.status, data: sent.ok ? undefined : sent.data });
       }
       res.status(200).json({ ok: true, pendingTotal: pending.length, sent: toSend.length, results });
@@ -1960,7 +2031,12 @@ export default async function handler(req, res) {
           await redis(['LTRIM', CAND_KEY, 0, 1999]);
           // Вопросы больше не задаём в hh.kz-чате (см. заголовок файла) — сразу помечаем как
           // "гейт обработан", чтобы Фаза B1 не ждала ответ на вопрос, которого мы не задавали.
-          if (sent.ok) await redis(['SADD', GATE_HANDLED_KEY, negId]);
+          if (sent.ok) {
+            await redis(['SADD', GATE_HANDLED_KEY, negId]);
+            // Сразу двигаем отклик из «неразобранных» в «Первичный контакт» — мы уже написали
+            // человеку, незачем висеть в интерфейсе hh.kz так, будто мы ещё не отвечали.
+            await hhMoveState(negId, 'phone_interview', token);
+          }
         }
       } catch (e) {
         errors.push({ negId, step: 'intake', error: e.message });
@@ -2032,6 +2108,7 @@ export default async function handler(req, res) {
           await redis(['SADD', DECLINED_KEY, negId]);
           if (sent.ok) {
             await updateCandidateRecord('hh_' + negId, { stage: 'Не подходит', verdict: 'Не подходит', summary: 'Отказ на гейт-вопросе (формат/холодные звонки не подходят): ' + replyText.slice(0, 300) });
+            await hhMoveState(negId, 'discard_by_employer', token);
           } else {
             errors.push({ negId, step: 'send_decline', status: sent.status, data: sent.data });
           }
@@ -2144,6 +2221,7 @@ export default async function handler(req, res) {
             await redis(['SADD', REPLIED_KEY, negId]);
             await redis(['SADD', INVITE_WATCH_KEY, negId]);
             await redis(['SET', 'hh:invite_ts:' + negId, String(Date.now())]);
+            await hhMoveState(negId, 'assessment', token);
           } else {
             errors.push({ negId, step: 'send_invite', status: sent.status, data: sent.data });
           }
@@ -2310,7 +2388,7 @@ export default async function handler(req, res) {
               // момента (просто приглашён / проходит обучение) стадия была «Приглашён»/«Обучение».
               const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
               if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'Стажировка' });
-              if (u.hhNegId) await hhReply(u.hhNegId, token, buildMentorAssignedText(u.name, mentor.name, mentor.phone));
+              if (u.hhNegId) { await hhReply(u.hhNegId, token, buildMentorAssignedText(u.name, mentor.name, mentor.phone)); await hhMoveState(u.hhNegId, 'interview', token); }
               else noChannelCount++;
               const traineeContact = (u.hhNegId && candById.get('hh_' + u.hhNegId)?.contact) || '—';
               const tok = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
@@ -2336,7 +2414,7 @@ export default async function handler(req, res) {
               changed = true;
               const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
               if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'Не подходит' });
-              if (u.hhNegId) await hhReply(u.hhNegId, token, buildDeadlineExpiredText(u.name, doneCount, BASIC_MODULE_IDS.length));
+              if (u.hhNegId) { await hhReply(u.hhNegId, token, buildDeadlineExpiredText(u.name, doneCount, BASIC_MODULE_IDS.length)); await hhMoveState(u.hhNegId, 'discard_by_employer', token); }
               else noChannelCount++;
               const tok = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
               if (tok && chat) {
