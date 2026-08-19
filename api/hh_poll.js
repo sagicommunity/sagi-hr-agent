@@ -88,6 +88,7 @@ const GATE_CURSOR_KEY = 'hh:gate_check_cursor'; // «карусель» для �
 const ARCHIVE_QUEUE_KEY = 'hh:archive_queue';
 const ARCHIVE_QUEUED_KEY = 'hh:archive_queued_resumes'; // resume_id (или neg:<id>, если резюме скрыто) — чтобы не задвоить очередь
 const ARCHIVE_SENT_KEY = 'hh:archive_sent'; // negId, кому реально отправлено
+const ARCHIVE_FAILED_KEY = 'hh:archive_failed'; // сюда падают записи, отправка которым не удалась — чтобы не терять их безвозвратно
 function buildArchiveOutreachMessage(name) {
   const greet = name ? `${name}, здравствуйте!` : 'Здравствуйте!';
   return `${greet}\n\nВы раньше откликались у нас на вакансию менеджера по продажам. Сейчас у нас открыта вакансия менеджера по продажам, полностью удалённо, и мы приглашаем вас сразу на обучение, это первый шаг перед выходом на работу.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты, есть встроенный ИИ-тренажёр звонков)\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли вакансия уже не актуальна для вас или есть вопросы, можно ответить прямо здесь же, в этом чате, или написать в WhatsApp: +7 707 700 0087.`;
@@ -791,7 +792,8 @@ export default async function handler(req, res) {
       const queueLen = await redis(['LLEN', ARCHIVE_QUEUE_KEY]);
       const queuedTotal = await redis(['SCARD', ARCHIVE_QUEUED_KEY]);
       const sentTotal = await redis(['SCARD', ARCHIVE_SENT_KEY]);
-      res.status(200).json({ ok: true, queueLen, queuedTotal, sentTotal });
+      const failedTotal = await redis(['LLEN', ARCHIVE_FAILED_KEY]);
+      res.status(200).json({ ok: true, queueLen, queuedTotal, sentTotal, failedTotal });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
@@ -836,12 +838,19 @@ export default async function handler(req, res) {
           sent++;
           results.push({ negId: entry.negId, name: entry.name, vacName: entry.vacName });
         } else {
+          // 2026-08-19: раньше запись при неудачной отправке просто выкидывалась (LPOP уже
+          // забрал её из очереди) — при массовом сбое (см. ниже) это означало безвозвратную
+          // потерю кандидатов. Теперь сохраняем в ARCHIVE_FAILED_KEY вместе с текстом ошибки,
+          // чтобы данные не терялись и их можно было разобрать/повторить вручную.
+          const errCode = r.data?.errors?.[0]?.value || r.data?.errors?.[0]?.type || null;
           failed++;
-          results.push({ negId: entry.negId, name: entry.name, error: r.status });
+          await redis(['RPUSH', ARCHIVE_FAILED_KEY, JSON.stringify({ ...entry, failedAt: Date.now(), status: r.status, errCode })]);
+          results.push({ negId: entry.negId, name: entry.name, error: r.status, errCode });
         }
       }
       const remaining = await redis(['LLEN', ARCHIVE_QUEUE_KEY]);
-      res.status(200).json({ ok: true, dryRun, sent, failed, remainingInQueue: remaining, results });
+      const failedTotal = await redis(['LLEN', ARCHIVE_FAILED_KEY]);
+      res.status(200).json({ ok: true, dryRun, sent, failed, remainingInQueue: remaining, failedTotal, results });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
