@@ -993,6 +993,18 @@ export default async function handler(req, res) {
     }
     return;
   }
+  if (req.query?.negListSample) {
+    try {
+      const token = await getEmployerToken();
+      const vacId = String(req.query.vacId || '136230362');
+      const r = await hhGet(`/negotiations/response?vacancy_id=${vacId}&per_page=3&order_by=created_at`, token);
+      const items = r.ok ? (r.data.items || []).map(it => ({ id: it.id, state: it.state, employer_state: it.employer_state, funnel_stage: it.funnel_stage, hasActions: Array.isArray(it.actions) })) : null;
+      res.status(200).json({ ok: r.ok, status: r.status, items, rawKeysOfFirst: r.ok && r.data.items?.[0] ? Object.keys(r.data.items[0]) : null });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
 
   // Диагностика (2026-08-17): срез по всем зарегистрированным стажёрам/менеджерам и их
   // прогрессу обучения — быстро посмотреть, не дёргая пароль руководителя.
