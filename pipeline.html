@@ -175,6 +175,7 @@
     <select id="fSort"><option value="score">Сортировка: по баллу</option><option value="ts">по дате</option><option value="vacancy">по вакансии</option></select>
     <input id="fSearch" placeholder="Поиск по имени/телефону…" />
     <select id="fAge"><option value="">Все возрасты</option><option value="out">⚠️ Вне 20–35 лет</option></select>
+    <select id="fRef"><option value="">Все (рефералы и нет)</option><option value="ref">🎁 Только рефералы</option><option value="pending">🎁 К выплате</option></select>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -233,8 +234,8 @@ function verdictCls(v){ return /брать/i.test(v)?'v-take':(/отказ/i.tes
 
 function render(){
   const grid=$('#grid'); grid.innerHTML='';
-  const fs=$('#fStage').value, fv=$('#fVacancy').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value, fa=$('#fAge').value;
-  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!fv||c.vacancy===fv)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q))&&(!fa||(c.age!=null&&c.age!==''&&(c.age<20||c.age>35))));
+  const fs=$('#fStage').value, fv=$('#fVacancy').value, q=$('#fSearch').value.toLowerCase().trim(), sort=$('#fSort').value, fa=$('#fAge').value, fr=$('#fRef').value;
+  let items=DATA.filter(c=>(!fs||c.stage===fs)&&(!fv||c.vacancy===fv)&&(!q||(c.name+' '+c.contact+' '+c.phone).toLowerCase().includes(q))&&(!fa||(c.age!=null&&c.age!==''&&(c.age<20||c.age>35)))&&(!fr||(fr==='ref'?!!c.referrerPhone:c.referralBonusStatus==='к выплате')));
   items.sort((a,b)=>{
     if(sort==='ts') return b.ts-a.ts;
     if(sort==='vacancy'){ const v=(a.vacancy||'').localeCompare(b.vacancy||''); return v!==0 ? v : ((b.score??-1)-(a.score??-1)); }
@@ -256,6 +257,7 @@ function render(){
       '<div class="body" data-open="'+c.id+'">'+
         '<div class="nm">'+esc(c.name)+'<span class="open">💬 ответы боту →</span></div>'+
         (c.vacancy?'<div class="vactag">🎯 '+esc(c.vacancy)+'</div>':'')+
+        (c.referrerPhone?'<div class="vactag" style="background:rgba(25,227,154,.12);color:#19e39a">🎁 реферал · '+esc(c.referralBonusStatus||'ожидает')+'</div>':'')+
         '<div class="meta">'+(c.phone?'📱 '+esc(c.phone):'<span style="color:#ff9b9b">нет номера</span>')+(c.contact&&c.contact!==c.phone?' · '+esc(c.contact):'')+' · '+esc(c.source)+(c.howFound?' · узнал(а): '+esc(c.howFound):'')+'</div>'+
         '<span class="verdict '+verdictCls(c.verdict)+'">'+esc(c.verdict)+'</span>'+
         (c.summary?'<div class="sum">'+esc(c.summary)+'</div>':'')+
@@ -310,6 +312,15 @@ function openCand(id){
   let html='';
   if(c.employedAt) html+='<div class="item"><div class="q">Трудоустроен(а)</div><div class="a">'+esc(new Date(c.employedAt).toLocaleDateString('ru-RU'))+'</div></div>';
   if(c.leftAt) html+='<div class="item"><div class="q">Ушёл/ушла</div><div class="a">'+esc(new Date(c.leftAt).toLocaleDateString('ru-RU'))+(c.exitReason?' — '+esc(c.exitReason):'')+'</div></div>';
+  if(c.referrerPhone){
+    const rStatus=c.referralBonusStatus||'ожидает';
+    html+='<div class="item"><div class="q">🎁 Реферальная программа</div><div class="a">Привёл(а): '+esc(c.referrerName||'—')+' · '+esc(c.referrerPhone)+
+      '<br>Бонус: $'+(c.referralBonusAmount||50)+' · Статус: '+esc(rStatus)+(c.saleInFirstMonth?' (продажа в 1-й месяц отмечена)':'')+
+      '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+        (!c.saleInFirstMonth&&rStatus!=='выплачено'?'<button class="btn" data-ref-sale="'+esc(c.id)+'" style="padding:6px 12px;font-size:12px">Отметить продажу в 1-й месяц</button>':'')+
+        (rStatus!=='выплачено'?'<button class="btn" data-ref-paid="'+esc(c.id)+'" style="padding:6px 12px;font-size:12px">Отметить выплаченным</button>':'')+
+      '</div></div></div>';
+  }
   if(Array.isArray(c.pulseReplies)&&c.pulseReplies.length){
     html+=c.pulseReplies.map(p=>'<div class="item"><div class="q">Пульс-проверка, день '+esc(p.day)+(p.atRisk?' ⚠️':'')+'</div><div class="a">'+esc(p.text)+'</div></div>').join('');
   }
@@ -323,6 +334,15 @@ function openCand(id){
   }
   $('#mBody').innerHTML=html;
   $('#modal').classList.add('open');
+  const saleBtn=$('#mBody [data-ref-sale]');
+  if(saleBtn) saleBtn.addEventListener('click',async()=>{
+    try{ await api({action:'referralSale',id:saleBtn.dataset.refSale}); await load(); openCand(id); }catch(ex){ alert(ex.message); }
+  });
+  const paidBtn=$('#mBody [data-ref-paid]');
+  if(paidBtn) paidBtn.addEventListener('click',async()=>{
+    if(!confirm('Отметить бонус $'+(c.referralBonusAmount||50)+' как выплаченный? Сам перевод нужно сделать отдельно, это только отметка в системе.')) return;
+    try{ await api({action:'referralPaid',id:paidBtn.dataset.refPaid}); await load(); openCand(id); }catch(ex){ alert(ex.message); }
+  });
 }
 function closeCand(){ $('#modal').classList.remove('open'); }
 $('#mClose').addEventListener('click',closeCand);
@@ -414,7 +434,7 @@ $('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
 })();
 
 // controls
-['#fVacancy','#fStage','#fSort','#fSearch','#fAge'].forEach(s=>$(s).addEventListener('input',render));
+['#fVacancy','#fStage','#fSort','#fSearch','#fAge','#fRef'].forEach(s=>$(s).addEventListener('input',render));
 $('#addBtn').addEventListener('click',()=>{ const b=$('#addbox'); b.style.display=b.style.display==='block'?'none':'block'; });
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); t.classList.add('on');
