@@ -978,6 +978,22 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Диагностика (2026-08-19, по запросу Sagi «сам двигай статусы»): смотрим структуру
+  // actions/employer_state одной живой негоциации, чтобы понять, как через API двигать
+  // отклик по воронке подбора hh.kz (Подходящие/Первичный контакт/... ), не только слать
+  // сообщения. Только чтение, ничего не меняет.
+  if (req.query?.negActions) {
+    try {
+      const token = await getEmployerToken();
+      const negId = String(req.query.negActions);
+      const r = await hhGet('/negotiations/' + negId, token);
+      res.status(200).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.data });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Диагностика (2026-08-17): срез по всем зарегистрированным стажёрам/менеджерам и их
   // прогрессу обучения — быстро посмотреть, не дёргая пароль руководителя.
   if (req.query?.traineeStatus) {
