@@ -70,7 +70,7 @@ const MAX_REG_NUDGES_PER_RUN = 5;
 function buildRegNudgeText(name, negId, touchIndex) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, привет!` : 'Привет!';
   const regLink = negId ? `hr.sagibonus.com/?hh=${negId}` : 'hr.sagibonus.com';
-  if (touchIndex === 0) return `${greet}\n\nНапоминаю про регистрацию на обучение: ${regLink}, карточка «🎓 Стажёр». Займёт минуту, дальше уже сами модули в своём темпе.`;
+  if (touchIndex === 0) return `${greet}\n\nНапоминаю про регистрацию на обучение: ${regLink}, карточка «🎓 Стажёр». Займёт минуту, дальше 10 коротких модулей — на них даётся 3 часа с момента регистрации.`;
   if (touchIndex === 1) return `${greet}\n\nЕщё раз про обучение, ссылка та же: ${regLink}. Если появились вопросы или не получается зарегистрироваться, напишите, помогу разобраться.`;
   return `${greet}\n\nПоследнее напоминание про обучение (${regLink}) — если пока не актуально, ничего страшного, больше писать не буду. Если станет интересно, ссылка всегда рабочая, пишите в любой момент.`;
 }
@@ -104,7 +104,7 @@ const ARCHIVE_SENT_KEY = 'hh:archive_sent'; // negId, кому реально о
 const ARCHIVE_FAILED_KEY = 'hh:archive_failed'; // сюда падают записи, отправка которым не удалась — чтобы не терять их безвозвратно
 function buildArchiveOutreachMessage(name) {
   const greet = name ? `${name}, здравствуйте!` : 'Здравствуйте!';
-  return `${greet}\n\nВы раньше откликались у нас на вакансию менеджера по продажам. Сейчас у нас открыта вакансия менеджера по продажам, полностью удалённо, и мы приглашаем вас сразу на обучение, это первый шаг перед выходом на работу.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты, есть встроенный ИИ-тренажёр звонков)\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли вакансия уже не актуальна для вас или есть вопросы, можно ответить прямо здесь же, в этом чате, или написать в WhatsApp: +7 707 700 0087.`;
+  return `${greet}\n\nВы раньше откликались у нас на вакансию менеджера по продажам. Сейчас у нас открыта вакансия менеджера по продажам, полностью удалённо, и мы приглашаем вас сразу на обучение, это первый шаг перед выходом на работу.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты, есть встроенный ИИ-тренажёр звонков). На это даётся 3 часа с момента регистрации, поэтому лучше начинать, когда есть время пройти сразу\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли вакансия уже не актуальна для вас или есть вопросы, можно ответить прямо здесь же, в этом чате, или написать в WhatsApp: +7 707 700 0087.`;
 }
 
 // Приглашение на ОБУЧЕНИЕ (не на стажировку! — уточнение Sagi 2026-08-18: стажировка это когда
@@ -118,7 +118,7 @@ function buildArchiveOutreachMessage(name) {
 function buildInviteMessage(name, negId) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `${name}, спасибо за ответы!` : 'Спасибо за ответы!';
   const regLink = negId ? `hr.sagibonus.com/?hh=${negId}` : 'hr.sagibonus.com';
-  return `${greet}\n\nПриглашаем вас на обучение. Это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на ${regLink}\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике, а не только читать\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли остались вопросы или что-то нужно уточнить по условиям, можно написать здесь же, в этом чате, или в WhatsApp: +7 707 700 0087. Если удобнее созвониться и уточнить голосом, тоже пишите на этот номер, договоримся о звонке.`;
+  return `${greet}\n\nПриглашаем вас на обучение. Это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на ${regLink}\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике, а не только читать. На прохождение даётся 3 часа с момента регистрации, поэтому лучше начинать, когда есть время пройти сразу\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли остались вопросы или что-то нужно уточнить по условиям, можно написать здесь же, в этом чате, или в WhatsApp: +7 707 700 0087. Если удобнее созвониться и уточнить голосом, тоже пишите на этот номер, договоримся о звонке.`;
 }
 // Вежливый отказ на гейт-вопросе (кандидат явно не хочет холодные звонки / не подходит формат) —
 // не тратим его время на анкету из 5 вопросов, раз уже понятно, что формат не подходит.
@@ -146,10 +146,10 @@ async function notifyFollowUp(rec, questionText) {
 // уже зовём Sagi, как раньше. Стиль без длинного тире, максимально по-человечески.
 function answerHhFaq(text) {
   const t = (text || '').toLowerCase();
-  if (/(когда начина|когда старт|когда стажир|с какого числа|как скоро)/.test(t)) return 'Начать можно в любой момент — как зарегистрируетесь на hr.sagibonus.com и пройдёте базовую программу (материалы + тесты, обычно пара дней в своём темпе). После этого подключаем наставника и переходите к практике.';
+  if (/(когда начина|когда старт|когда стажир|с какого числа|как скоро)/.test(t)) return 'Начать можно в любой момент — как зарегистрируетесь на hr.sagibonus.com. На саму базовую программу (материалы + тесты) даётся 3 часа с момента регистрации, поэтому лучше регистрироваться, когда есть время пройти сразу. После этого подключаем наставника и переходите к практике.';
   if (/(платн|оплачива|стажировка.{0,10}(деньг|плат)|бесплатн)/.test(t)) return 'Само обучение не оплачивается отдельно, это подготовка перед стартом. А дальше действует система с окладом или без — подробно и с примерами дохода расписано тут: hr.sagibonus.com/usloviya.html';
   if (/(нужен ли опыт|без опыта|стаж работы|новичок)/.test(t)) return 'Опыт не обязателен, обучение как раз рассчитано на то, чтобы разобраться с нуля — материалы, скрипты и встроенный ИИ-тренажёр для отработки звонков.';
-  if (/(сколько.{0,10}(модул|урок)|долго ли учит|сколько дней|сколько времени.{0,10}(обучен|учиться))/.test(t)) return 'Базовая программа — это набор коротких модулей с текстом и небольшими тестами, проходить можно в своём темпе, обычно занимает пару дней.';
+  if (/(сколько.{0,10}(модул|урок)|долго ли учит|сколько дней|сколько времени.{0,10}(обучен|учиться))/.test(t)) return 'Базовая программа — это 10 коротких модулей с текстом и небольшими тестами. На прохождение даётся 3 часа с момента регистрации, обычно этого хватает с запасом.';
   if (/(наставник|куратор|кто будет учить|с кем работать)/.test(t)) return 'После базовой программы вас подключат к наставнику, опытному менеджеру, дальше уже практика в паре с ним.';
   if (/(созвон|позвон|номер|телефон|whatsapp|вотсап|ватсап|связ.{0,5}голос|можно.{0,5}позвонить)/.test(t)) return 'Конечно, можно созвониться или написать в WhatsApp: +7 707 700 0087.';
   if (/(не могу зайти|не получается зарегистр|ошибка|не работает|логин|пароль)/.test(t)) return 'Если что-то не открывается или выдаёт ошибку на hr.sagibonus.com, напишите, что именно происходит, разберёмся. Можно и в WhatsApp: +7 707 700 0087, там быстрее.';
@@ -167,19 +167,41 @@ async function hhReply(negId, token, text) {
 const REFRESH_KEY = 'hh:employer_refresh_token';
 const ACCESS_KEY = 'hh:employer_access_token';
 const ACCESS_EXP_KEY = 'hh:employer_access_expires';
-// ---- ФАЗА E (напоминания стажёрам о прохождении обучения + распределение наставников) ----
+// ---- ФАЗА E (жёсткий дедлайн на обучение + распределение наставников) ----
 // Список модулей базовой программы — держим синхронно с lessons.js (window.LESSONS.basic).
 const BASIC_MODULE_IDS = ['intro', 'problem', 'bonuses', 'communication', 'crm', 'app', 'call-script', 'meeting-script', 'cases', 'final'];
-const TRAINEE_STALL_MS = 48 * 60 * 60 * 1000; // не заходил / нет прогресса больше 2 дней — считаем застрявшим
-const TRAINEE_REMIND_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // не напоминаем чаще раза в 3 дня
+// 2026-08-19, по прямому указанию Sagi («держать в тонусе, а то теряют фокус, забывают»):
+// раньше был мягкий стаг-таймер (48 часов без активности → напоминание, не чаще раза в 3 дня,
+// БЕЗ последствий). Теперь — жёсткий срок 3 часа с МОМЕНТА РЕГИСТРАЦИИ (u.createdAt) на всю
+// базовую программу (10 модулей), с реальным последствием по истечении. Число подобрано по
+// факту, а не наугад: проверили реальных стажёров, кто прошёл все 10 модулей — Алтай за 0.3ч,
+// Нургуль за 1.2ч, Асыл за 15.1ч, Жанара за 23.6ч (данные из &traineeStatus=1 на момент решения).
+// Т.е. часть реальных, состоявшихся стажёров (Асыл, Жанара) НЕ уложилась бы в 3 часа — Sagi видел
+// эти цифры и осознанно выбрал 3 часа. Поэтому последствие — НЕ безвозвратный отказ, а перевод в
+// «Не подходит» (тот же hireStatus, что и раньше использовался вручную) с уведомлением Sagi, чтобы
+// он сам решил по каждому — дать ли ещё шанс (звонок) или оставить отказ.
+const TRAINEE_DEADLINE_MS = 3 * 60 * 60 * 1000;
+const TRAINEE_DEADLINE_HOURS = 3;
+const TRAINEE_DEADLINE_REMINDER_KEY_PREFIX = 'hr:trainee_deadline_reminded:'; // напоминание на полпути к дедлайну, шлём один раз
+// ВАЖНО: дедлайн применяем ТОЛЬКО к тем, кто зарегистрировался ПОСЛЕ включения этой фичи —
+// иначе все, кто уже сейчас проходит обучение без всякого срока (зарегистрировались под старым
+// «в своём темпе»), мгновенно словили бы «время вышло» на первом же часовом прогоне. Момент
+// включения фиксируем в Redis при первом запуске после деплоя, не хардкодим дату в коде.
+const TRAINEE_DEADLINE_ENABLED_AT_KEY = 'hr:trainee_deadline_enabled_at';
 const MAX_TRAINEE_ACTIONS_PER_RUN = 8;
 const MENTOR_CURSOR_KEY = 'hr:mentor_cursor';
 // Наставники, которым по очереди (round-robin) отдают стажёров, прошедших базовую программу.
 // Сейчас один — Азамат (Sagi подтвердил 2026-08-17). Когда появятся ещё, просто добавь сюда.
 const MENTORS = [{ name: 'Азамат', phone: '+77025417933' }];
-function buildTraineeReminderText(name, doneCount, total) {
+function buildDeadlineReminderText(name, doneCount, total, leftMs) {
   const greet = name ? `${name}, привет!` : 'Привет!';
-  return `${greet}\n\nВы начали проходить обучение на hr.sagibonus.com (пройдено ${doneCount} из ${total} модулей), но давно не заходили. Если возникли сложности или вопросы по материалам, пишите сюда же или в WhatsApp: +7 707 700 0087, поможем. Если пока не готовы продолжать, тоже дайте знать, буду в курсе.`;
+  const leftMin = Math.max(1, Math.round(leftMs / 60000));
+  const leftText = leftMin >= 60 ? `${(leftMin / 60).toFixed(1)} ч` : `${leftMin} мин`;
+  return `${greet}\n\nНапоминаю: на прохождение базовой программы даётся 3 часа с момента регистрации. Сейчас пройдено ${doneCount} из ${total} модулей, осталось примерно ${leftText}. Постарайтесь закончить, это займёт немного времени — материалы короткие. Если не успеваете или есть сложности, напишите сюда же или в WhatsApp: +7 707 700 0087.`;
+}
+function buildDeadlineExpiredText(name, doneCount, total) {
+  const greet = name ? `${name}, здравствуйте!` : 'Здравствуйте!';
+  return `${greet}\n\nОтведённое время на прохождение базовой программы (3 часа с момента регистрации) истекло — пройдено ${doneCount} из ${total} модулей. Если обучение всё ещё интересно и просто не хватило времени, напишите нам, обсудим индивидуально. Можно в этом чате или в WhatsApp: +7 707 700 0087.`;
 }
 function buildMentorAssignedText(name, mentorName, mentorPhone) {
   const greet = name ? `${name}, поздравляем!` : 'Поздравляем!';
@@ -2195,11 +2217,12 @@ export default async function handler(req, res) {
       }
     } catch (e) {}
 
-    // ==== ФАЗА E: напоминания стажёрам о застрявшем обучении + распределение наставников ====
-    // По прямому указанию Sagi (2026-08-17): «они должны обучение пройти, и мы должны подтянуть
-    // уже на стажировку» — не просто пригласить, а довести до реального прохождения программы.
+    // ==== ФАЗА E: дедлайн на обучение (3 часа) + распределение наставников ====
+    // По прямому указанию Sagi (2026-08-17, доведено до дедлайна 2026-08-19): «они должны
+    // обучение пройти» — не просто пригласить, а довести до реального прохождения программы, и
+    // (2026-08-19) не дать растянуть это на дни — см. TRAINEE_DEADLINE_MS выше про выбор 3 часов.
     // Работаем напрямую с той же базой пользователей (hr:user:*), что и личный кабинет.
-    let traineesChecked = 0, remindersToTrainees = 0, mentorsAssigned = 0, noChannelCount = 0;
+    let traineesChecked = 0, remindersToTrainees = 0, mentorsAssigned = 0, noChannelCount = 0, deadlineExpired = 0;
     try {
       const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
       const usersRaw = [];
@@ -2209,6 +2232,12 @@ export default async function handler(req, res) {
         try { usersRaw.push({ login, u: JSON.parse(raw) }); } catch (e) {}
       }
       const trainees = usersRaw.filter(x => x.u.role === 'trainee');
+
+      let deadlineEnabledAt = parseInt(await redis(['GET', TRAINEE_DEADLINE_ENABLED_AT_KEY]), 10);
+      if (!Number.isFinite(deadlineEnabledAt) || deadlineEnabledAt <= 0) {
+        deadlineEnabledAt = Date.now();
+        if (!dryRun) await redis(['SET', TRAINEE_DEADLINE_ENABLED_AT_KEY, String(deadlineEnabledAt)]);
+      }
 
       // Самолечение старых записей без привязки к переписке hh.kz — пробуем сопоставить по
       // нормализованному имени с уже приглашёнными на стажировку кандидатами (только если
@@ -2226,6 +2255,9 @@ export default async function handler(req, res) {
       let actionsUsed = 0;
       for (const { login, u } of trainees) {
         if (actionsUsed >= MAX_TRAINEE_ACTIONS_PER_RUN) break;
+        // Уже отмечен вручную/автоматически как «Не подходит» и т.п. — не трогаем повторно
+        // каждый час, ждём, пока Sagi сам не вернёт статус в «Активен» (личный кабинет/панель).
+        if (u.hireStatus && u.hireStatus !== 'Активен') continue;
         traineesChecked++;
         let changed = false;
         if (!u.hhNegId) {
@@ -2262,20 +2294,44 @@ export default async function handler(req, res) {
           } else {
             noChannelCount++;
           }
-        } else if (!isComplete) {
-          const lastActivity = u.lastSeen || u.createdAt || 0;
-          const stalled = lastActivity && (Date.now() - lastActivity) >= TRAINEE_STALL_MS;
-          if (stalled) {
-            const remindedRaw = await redis(['GET', 'hr:trainee_reminded:' + login]);
-            const cooldownOk = !remindedRaw || (Date.now() - (parseInt(remindedRaw, 10) || 0)) >= TRAINEE_REMIND_COOLDOWN_MS;
-            if (cooldownOk) {
-              actionsUsed++;
-              if (!dryRun) {
-                if (u.hhNegId) { await hhReply(u.hhNegId, token, buildTraineeReminderText(u.name, doneCount, BASIC_MODULE_IDS.length)); remindersToTrainees++; }
-                else noChannelCount++;
-                await redis(['SET', 'hr:trainee_reminded:' + login, String(Date.now())]);
-              } else {
-                remindersToTrainees++;
+        } else if (!isComplete && u.createdAt && u.createdAt >= deadlineEnabledAt) {
+          const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
+          const now = Date.now();
+          if (now >= deadlineAt) {
+            // Срок истёк, программа не пройдена — переводим в «Не подходит» (НЕ безвозвратно,
+            // Sagi сам решает по каждому, звонком/лично — см. комментарий у TRAINEE_DEADLINE_MS).
+            actionsUsed++; deadlineExpired++;
+            if (!dryRun) {
+              u.hireStatus = 'Не подходит';
+              u.statusUpdatedAt = now;
+              u.statusComment = `Авто: не уложился(лась) в срок ${TRAINEE_DEADLINE_HOURS}ч на базовую программу (${doneCount}/${BASIC_MODULE_IDS.length} модулей)`;
+              changed = true;
+              const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
+              if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'Не подходит' });
+              if (u.hhNegId) await hhReply(u.hhNegId, token, buildDeadlineExpiredText(u.name, doneCount, BASIC_MODULE_IDS.length));
+              else noChannelCount++;
+              const tok = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
+              if (tok && chat) {
+                const traineeContact = (u.hhNegId && candById.get('hh_' + u.hhNegId)?.contact) || '—';
+                const txt = `⏰ Стажёр не уложился в срок обучения (${TRAINEE_DEADLINE_HOURS}ч) — Sagi\n\n👤 ${u.name} (@${login})\n📞 ${traineeContact}\nПрогресс: ${doneCount}/${BASIC_MODULE_IDS.length} модулей\n\nСтатус автоматически переведён в «Не подходит». Если хочешь дать ещё шанс — позвони и реши сам, статус можно вернуть в «Активен» в панели руководителя.`;
+                try { await fetch(`https://api.telegram.org/bot${tok}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: txt, disable_web_page_preview: true }) }); } catch (e) {}
+              }
+            }
+          } else {
+            // Ещё не истёк — на полпути к дедлайну шлём одно напоминание (не спамим каждый час).
+            const halfPoint = TRAINEE_DEADLINE_MS / 2;
+            const pastHalf = (deadlineAt - now) <= halfPoint;
+            if (pastHalf) {
+              const remindedRaw = await redis(['GET', TRAINEE_DEADLINE_REMINDER_KEY_PREFIX + login]);
+              if (!remindedRaw) {
+                actionsUsed++;
+                if (!dryRun) {
+                  if (u.hhNegId) { await hhReply(u.hhNegId, token, buildDeadlineReminderText(u.name, doneCount, BASIC_MODULE_IDS.length, deadlineAt - now)); remindersToTrainees++; }
+                  else noChannelCount++;
+                  await redis(['SET', TRAINEE_DEADLINE_REMINDER_KEY_PREFIX + login, String(now)]);
+                } else {
+                  remindersToTrainees++;
+                }
               }
             }
           }
@@ -2362,7 +2418,7 @@ export default async function handler(req, res) {
       replies: { awaitingTotal: awaitingIds.length, checked: repliesChecked, remaining: remainingAwaiting, found: repliesFound, remindersSent, cursor: reviewCursor, preview: dryRun ? replyPreview : undefined },
       followUps: { checked: watchChecked, questionsFound, autoAnswered },
       regNudges: { checked: regNudgeChecked, sent: regNudgeSent },
-      trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount },
+      trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount, deadlineExpired },
       mentorLoad,
       retentionPulse: { checked: pulsesChecked, sent: pulsesSent },
       errors: debug ? errors : errors.length,
