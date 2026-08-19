@@ -33,6 +33,24 @@ function digits(s) { return String(s || '').replace(/[^\d]/g, ''); }
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function waMessage(name) { const n = (name || '').trim().split(/\s+/)[0] || ''; return `Здравствуйте${n ? ', ' + n : ''}! Меня зовут [ваше имя], я из Sagi. Спасибо за отклик на вакансию, удобно ответить на пару вопросов / созвониться?`; }
 
+// 2026-08-19, по указанию Sagi: для вакансии продаж (1 и 4) больше не ведём диалог с вопросами
+// прямо в Telegram — сразу даём ссылку на форму hr.sagibonus.com/apply.html, там же и скрининг,
+// и решение, приглашать на обучение или нет (та же логика, что теперь и в hh.kz, см. hh_poll.js).
+function buildFormRedirectMessage(vac, chat) {
+  const isRemote = vac === 'sales_remote';
+  const vacLine = isRemote ? 'Вакансия менеджера по продажам в Sagi, полностью удалённо.' : 'Вакансия менеджера по продажам в Sagi.';
+  const link = `${SITE}/apply.html?src=tg&chat=${encodeURIComponent(chat)}`;
+  return `Здравствуйте!
+
+${vacLine}
+
+Ниже по ссылке будут вопросы, ответьте пожалуйста на них, займёт пару минут, условия прописаны тоже здесь: ${link}
+
+Там я сразу увижу ваши ответы.
+
+Если появятся вопросы, пишите сюда же или в WhatsApp: +7 707 700 0087.`;
+}
+
 // ---- Вакансии ----
 const VAC = {
   sales:          { key: 'sales',          title: 'Менеджер по продажам',                  format: 'офис, Астана' },
@@ -335,15 +353,40 @@ export default async function handler(req, res) {
         await tgSend(chat, (f ? f + '\n\n' : 'Не понял выбор. ') + 'Напишите 1, 2, 3 или 4, на какую вакансию откликаетесь.\n\n' + MENU);
         res.status(200).json({ ok: true }); return;
       }
+      // 2026-08-19, по указанию Sagi: для вакансии продаж (1 и 4) вопросы больше не задаём в
+      // самом Telegram-диалоге — сразу шлём ссылку на форму (см. buildFormRedirectMessage выше).
+      // Техподдержка (2 и 3) пока без изменений — ведёт обычный диалог, как раньше.
+      if (vac === 'sales' || vac === 'sales_remote') {
+        st.vacancy = vac; st.step = 'form_sent'; await setState(chat, st);
+        await tgSend(chat, buildFormRedirectMessage(vac, chat));
+        try {
+          const rec = {
+            id: 'tg_' + chat, name: 'Из Telegram (ожидает анкету)', contact: '', phone: '', tgChatId: chat,
+            vacancy: VAC[vac].title, source: 'Telegram-бот · ' + VAC[vac].title,
+            resume: '', score: null, verdict: null, summary: '',
+            strengths: [], flags: [], stage: 'Ожидает ответа', ts: Date.now(),
+          };
+          await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]);
+          await redis(['LTRIM', CAND_KEY, 0, 1999]);
+        } catch (e) {}
+        res.status(200).json({ ok: true }); return;
+      }
       st.vacancy = vac; st.step = 'name'; await setState(chat, st);
       await tgSend(chat, questions(vac).name);
       res.status(200).json({ ok: true }); return;
     }
 
     const vac = st.vacancy || 'sales';
-    const order = ORDER[vac];
+    const order = ORDER[vac] || [];
     const Q = questions(vac);
     const i = order.indexOf(st.step);
+
+    // Ссылка на форму уже отправлена (вакансия продаж) — ждём, пока кандидат заполнит её сам.
+    if (st.step === 'form_sent') {
+      const f = answerFaq(text, vac);
+      await tgSend(chat, (f ? f + '\n\n' : '') + 'Пожалуйста, заполните анкету по ссылке выше — займёт пару минут, и я сразу увижу ваши ответы. Если уже заполнили — спасибо, ждите решения!');
+      res.status(200).json({ ok: true }); return;
+    }
 
     if (st.step === 'done') {
       const f = answerFaq(text, vac);

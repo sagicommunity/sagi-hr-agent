@@ -11,6 +11,19 @@
 //                     таковой. РОПу приходит Telegram-алерт с текстом ответа и рекомендацией ИИ
 //                     по КАЖДОМУ ответившему (не только по «сильным») — финальное решение за РОПом.
 //
+// ОБНОВЛЕНО 2026-08-19 по прямому указанию Sagi: вопросы («анкету») больше НЕ задаём внутри
+// переписки на hh.kz (раньше — гейт-вопрос первым сообщением, потом 5 вопросов вторым, см.
+// buildFirstMessage/buildQuestionsMessage ниже, оставлены только для истории/уже начатых
+// переписок). Теперь Фаза A сразу шлёт короткое сообщение (buildFormRedirectMessage) со ссылкой
+// на форму hr.sagibonus.com/apply.html — кандидат сам отвечает на вопросы там, api/apply.js
+// скринит через Claude и сразу показывает кандидату результат (приглашение на обучение или нет)
+// прямо на странице. Та же логика теперь и в Telegram-боте (tg.js) для вакансии продаж. Ссылка
+// несёт метку ?src=hh&neg=<negId>, apply.js по ней ОБНОВЛЯЕТ уже существующую запись кандидата
+// (hh_<negId>) вместо того, чтобы плодить дубликат — см. refId в apply.js. Поскольку вопросы в
+// hh.kz-чате больше не задаются, Фазы B1/B2 (ожидание ответа на гейт/анкету в чате) новых
+// кандидатов больше не ждут — при интейке negId сразу добавляется в GATE_HANDLED_KEY, чтобы
+// не копить бесполезные напоминания «ответьте на гейт-вопрос» для сообщения, которого больше нет.
+//
 // Триггер: GET /api/hh_poll?secret=<HH_POLL_SECRET>  (по расписанию, см. README/память проекта)
 //   ?debug=1        — вернуть подробности ошибок/причин вместо счётчика
 //   ?dryrun=1       — ничего не отправлять/не сохранять/не помечать, только показать, что бы произошло
@@ -410,12 +423,32 @@ async function notifyReplied(rec, replyText) {
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 
-// Шаблон первого сообщения — фирменный стиль Sagi (тот, которым Sagi писал раньше вручную).
-// 2026-08-18, по замечанию Sagi: раньше здесь же шли все 5 вопросов анкеты, из-за чего часть
-// кандидатов проходила всю анкету и только потом писала, что холодные звонки/формат не для
-// них. Теперь сообщение заканчивается ОДНИМ гейт-вопросом (интересен ли в принципе такой
-// формат работы) — анкета из 5 вопросов уходит вторым сообщением, только если кандидат
-// откликнулся на гейт положительно (см. buildQuestionsMessage + ФАЗА B1 ниже).
+// Новый единственный шаблон интейк-сообщения (2026-08-19, по прямому указанию Sagi): вместо
+// того чтобы задавать вопросы в самой переписке (hh.kz-чат), сразу даём короткое сообщение
+// со ссылкой на форму hr.sagibonus.com/apply.html — там кандидат сам отвечает на вопросы,
+// api/apply.js его сразу же скринит и показывает результат (приглашение на обучение или отказ)
+// прямо на странице. negId зашит в ссылку (?src=hh&neg=<negId>), чтобы apply.js обновил уже
+// существующую запись кандидата вместо создания дубликата.
+const FORM_URL = 'https://hr.sagibonus.com/apply.html';
+function buildFormRedirectMessage(vacKind, name, negId) {
+  const greet = (name && name !== 'Кандидат с hh.kz') ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
+  const isRemote = vacKind === 'sales_remote';
+  const vacLine = isRemote ? 'Вакансия менеджера по продажам в Sagi, полностью удалённо.' : 'Вакансия менеджера по продажам в Sagi.';
+  const link = negId ? `${FORM_URL}?src=hh&neg=${encodeURIComponent(negId)}` : FORM_URL;
+  return `${greet}
+
+${vacLine}
+
+Ниже по ссылке будут вопросы, ответьте пожалуйста на них, займёт пару минут, условия прописаны тоже здесь: ${link}
+
+Там я сразу увижу ваши ответы.
+
+Если удобнее уточнить что-то в звонке или в WhatsApp, пишите: +7 707 700 0087.`;
+}
+
+// Старый шаблон первого сообщения — оставлен только для истории и для уже начатых переписок
+// (кандидатов, которые получили именно это сообщение до 2026-08-19 и ещё не завершили диалог
+// по старой схеме). Для НОВЫХ кандидатов больше не используется, см. buildFormRedirectMessage.
 function buildFirstMessage(vacKind, name) {
   const greet = (name && name !== 'Кандидат с hh.kz') ? `Здравствуйте, ${name}!` : 'Здравствуйте!';
   const isRemote = vacKind === 'sales_remote';
@@ -1742,9 +1775,9 @@ export default async function handler(req, res) {
       for (const rec of toSend) {
         const negId = rec.id.replace(/^hh_/, '');
         const vacKind = pickVacancyKind(rec.vacancy || '');
-        const msgText = buildFirstMessage(vacKind, rec.name);
+        const msgText = buildFormRedirectMessage(vacKind, rec.name, negId);
         const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
-        if (sent.ok) await updateCandidateRecord(rec.id, { messageSent: true });
+        if (sent.ok) { await updateCandidateRecord(rec.id, { messageSent: true }); await redis(['SADD', GATE_HANDLED_KEY, negId]); }
         results.push({ negId, name: rec.name, ok: sent.ok, status: sent.status, data: sent.ok ? undefined : sent.data });
       }
       res.status(200).json({ ok: true, pendingTotal: pending.length, sent: toSend.length, results });
@@ -1815,7 +1848,7 @@ export default async function handler(req, res) {
         const name = [resumeFull?.first_name || it.resume?.first_name, resumeFull?.last_name || it.resume?.last_name].filter(Boolean).join(' ') || 'Кандидат с hh.kz';
         const phone = extractPhone(resumeFull);
         const resumeText = buildResumeText(resumeFull) || (it.resume?.title || '');
-        const msgText = buildFirstMessage(vacKind, name);
+        const msgText = buildFormRedirectMessage(vacKind, name, negId);
         const age = computeAgeFromBirthDate(resumeFull?.birth_date) ?? extractAgeFromText(resumeText);
         if (dryRun) {
           intakePreview.push({ negId, name, vacancy: vacTitle, vacKind, age });
@@ -1833,6 +1866,9 @@ export default async function handler(req, res) {
           };
           await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]);
           await redis(['LTRIM', CAND_KEY, 0, 1999]);
+          // Вопросы больше не задаём в hh.kz-чате (см. заголовок файла) — сразу помечаем как
+          // "гейт обработан", чтобы Фаза B1 не ждала ответ на вопрос, которого мы не задавали.
+          if (sent.ok) await redis(['SADD', GATE_HANDLED_KEY, negId]);
         }
       } catch (e) {
         errors.push({ negId, step: 'intake', error: e.message });

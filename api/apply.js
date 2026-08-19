@@ -17,6 +17,28 @@ async function redis(cmd) {
   return d.result;
 }
 
+// 2026-08-19, по указанию Sagi: вопросы больше не задаём в переписке (hh.kz-чат, Telegram-бот) —
+// сразу шлём короткую ссылку на эту форму, а сама анкета/скрининг происходит здесь. Чтобы кандидат,
+// который уже был заведён в hr:candidates при интейке (hh_<negId> из api/hh_poll.js, tg_<chatId> из
+// api/tg.js), не задваивался при заполнении формы — ссылка несёт ?src=...&neg=/chat=..., фронтенд
+// (apply.html) собирает из этого refId и шлёт его сюда. Если по refId нашлась существующая запись —
+// ОБНОВЛЯЕМ её (сохраняя тот же id, значит и все внешние ссылки на неё остаются рабочими), иначе —
+// создаём новую запись как раньше (обычный органический трафик на apply.html без метки).
+async function findAndUpdateCandidate(id, patch) {
+  if (!id) return null;
+  const raw = await redis(['LRANGE', CAND_KEY, 0, -1]);
+  if (!Array.isArray(raw)) return null;
+  for (let i = 0; i < raw.length; i++) {
+    let rec; try { rec = JSON.parse(raw[i]); } catch (e) { continue; }
+    if (rec && rec.id === id) {
+      const updated = { ...rec, ...patch, id: rec.id };
+      await redis(['LSET', CAND_KEY, i, JSON.stringify(updated)]);
+      return updated;
+    }
+  }
+  return null;
+}
+
 // 2026-08-17, по прямому указанию Sagi: отсутствие опыта холодных звонков и отсутствие
 // компьютера/интернета — НЕ повод для отказа. Всему учат на стажировке: сначала звонки и обход
 // администратора/кассира, выход на ЛПР, назначение встреч — первые 1-2 недели саму встречу
@@ -80,6 +102,8 @@ export default async function handler(req, res) {
     const resume = (body?.resume || '').toString().slice(0, 8000).trim();
     const vacancy = (body?.vacancy === 'sales_remote') ? 'sales_remote' : 'sales';
     const vacTitle = VAC_TITLES[vacancy];
+    // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
+    const refId = (body?.refId || '').toString().slice(0, 100).trim();
     if (!name || !contact || !resume) { res.status(400).json({ error: 'Заполните имя, контакт и резюме.' }); return; }
 
     let evaln = { score: null, verdict: 'Резерв', summary: '', strengths: [], flags: [], age: null };
@@ -110,7 +134,7 @@ export default async function handler(req, res) {
     // явный отказ работать/учиться в принципе).
     const invited = evaln.verdict !== 'Отказ';
     const rec = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      id: refId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
       name, contact, phone: '', vacancy: vacTitle,
       source: (source ? source + ' · ' : 'форма отклика · ') + vacTitle, howFound: source || null, age: evaln.age,
       // 2026-08-18, по запросу Sagi: помечаем кандидатов вне 20-35 лет, но НЕ авто-отклоняем —
@@ -123,8 +147,15 @@ export default async function handler(req, res) {
       strengths: evaln.strengths, flags: evaln.flags,
       stage: invited ? 'Приглашён' : 'Отказ', ts: Date.now(),
     };
-    try { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); } catch (e) {}
-    notifyTelegram(rec); // best-effort, не блокируем ответ
+    // Если пришли по ссылке из hh.kz/Telegram (refId = hh_<negId> / tg_<chatId>) — обновляем уже
+    // существующую запись, созданную при интейке, вместо того чтобы плодить дубликат (см. комментарий
+    // у findAndUpdateCandidate выше). Иначе (обычный органический трафик на apply.html) — создаём новую.
+    let saved = null;
+    try {
+      if (refId) saved = await findAndUpdateCandidate(refId, rec);
+      if (!saved) { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); saved = rec; }
+    } catch (e) {}
+    notifyTelegram(saved || rec); // best-effort, не блокируем ответ
 
     const inviteText = `${name}, спасибо за отклик! По вашим ответам приглашаем вас на обучение — это первый шаг: пройдёте базовую программу, а после неё подключим наставника и перейдёте к стажировке уже на практике.\n\nЧто нужно сделать:\n1) Перейти на hr.sagibonus.com\n2) Нажать на карточку «🎓 Стажёр» и зарегистрироваться (займёт минуту)\n3) Пройти базовую программу (о продукте, скрипты, тесты). Есть встроенный ИИ-тренажёр, чтобы отрабатывать звонки на практике\n\nПодробные условия по доходу: hr.sagibonus.com/usloviya.html\n\nЕсли появятся вопросы, пишите в WhatsApp: +7 707 700 0087.`;
     const declineText = `${name}, спасибо за отклик! Сейчас, судя по ответам, эта позиция не очень совпадает с тем, что нужно для этой роли. Если что-то изменится или откроется другая подходящая позиция, обязательно свяжемся. Удачи!`;
