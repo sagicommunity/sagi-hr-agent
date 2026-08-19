@@ -134,6 +134,18 @@ function applyVac(v){
 }
 applyVac(currentVac);
 
+// 2026-08-19: ссылку на эту форму теперь шлют hh.kz-бот и Telegram-бот вместо того, чтобы
+// задавать вопросы в самой переписке (см. api/hh_poll.js, api/tg.js). ?src=hh&neg=<negId> или
+// ?src=tg&chat=<chatId> в адресной строке — собираем это в refId и шлём вместе с формой, чтобы
+// api/apply.js обновил уже существующую запись кандидата, а не создал дубликат.
+const qs = new URLSearchParams(location.search);
+const refSrc = qs.get('src') || '';
+let refId = '';
+if (refSrc === 'hh' && qs.get('neg')) refId = 'hh_' + qs.get('neg');
+else if (refSrc === 'tg' && qs.get('chat')) refId = 'tg_' + qs.get('chat');
+const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram-бот' };
+if (SRC_LABEL[refSrc] && !$('#source').value) $('#source').value = SRC_LABEL[refSrc];
+
 $('#pdfBtn').addEventListener('click',()=>$('#pdfInput').click());
 $('#pdfInput').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -160,6 +172,7 @@ form.addEventListener('submit',async e=>{
     resumeUrl:$('#resumeUrl').value.trim(),
     resume:($('#resume').value.trim()+($('#resumeUrl').value.trim()?'\n\nСсылка на резюме: '+$('#resumeUrl').value.trim():'')).trim(),
     vacancy: currentVac,
+    refId: refId,
   };
   if(!payload.name||!payload.contact||!payload.resume){ err.textContent='Заполните имя, контакт и резюме.'; err.style.display='block'; return; }
   btn.disabled=true; btn.textContent='Отправляем…';
