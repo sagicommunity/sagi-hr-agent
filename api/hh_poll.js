@@ -1932,6 +1932,27 @@ export default async function handler(req, res) {
     return;
   }
 
+  // 2026-08-20, разовый точечный фикс по указанию Sagi: кандидату Данияр Манибаев (его собственный
+  // negId в hh.kz-переписке — 5503598422, запись hh_5503598422, стадия «Ожидает ответа» с 16.08,
+  // так и не получила нормального авто-приглашения) сегодня вручную отправили сообщение-приглашение
+  // на анкету, но со ссылкой, где был ЧУЖОЙ negId (5513090269 — реально принадлежит другому
+  // кандидату). Если бы он перешёл по такой ссылке и заполнил анкету, apply.js обновил бы ЧУЖУЮ
+  // запись вместо его собственной (см. refId в api/apply.js). Шлём ему правильное сообщение с
+  // корректной ссылкой прямо в его настоящий чат на hh.kz. Безопасно дёргать повторно.
+  if (req.query?.fixDaniyar509) {
+    const negId = '5503598422';
+    try {
+      const token = await getEmployerToken();
+      const msgText = buildFormRedirectMessage('sales_remote', 'Данияр Манибаев', negId);
+      const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
+      if (sent.ok) await updateCandidateRecord('hh_' + negId, { messageSent: true });
+      res.status(200).json({ ok: sent.ok, status: sent.status, negId, data: sent.ok ? undefined : sent.data });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   if (req.query?.testSend) {
     const negId = String(req.query.testSend);
     const testText = 'Тест доставки сообщения от Sagi HR-бота, можно игнорировать.';
