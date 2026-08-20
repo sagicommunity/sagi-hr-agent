@@ -193,6 +193,10 @@ const MENTOR_CURSOR_KEY = 'hr:mentor_cursor';
 // Наставники, которым по очереди (round-robin) отдают стажёров, прошедших базовую программу.
 // Сейчас один — Азамат (Sagi подтвердил 2026-08-17). Когда появятся ещё, просто добавь сюда.
 const MENTORS = [{ name: 'Азамат', phone: '+77025417933' }];
+// 2026-08-20, по указанию Sagi: через сколько после назначения наставника слать напоминание
+// «напишите сами», если стажёр за это время не пометился как-то иначе. 2 часа — чтобы не дублировать
+// поздравление сразу же (его только что отправили), но и не заставлять ждать сутками.
+const MENTOR_NUDGE_DELAY_MS = 2 * 60 * 60 * 1000;
 function buildDeadlineReminderText(name, doneCount, total, leftMs) {
   const greet = name ? `${name}, привет!` : 'Привет!';
   const leftMin = Math.max(1, Math.round(leftMs / 60000));
@@ -209,6 +213,11 @@ function buildMentorAssignedText(name, mentorName, mentorPhone) {
   // 2026-08-19, по итогам живых звонков Sagi с кандидатами: критерий успешной стажировки нужно
   // проговаривать явно и сразу — важно не «пригласить», а провести именно СОСТОЯВШИЕСЯ встречи.
   return `${greet} Вы прошли базовую программу обучения. 🎉\n\nТеперь начинается стажировка: дальше с вами будет работать в паре наставник — ${mentorName || 'опытный менеджер команды'}, он свяжется с вами в ближайшее время, чтобы перейти к практике на реальных звонках и встречах.${contactLine}\n\nСтажировка считается пройденной, когда состоятся 3 реальные встречи с потенциальными клиентами (важно, чтобы встречи именно состоялись, а не просто были назначены). После этого переходите в штат на постоянных условиях.\n\nЕсли есть вопросы, можно написать сюда же или в WhatsApp: +7 707 700 0087.`;
+}
+function buildMentorNudgeText(name, mentorName, mentorPhone) {
+  const greet = name ? `${name}, привет!` : 'Привет!';
+  const contactLine = mentorPhone ? ` Его WhatsApp: ${mentorPhone}.` : '';
+  return `${greet}\n\nНапоминаю: вы закончили базовую программу, дальше стажировка идёт в паре с наставником — ${mentorName || 'опытным менеджером команды'}.${contactLine} Если он ещё не успел написать вам сам, лучше не ждать, а написать ему первым, чтобы не терять время. Можно также позвонить или написать на общий номер: +7 707 700 0087, если не получается связаться.`;
 }
 
 // ---- ФАЗА F (контроль нагрузки на наставников) ----
@@ -2419,6 +2428,15 @@ export default async function handler(req, res) {
           } else {
             noChannelCount++;
           }
+        } else if (isComplete && u.mentorName && u.hhNegId && !u.mentorNudgeSent && u.mentorAssignedAt && (Date.now() - u.mentorAssignedAt) >= MENTOR_NUDGE_DELAY_MS) {
+          // 2026-08-20, по указанию Sagi (увидел в панели стажёров, кто прошёл обучение, но
+          // «не в курсе что делать»): исходное уведомление о наставнике формулирует это пассивно
+          // («он свяжется с вами»), и если Азамат не успел написать первым, стажёр просто ждёт и
+          // теряется. Через MENTOR_NUDGE_DELAY_MS после назначения наставника, если стажёр ещё
+          // «Активен», шлём отдельное напоминание в тот же чат на hh.kz: самому написать наставнику
+          // или на общий номер. Один раз на стажёра (mentorNudgeSent), безопасно гонять повторно.
+          if (!dryRun) await hhReply(u.hhNegId, token, buildMentorNudgeText(u.name, u.mentorName, u.mentorPhone));
+          u.mentorNudgeSent = true; changed = true;
         } else if (!isComplete && u.createdAt && u.createdAt >= deadlineEnabledAt) {
           const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
           const now = Date.now();
