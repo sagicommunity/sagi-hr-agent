@@ -132,6 +132,14 @@
   </div>
 
   <div class="section">
+    <h2>Стажёры: базовая программа и отсев</h2>
+    <p class="note">Кто из зарегистрированных стажёров дошёл до наставника, а кто отсеялся и почему (причина — из статуса и комментария в карточке сотрудника).</p>
+    <div class="tiles" id="traineeTiles" style="margin-bottom:14px"></div>
+    <div id="traineeByStatus" style="margin-bottom:14px"></div>
+    <div id="traineeNotActive"></div>
+  </div>
+
+  <div class="section">
     <h2>Отток сотрудников</h2>
     <p class="note">Считаем только тех, кто реально вышел на работу (стадия «Трудоустроен»). Срок работы и причины ухода берутся из отметки стадии «Ушёл» в Пайплайне.</p>
     <div class="tiles" id="retentionTiles" style="margin-bottom:14px"></div>
@@ -272,6 +280,26 @@ async function load(){
       '</tbody></table>';
   } else {
     $('#tgTable').innerHTML = '<div class="empty">Переходов с метками пока не было (например, по ссылке из Threads).</div>';
+  }
+
+  // Стажёры: базовая программа и отсев
+  const tf = d.traineeFunnel || {};
+  $('#traineeTiles').innerHTML = [
+    tile('Всего стажёров', tf.total||0, 'зарегистрированных аккаунтов'),
+    tile('Дошли до наставника', tf.reachedMentor||0, 'закончили базовую программу', 'brand'),
+    tile('Активны сейчас', tf.activeCount||0, 'без пометки об отсеве'),
+  ].join('');
+  if(tf.byStatus && tf.byStatus.length){
+    barList($('#traineeByStatus'), tf.byStatus.map(x=>({key:x.key,count:x.count})));
+  } else {
+    $('#traineeByStatus').innerHTML='';
+  }
+  if(tf.notActive && tf.notActive.length){
+    $('#traineeNotActive').innerHTML = '<table><thead><tr><th>Стажёр</th><th>Статус</th><th>Причина</th><th>Когда</th></tr></thead><tbody>'+
+      tf.notActive.map(t=>'<tr><td>'+esc(t.name)+'</td><td>'+esc(t.status)+'</td><td style="color:var(--muted)">'+esc(t.comment||'—')+'</td><td style="color:var(--faint);white-space:nowrap">'+(t.lastSeen?new Date(t.lastSeen).toLocaleDateString('ru-RU'):'—')+'</td></tr>').join('')+
+      '</tbody></table>';
+  } else {
+    $('#traineeNotActive').innerHTML = '<div class="empty">Пока все стажёры активны, отсева нет.</div>';
   }
 
   // Отток
