@@ -1,8 +1,11 @@
 // Vercel Serverless Function — Sagi HR + Sales Enablement агент
-// Claude (Anthropic API) + сбор статистики в Redis (Upstash) + парольный гейт дешборда.
-// Env: ANTHROPIC_API_KEY, [KV_REST_API_URL|UPSTASH_REDIS_REST_URL], [KV_REST_API_TOKEN|UPSTASH_REDIS_REST_TOKEN], DASHBOARD_PASSWORD
+// DeepSeek API (OpenAI-совместимый формат) + сбор статистики в Redis (Upstash) + парольный гейт дешборда.
+// 2026-08-20, по запросу Sagi — переключено с Claude (Anthropic) на DeepSeek: в разы дешевле за
+// токен на этом объёме, плюс DeepSeek сам кэширует повторяющийся контекст (system-промпт,
+// растущая история диалога) без каких-либо доп. настроек в коде, в отличие от Anthropic.
+// Env: DEEPSEEK_API_KEY, [KV_REST_API_URL|UPSTASH_REDIS_REST_URL], [KV_REST_API_TOKEN|UPSTASH_REDIS_REST_TOKEN], DASHBOARD_PASSWORD
 
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'deepseek-v4-pro'; // качество ближе к Sonnet, чем у deepseek-v4-flash, но всё равно в разы дешевле Claude
 
 const SYSTEM_PROMPT = `Ты — Sagi HR-агент: специализированный HR + Sales Enablement ИИ-агент полного цикла для компании Sagi (B2B SaaS, loyalty-платформа, sagi.kz) в сегменте B2B МСБ.
 
@@ -156,17 +159,21 @@ function extractSaves(text) {
 }
 
 // ---- Инструмент: поиск вакансий на hh.kz/hh.ru (публичный API, без токена) ----
+// Формат tools у DeepSeek — OpenAI-совместимый (type:"function"), не такой, как у Anthropic.
 const HH_TOOL = {
-  name: 'search_hh_vacancies',
-  description: 'Поиск реальных вакансий на hh.kz / hh.ru по ключевым словам и региону. Используй, когда спрашивают про рынок труда, зарплаты, конкурентов-работодателей, какие вакансии есть, сколько платят, где нанимают менеджеров по продажам. Возвращает список вакансий: должность, компания, город, зарплата, ссылка.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      text: { type: 'string', description: 'Ключевые слова, напр. "менеджер по холодным продажам" или "B2B sales"' },
-      area: { type: 'string', description: 'Регион: 159=Алматы, 160=Астана, 40=весь Казахстан, 1=Москва, 113=Россия. По умолчанию 40.' },
-      per_page: { type: 'integer', description: 'Сколько вакансий вернуть (1–20). По умолчанию 10.' },
+  type: 'function',
+  function: {
+    name: 'search_hh_vacancies',
+    description: 'Поиск реальных вакансий на hh.kz / hh.ru по ключевым словам и региону. Используй, когда спрашивают про рынок труда, зарплаты, конкурентов-работодателей, какие вакансии есть, сколько платят, где нанимают менеджеров по продажам. Возвращает список вакансий: должность, компания, город, зарплата, ссылка.',
+    parameters: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Ключевые слова, напр. "менеджер по холодным продажам" или "B2B sales"' },
+        area: { type: 'string', description: 'Регион: 159=Алматы, 160=Астана, 40=весь Казахстан, 1=Москва, 113=Россия. По умолчанию 40.' },
+        per_page: { type: 'integer', description: 'Сколько вакансий вернуть (1–20). По умолчанию 10.' },
+      },
+      required: ['text'],
     },
-    required: ['text'],
   },
 };
 
@@ -228,10 +235,10 @@ async function runTool(name, input) {
   } catch (e) { return { error: e.message || 'tool error' }; }
 }
 
-async function anthropic(apiKey, payload) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+async function deepseek(apiKey, payload) {
+  const r = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + apiKey },
     body: JSON.stringify(payload),
   });
   const data = await r.json();
@@ -240,8 +247,8 @@ async function anthropic(apiKey, payload) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) { res.status(500).json({ error: 'ANTHROPIC_API_KEY не задан в настройках Vercel.' }); return; }
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) { res.status(500).json({ error: 'DEEPSEEK_API_KEY не задан в настройках Vercel.' }); return; }
 
   try {
     let body = req.body;
@@ -324,57 +331,34 @@ export default async function handler(req, res) {
       (isDashboard ? ' Роль: руководитель (доступ к дешборду подтверждён). Построй дешборд строго из блока <DATA>.' : '') +
       dataBlock;
 
-    // 2026-08-20, по запросу Sagi («слишком много токенов уходит из тренажёра») — включаем
-    // Anthropic prompt caching. SYSTEM_PROMPT (большой, статичный для абсолютно всех запросов)
-    // и база знаний техподдержки (меняется раз в ~10 мин) выносим в отдельные системные блоки
-    // с cache_control: повторные обращения — в т.ч. от разных стажёров, если попадают в одно
-    // и то же ~5-минутное окно кэша — платят ~10% от цены за эти блоки вместо полной цены на
-    // каждую реплику диалога. Данные конкретного пользователя/дешборда (dataBlock) намеренно
-    // остаются НЕкэшируемым хвостом, чтобы не показать руководителю устаревшие цифры.
-    const systemBlocks = [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
-    if (kbText) systemBlocks.push({ type: 'text', text: kbText, cache_control: { type: 'ephemeral' } });
-    systemBlocks.push({ type: 'text', text: sysSuffix });
+    // DeepSeek принимает системный промпт одной строкой (role:"system"), не массивом блоков —
+    // и сам кэширует повторяющийся контекст на своей стороне (см. usage.prompt_cache_hit_tokens
+    // в ответе), без cache_control и без ручной разбивки на блоки, как требовалось у Anthropic.
+    const systemText = SYSTEM_PROMPT + (kbText ? ('\n\n' + kbText) : '') + sysSuffix;
 
-    // Кэшируем и растущую историю диалога: в длинных ролевых тренировках (10-20+ реплик) без
-    // этого на каждом шаге заново тарифицируется ВСЯ предыдущая переписка целиком. Помечаем
-    // последнее сообщение каждого запроса как границу кэша — на следующем шаге всё до этой
-    // границы (если не менялось) читается по цене кэш-хита.
-    function withCacheBreakpoint(content) {
-      if (typeof content === 'string') {
-        return [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }];
-      }
-      if (Array.isArray(content) && content.length) {
-        const copy = content.map(b => ({ ...b }));
-        copy[copy.length - 1] = { ...copy[copy.length - 1], cache_control: { type: 'ephemeral' } };
-        return copy;
-      }
-      return content;
-    }
-
-    // ---- Цикл с инструментами (поиск вакансий HH) ----
+    // ---- Цикл с инструментами (поиск вакансий HH), формат запроса/ответа — OpenAI-совместимый ----
     const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
     let raw = '';
     for (let step = 0; step < 4; step++) {
-      const payloadMessages = apiMessages.length
-        ? apiMessages.map((m, i) => i === apiMessages.length - 1 ? { ...m, content: withCacheBreakpoint(m.content) } : m)
-        : apiMessages;
-      const { ok, status, data } = await anthropic(apiKey, {
-        model: MODEL, max_tokens: 2200, system: systemBlocks, tools: [HH_TOOL], messages: payloadMessages,
+      const { ok, status, data } = await deepseek(apiKey, {
+        model: MODEL, max_tokens: 2200,
+        messages: [{ role: 'system', content: systemText }, ...apiMessages],
+        tools: [HH_TOOL],
       });
-      if (!ok) { res.status(status).json({ error: data?.error?.message || ('Anthropic API error ' + status) }); return; }
-      if (data.stop_reason === 'tool_use') {
-        apiMessages.push({ role: 'assistant', content: data.content });
-        const toolResults = [];
-        for (const block of (data.content || [])) {
-          if (block.type === 'tool_use') {
-            const result = await runTool(block.name, block.input);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result).slice(0, 6000) });
-          }
+      if (!ok) { res.status(status).json({ error: data?.error?.message || ('DeepSeek API error ' + status) }); return; }
+      const choice = (data.choices || [])[0];
+      const msg = choice && choice.message;
+      if (choice && choice.finish_reason === 'tool_calls' && msg?.tool_calls?.length) {
+        apiMessages.push({ role: 'assistant', content: msg.content || null, tool_calls: msg.tool_calls });
+        for (const tc of msg.tool_calls) {
+          let input = {};
+          try { input = JSON.parse(tc.function?.arguments || '{}'); } catch (e) {}
+          const result = await runTool(tc.function?.name, input);
+          apiMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result).slice(0, 6000) });
         }
-        apiMessages.push({ role: 'user', content: toolResults });
         continue;
       }
-      raw = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      raw = (msg?.content || '').toString().trim();
       break;
     }
     const { events, clean } = extractSaves(raw);
