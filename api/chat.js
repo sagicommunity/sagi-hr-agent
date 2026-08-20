@@ -314,22 +314,52 @@ export default async function handler(req, res) {
 
     // База знаний техподдержки — для точных ответов о продукте/настройке/тарифах и обучения менеджеров
     const supportKB = await loadSupportKB();
-    const kbBlock = supportKB
-      ? ('\n\nБАЗА ЗНАНИЙ ТЕХПОДДЕРЖКИ SAGI (реальные ответы поддержки и аккаунт-менеджеров — используй как источник истины для вопросов о продукте, настройке, тарифах и типичных проблемах; при обучении менеджеров опирайся на эти формулировки):\n' + supportKB)
+    const kbText = supportKB
+      ? ('БАЗА ЗНАНИЙ ТЕХПОДДЕРЖКИ SAGI (реальные ответы поддержки и аккаунт-менеджеров — используй как источник истины для вопросов о продукте, настройке, тарифах и типичных проблемах; при обучении менеджеров опирайся на эти формулировки):\n' + supportKB)
       : '';
 
     const sysSuffix =
       `\n\n— Текущий пользователь: имя=${userName || 'не указано'}.` +
       (userLogin ? ` (аккаунт подтверждён, login=${userLogin})` : '') +
       (isDashboard ? ' Роль: руководитель (доступ к дешборду подтверждён). Построй дешборд строго из блока <DATA>.' : '') +
-      dataBlock + kbBlock;
+      dataBlock;
+
+    // 2026-08-20, по запросу Sagi («слишком много токенов уходит из тренажёра») — включаем
+    // Anthropic prompt caching. SYSTEM_PROMPT (большой, статичный для абсолютно всех запросов)
+    // и база знаний техподдержки (меняется раз в ~10 мин) выносим в отдельные системные блоки
+    // с cache_control: повторные обращения — в т.ч. от разных стажёров, если попадают в одно
+    // и то же ~5-минутное окно кэша — платят ~10% от цены за эти блоки вместо полной цены на
+    // каждую реплику диалога. Данные конкретного пользователя/дешборда (dataBlock) намеренно
+    // остаются НЕкэшируемым хвостом, чтобы не показать руководителю устаревшие цифры.
+    const systemBlocks = [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    if (kbText) systemBlocks.push({ type: 'text', text: kbText, cache_control: { type: 'ephemeral' } });
+    systemBlocks.push({ type: 'text', text: sysSuffix });
+
+    // Кэшируем и растущую историю диалога: в длинных ролевых тренировках (10-20+ реплик) без
+    // этого на каждом шаге заново тарифицируется ВСЯ предыдущая переписка целиком. Помечаем
+    // последнее сообщение каждого запроса как границу кэша — на следующем шаге всё до этой
+    // границы (если не менялось) читается по цене кэш-хита.
+    function withCacheBreakpoint(content) {
+      if (typeof content === 'string') {
+        return [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }];
+      }
+      if (Array.isArray(content) && content.length) {
+        const copy = content.map(b => ({ ...b }));
+        copy[copy.length - 1] = { ...copy[copy.length - 1], cache_control: { type: 'ephemeral' } };
+        return copy;
+      }
+      return content;
+    }
 
     // ---- Цикл с инструментами (поиск вакансий HH) ----
     const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
     let raw = '';
     for (let step = 0; step < 4; step++) {
+      const payloadMessages = apiMessages.length
+        ? apiMessages.map((m, i) => i === apiMessages.length - 1 ? { ...m, content: withCacheBreakpoint(m.content) } : m)
+        : apiMessages;
       const { ok, status, data } = await anthropic(apiKey, {
-        model: MODEL, max_tokens: 2200, system: SYSTEM_PROMPT + sysSuffix, tools: [HH_TOOL], messages: apiMessages,
+        model: MODEL, max_tokens: 2200, system: systemBlocks, tools: [HH_TOOL], messages: payloadMessages,
       });
       if (!ok) { res.status(status).json({ error: data?.error?.message || ('Anthropic API error ' + status) }); return; }
       if (data.stop_reason === 'tool_use') {
