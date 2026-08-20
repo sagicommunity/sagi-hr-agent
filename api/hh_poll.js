@@ -2356,7 +2356,7 @@ export default async function handler(req, res) {
     // обучение пройти» — не просто пригласить, а довести до реального прохождения программы, и
     // (2026-08-19) не дать растянуть это на дни — см. TRAINEE_DEADLINE_MS выше про выбор 3 часов.
     // Работаем напрямую с той же базой пользователей (hr:user:*), что и личный кабинет.
-    let traineesChecked = 0, remindersToTrainees = 0, mentorsAssigned = 0, noChannelCount = 0, deadlineExpired = 0;
+    let traineesChecked = 0, remindersToTrainees = 0, mentorsAssigned = 0, noChannelCount = 0, deadlineExpired = 0, mentorNudgesSent = 0;
     try {
       const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
       const usersRaw = [];
@@ -2436,7 +2436,7 @@ export default async function handler(req, res) {
           // «Активен», шлём отдельное напоминание в тот же чат на hh.kz: самому написать наставнику
           // или на общий номер. Один раз на стажёра (mentorNudgeSent), безопасно гонять повторно.
           if (!dryRun) await hhReply(u.hhNegId, token, buildMentorNudgeText(u.name, u.mentorName, u.mentorPhone));
-          u.mentorNudgeSent = true; changed = true;
+          u.mentorNudgeSent = true; changed = true; mentorNudgesSent++; actionsUsed++;
         } else if (!isComplete && u.createdAt && u.createdAt >= deadlineEnabledAt) {
           const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
           const now = Date.now();
@@ -2561,7 +2561,7 @@ export default async function handler(req, res) {
       replies: { awaitingTotal: awaitingIds.length, checked: repliesChecked, remaining: remainingAwaiting, found: repliesFound, remindersSent, cursor: reviewCursor, preview: dryRun ? replyPreview : undefined },
       followUps: { checked: watchChecked, questionsFound, autoAnswered },
       regNudges: { checked: regNudgeChecked, sent: regNudgeSent },
-      trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount, deadlineExpired },
+      trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount, deadlineExpired, mentorNudgesSent },
       mentorLoad,
       retentionPulse: { checked: pulsesChecked, sent: pulsesSent },
       errors: debug ? errors : errors.length,
