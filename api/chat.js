@@ -339,12 +339,17 @@ export default async function handler(req, res) {
     // ---- Цикл с инструментами (поиск вакансий HH), формат запроса/ответа — OpenAI-совместимый ----
     const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
     let raw = '';
-    let lastMsgDebug = null;
     for (let step = 0; step < 4; step++) {
       const { ok, status, data } = await deepseek(apiKey, {
         model: MODEL, max_tokens: 2200,
         messages: [{ role: 'system', content: systemText }, ...apiMessages],
         tools: [HH_TOOL],
+        // 2026-08-20: у deepseek-v4-pro по умолчанию включён "thinking mode" (effort:"high") —
+        // модель тратит max_tokens на скрытые рассуждения (reasoning_content) и может не успеть
+        // дойти до самого ответа (finish_reason:"length", content:""), как и произошло на
+        // дешборде руководителя. Отключаем: для диалога/ролевых тренировок/дешборда глубокое
+        // рассуждение не нужно, а без него быстрее и предсказуемее укладывается в max_tokens.
+        thinking: { type: 'disabled' },
       });
       if (!ok) { res.status(status).json({ error: data?.error?.message || ('DeepSeek API error ' + status) }); return; }
       const choice = (data.choices || [])[0];
@@ -360,7 +365,6 @@ export default async function handler(req, res) {
         continue;
       }
       raw = (msg?.content || '').toString().trim();
-      lastMsgDebug = { finish_reason: choice?.finish_reason, msgKeys: msg ? Object.keys(msg) : null, reasoning_content: (msg?.reasoning_content || '').toString().slice(0, 300) };
       break;
     }
     const { events, clean } = extractSaves(raw);
@@ -368,9 +372,7 @@ export default async function handler(req, res) {
       const fixed = events.map(e => ({ ...e, manager: (e.manager && String(e.manager).trim()) || userName || '—', login: userLogin || null }));
       saveEvents(fixed); // best-effort, не блокируем ответ
     }
-    const out = { reply: clean || '(пустой ответ)', saved: events.length };
-    if (body?.debug) out._debug = { rawLen: raw.length, raw: raw.slice(0, 500), ...lastMsgDebug };
-    res.status(200).json(out);
+    res.status(200).json({ reply: clean || '(пустой ответ)', saved: events.length });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Server error' });
   }
