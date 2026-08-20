@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi: чек-лист оценки звонка и встречи</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);--warn:#ffcf66;--bad:#ff6b6b;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15.5px;min-height:100vh;line-height:1.55;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand)}
+  header{display:flex;align-items:center;gap:11px;padding:16px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:20}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  .wrap{max-width:760px;margin:0 auto;padding:24px 18px 80px}
+  h1{font-family:var(--display);font-size:24px;margin:6px 0 4px}
+  .lead{color:var(--muted);font-size:14.5px;margin-bottom:20px}
+  .tabs{display:flex;gap:8px;margin-bottom:18px;position:sticky;top:66px;z-index:15;background:var(--bg);padding:8px 0}
+  .tab{flex:1;text-align:center;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel-solid);cursor:pointer;font-weight:700;font-size:14px;color:var(--muted);transition:.15s}
+  .tab.active{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);border-color:transparent}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+  .meta input{background:var(--panel-solid);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13.5px}
+  .meta input::placeholder{color:var(--faint)}
+  .scorebar{position:sticky;top:130px;z-index:14;background:var(--panel-solid);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .scorebar .n{font-family:var(--display);font-weight:800;font-size:26px}
+  .scorebar .l{font-size:12px;color:var(--muted)}
+  .scorebar .verdict{font-weight:700;font-size:13.5px;padding:5px 12px;border-radius:999px}
+  .v-strong{background:rgba(25,227,154,.16);color:var(--brand)}
+  .v-ok{background:rgba(255,207,102,.16);color:var(--warn)}
+  .v-weak{background:rgba(255,107,107,.16);color:var(--bad)}
+  .crit-flag{display:none;background:rgba(255,107,107,.14);border:1px solid rgba(255,107,107,.4);color:var(--bad);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;margin-bottom:14px}
+  .crit-flag.show{display:block}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:16px 18px;margin-bottom:14px}
+  .card h2{font-family:var(--display);font-size:14.5px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}
+  .item{display:flex;align-items:flex-start;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .item:last-child{border-bottom:none}
+  .item input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--brand);margin-top:1px;cursor:pointer}
+  .item label{cursor:pointer;font-size:14.5px}
+  .item.checked label{color:var(--text)}
+  .item:not(.checked) label{color:var(--muted)}
+  .item .idx{color:var(--faint);font-size:12px;margin-right:2px}
+  .crit-card{border-color:rgba(255,107,107,.3);background:rgba(255,107,107,.05)}
+  .crit-card h2{color:var(--bad)}
+  .crit-item{display:flex;align-items:flex-start;gap:11px;padding:7px 0;font-size:13.5px}
+  .crit-item input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:var(--bad);margin-top:2px;cursor:pointer}
+  .crit-item label{cursor:pointer;color:var(--muted)}
+  .actions{display:flex;gap:10px;margin-top:18px}
+  .btn{flex:1;text-align:center;border:0;border-radius:12px;padding:13px;font-family:var(--font);font-weight:700;font-size:14.5px;cursor:pointer}
+  .btn-reset{background:var(--panel-solid);border:1px solid var(--line);color:var(--muted)}
+  .btn-print{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink)}
+  .note{color:var(--faint);font-size:12.5px;margin-top:10px}
+  .panel{display:none}
+  .panel.active{display:block}
+  @media print{
+    header,.tabs,.actions,.note,.crit-flag{display:none !important}
+    body{background:#fff;color:#000}
+    .card{border:1px solid #ccc;background:#fff}
+    .scorebar{position:static;background:#f5f5f5;border:1px solid #ccc}
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/agent.html" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi</div>
+  </a>
+</header>
+<div class="wrap">
+  <h1>📋 Чек-лист оценки звонка и встречи</h1>
+  <p class="lead">Реальный внутренний стандарт РОПа. Отмечай выполненные пункты — балл и вердикт считаются автоматически. Тот же стандарт использует ИИ-тренажёр при аттестации стажёров.</p>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="call">📞 Звонок (23 п.)</div>
+    <div class="tab" data-panel="meet">🤝 Встреча (29 п.)</div>
+  </div>
+
+  <div class="meta">
+    <input type="text" id="mgrName" placeholder="ФИО менеджера" />
+    <input type="text" id="mgrClient" placeholder="Клиент" />
+  </div>
+
+  <div class="scorebar">
+    <div>
+      <div class="n" id="scoreN">0 / 23</div>
+      <div class="l">итоговый балл</div>
+    </div>
+    <div class="verdict v-weak" id="verdict">Не по стандарту</div>
+  </div>
+
+  <div class="crit-flag" id="critFlag">⚠️ Есть критическая ошибка — результат автоматически слабый, независимо от суммы баллов.</div>
+
+  <!-- ЗВОНОК -->
+  <div class="panel active" id="panel-call">
+    <div class="card">
+      <h2>Критерии оценки (1 балл за пункт)</h2>
+      <div id="callItems"></div>
+    </div>
+    <div class="card crit-card">
+      <h2>Критические ошибки (если есть хоть одна — звонок слабый)</h2>
+      <div id="callCrit"></div>
+    </div>
+    <p class="note">20–23 — сильный звонок · 16–19 — рабочий · 12–15 — слабый, нужна доработка · менее 12 — не по стандарту.</p>
+  </div>
+
+  <!-- ВСТРЕЧА -->
+  <div class="panel" id="panel-meet">
+    <div class="card">
+      <h2>Критерии оценки (1 балл за пункт)</h2>
+      <div id="meetItems"></div>
+    </div>
+    <div class="card crit-card">
+      <h2>Критические ошибки (если есть хоть одна — встреча слабая)</h2>
+      <div id="meetCrit"></div>
+    </div>
+    <p class="note">24–27 — сильная встреча · 19–23 — рабочая · 14–18 — слабая, нужна доработка · менее 14 — не по стандарту.</p>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-reset" id="resetBtn">Сбросить</button>
+    <button class="btn btn-print" id="printBtn">Сохранить / распечатать</button>
+  </div>
+  <p class="note">Данные хранятся только в этой вкладке и никуда не отправляются — заполняй прямо во время звонка или после него.</p>
+</div>
+
+<script>
+const CALL_ITEMS = [
+  "Менеджер представился коротко и уверенно",
+  "Менеджер спросил, удобно ли говорить",
+  "Начало звонка было коротким, без лишней воды",
+  "Менеджер объяснил пользу компании простыми словами",
+  "Менеджер говорил через возврат клиентов и повторные продажи",
+  "Менеджер не перечислял продукт в начале звонка",
+  "Менеджер задал вопрос на актуальность задачи",
+  "Менеджер дал клиенту ответить и не перебивал",
+  "Менеджер правильно понял тип клиента",
+  "Менеджер выбрал правильную ветку разговора",
+  "Менеджер не спорил с клиентом",
+  "Менеджер держал разговор уверенно",
+  "Менеджер вёл клиента к встрече, а не к пустому разговору",
+  "Менеджер предложил конкретный следующий шаг",
+  "Менеджер предложил два варианта времени",
+  "Менеджер не задавал слабый вопрос «Когда вам удобно?»",
+  "Менеджер спокойно отработал возражение",
+  "После возражения менеджер снова вернул клиента к следующему шагу",
+  "Встреча назначена именно с лицом, принимающим решение",
+  "Если встреча не с ЛПР, менеджер зафиксировал вывод на ЛПР следующим шагом",
+  "Согласованы дата и время встречи",
+  "Согласован формат встречи: онлайн или офлайн",
+  "Итог звонка корректно зафиксирован в CRM"
+];
+const CALL_CRIT = [
+  "Менеджер не представился",
+  "Менеджер не обозначил пользу",
+  "Менеджер начал перечислять продукт вместо выявления интереса",
+  "Менеджер спорил с клиентом",
+  "Менеджер не перевёл разговор к встрече",
+  "Менеджер отпустил клиента без следующего шага",
+  "Менеджер назначил встречу не с ЛПР и не зафиксировал вывод на ЛПР",
+  "Менеджер не зафиксировал результат в CRM"
+];
+const MEET_ITEMS = [
+  "Менеджер подготовился ко встрече заранее",
+  "Менеджер понимал, чем занимается клиент",
+  "Менеджер понимал, кто ЛПР",
+  "Менеджер начал встречу уверенно и спокойно",
+  "Менеджер поблагодарил за время и задал рамку встречи",
+  "Менеджер обозначил структуру разговора",
+  "Начало встречи было коротким, без лишней воды",
+  "Менеджер объяснил пользу компании простыми словами",
+  "Менеджер говорил через клиентов, деньги и повторные продажи",
+  "Менеджер не ушёл в раннюю презентацию продукта",
+  "Менеджер задал вопросы по бизнесу клиента",
+  "Менеджер уточнил, как клиент работает с базой",
+  "Менеджер уточнил объём базы, чеки, акции, текущую механику",
+  "Менеджер задал вопросы по аналитике и повторным продажам",
+  "Менеджер дал клиенту говорить и не перебивал",
+  "Менеджер выявил реальную боль клиента",
+  "Менеджер зафиксировал боль словами клиента",
+  "Менеджер получил подтверждение боли от клиента",
+  "Коммерческое предложение было привязано к боли клиента",
+  "Менеджер не перечислял все функции подряд",
+  "Менеджер показал результат для бизнеса, а не только продукт",
+  "Менеджер предложил подходящий тариф или формат",
+  "Менеджер перевёл встречу к конкретному следующему шагу",
+  "Следующий шаг был зафиксирован чётко",
+  "Если ЛПР не было, менеджер зафиксировал вывод на ЛПР",
+  "Менеджер спокойно отработал возражение",
+  "После возражения менеджер снова вернул клиента к следующему шагу",
+  "Итог встречи корректно зафиксирован в CRM",
+  "В CRM указаны боль, интерес, тариф, возражение и следующий шаг"
+];
+const MEET_CRIT = [
+  "Менеджер не провёл подготовку",
+  "Менеджер начал сразу с презентации продукта",
+  "Менеджер не задал диагностические вопросы",
+  "Менеджер не выявил боль",
+  "Менеджер не зафиксировал боль",
+  "Предложение было общим, без привязки к задаче клиента",
+  "Менеджер не перевёл встречу к следующему шагу",
+  "Встреча закончилась без конкретного итога",
+  "Если ЛПР не было, менеджер не зафиксировал вывод на ЛПР",
+  "Итоги встречи не внесены в CRM"
+];
+
+function renderList(container, items, prefix, className){
+  container.innerHTML = items.map((t,i)=>`
+    <div class="${className} item" data-i="${i}">
+      <input type="checkbox" id="${prefix}${i}">
+      <label for="${prefix}${i}"><span class="idx">${i+1}.</span> ${t}</label>
+    </div>`).join('');
+}
+renderList(document.getElementById('callItems'), CALL_ITEMS, 'c', 'item');
+renderList(document.getElementById('meetItems'), MEET_ITEMS, 'm', 'item');
+renderList(document.getElementById('callCrit'), CALL_CRIT, 'cc', 'crit-item');
+renderList(document.getElementById('meetCrit'), MEET_CRIT, 'mc', 'crit-item');
+
+let mode = 'call';
+
+function verdictFor(score, max, hasCrit){
+  const pct = score / max;
+  let label, cls;
+  if (mode === 'call'){
+    if (score >= 20) { label = 'Сильный звонок'; cls = 'v-strong'; }
+    else if (score >= 16) { label = 'Рабочий звонок'; cls = 'v-ok'; }
+    else if (score >= 12) { label = 'Слабый, нужна доработка'; cls = 'v-weak'; }
+    else { label = 'Не по стандарту'; cls = 'v-weak'; }
+  } else {
+    if (score >= 24) { label = 'Сильная встреча'; cls = 'v-strong'; }
+    else if (score >= 19) { label = 'Рабочая встреча'; cls = 'v-ok'; }
+    else if (score >= 14) { label = 'Слабая, нужна доработка'; cls = 'v-weak'; }
+    else { label = 'Не по стандарту'; cls = 'v-weak'; }
+  }
+  if (hasCrit) { label += ' (критическая ошибка)'; cls = 'v-weak'; }
+  return { label, cls };
+}
+
+function recalc(){
+  const items = mode === 'call' ? CALL_ITEMS : MEET_ITEMS;
+  const critItems = mode === 'call' ? CALL_CRIT : MEET_CRIT;
+  const prefix = mode === 'call' ? 'c' : 'm';
+  const critPrefix = mode === 'call' ? 'cc' : 'mc';
+  let score = 0;
+  items.forEach((_,i)=>{
+    const cb = document.getElementById(prefix+i);
+    const row = cb.closest('.item');
+    if (cb.checked) { score++; row.classList.add('checked'); }
+    else row.classList.remove('checked');
+  });
+  let hasCrit = false;
+  critItems.forEach((_,i)=>{
+    const cb = document.getElementById(critPrefix+i);
+    if (cb.checked) hasCrit = true;
+  });
+  document.getElementById('critFlag').classList.toggle('show', hasCrit);
+  const max = items.length;
+  document.getElementById('scoreN').textContent = score + ' / ' + max;
+  const v = verdictFor(score, max, hasCrit);
+  const badge = document.getElementById('verdict');
+  badge.textContent = v.label;
+  badge.className = 'verdict ' + v.cls;
+}
+
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    mode = tab.dataset.panel;
+    document.getElementById('panel-'+mode).classList.add('active');
+    recalc();
+  });
+});
+
+document.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change', recalc));
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  document.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+  document.getElementById('mgrName').value='';
+  document.getElementById('mgrClient').value='';
+  recalc();
+});
+document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+recalc();
+</script>
+</body>
+</html>
