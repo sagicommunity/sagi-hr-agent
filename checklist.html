@@ -67,6 +67,12 @@
     .card{border:1px solid #ccc;background:#fff}
     .scorebar{position:static;background:#f5f5f5;border:1px solid #ccc}
   }
+  /* 2026-08-20: встраивается в дашборд руководителя (index.html) через iframe ?embed=1 — прячем
+     собственную шапку (там уже есть общая навигация) и убираем внешние отступы обёртки. */
+  html.embedded body{background:transparent}
+  html.embedded header{display:none}
+  html.embedded .wrap{padding:0 0 24px}
+  html.embedded .tabs{top:0}
 </style>
 </head>
 <body>
@@ -293,6 +299,21 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{
 document.getElementById('printBtn').addEventListener('click', ()=>window.print());
 
 recalc();
+
+// 2026-08-20: если открыты внутри iframe дашборда руководителя (index.html, ?embed=1) — прячем
+// шапку (там уже своя навигация) и сообщаем родителю высоту, чтобы iframe не давал двойной скролл.
+(function(){
+  if(new URLSearchParams(location.search).get('embed')!=='1') return;
+  document.documentElement.classList.add('embedded');
+  function postHeight(){
+    try{ parent.postMessage({type:'sagiFrameHeight', id:'checklist', height:document.documentElement.scrollHeight}, '*'); }catch(e){}
+  }
+  window.addEventListener('load', postHeight);
+  if(window.ResizeObserver) new ResizeObserver(postHeight).observe(document.body);
+  setInterval(postHeight, 1200);
+  document.addEventListener('change', postHeight);
+  document.addEventListener('click', ()=>setTimeout(postHeight, 50));
+})();
 </script>
 </body>
 </html>
