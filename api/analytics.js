@@ -19,6 +19,10 @@ const HH_GATE_HANDLED_KEY = 'hh:gate_handled';
 const HH_QUESTIONS_SENT_KEY = 'hh:questions_sent';
 const HH_DECLINED_KEY = 'hh:declined_negotiations';
 const TG_SOURCES_KEY = 'hr:tg:stat:sources';
+const USERS_SET_KEY = 'hr:users';
+
+// Статусы стажёра/сотрудника — держим в синхроне с HIRE_STATUSES в index.html/api/users.js.
+const HIRE_STATUSES = ['Активен', 'Не подходит', 'Не выходит на связь', 'На паузе', 'Уволен', 'Ушёл сам'];
 
 // 2026-08-18, по замечанию Sagi: «Стажировка» ставилась сразу после приглашения, до того как
 // человек вообще зарегистрировался и прошёл обучение — не отражало реальность. Теперь путь:
@@ -60,6 +64,19 @@ async function loadCandidates() {
   const arr = await redis(['LRANGE', CAND_KEY, 0, 1999]);
   if (!Array.isArray(arr)) return [];
   return arr.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+}
+
+// 2026-08-20, по запросу Sagi «давай делать какой-то анализ» по стажёрам, которые не проходят
+// дальше базовой программы (например, отсеиваются фильтром утренних планёрок) — те же аккаунты
+// (hr:user:*), что видны в «Сотрудники и прогресс», со статусом и причиной (setStatus/statusComment
+// в api/users.js). Читаем отдельно от hr:candidates — это две разные сущности (кандидат в пайплайне
+// найма vs зарегистрированный аккаунт стажёра/менеджера).
+async function loadUsers() {
+  const logins = await redis(['SMEMBERS', USERS_SET_KEY]);
+  if (!Array.isArray(logins) || !logins.length) return [];
+  const cmds = logins.map(l => ['GET', 'hr:user:' + l]);
+  const raws = await redisBatch(cmds);
+  return raws.map(s => { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }).filter(Boolean);
 }
 
 function tally(items, keyFn, fallback) {
@@ -197,6 +214,18 @@ export default async function handler(req, res) {
     const exitReasons = tally(leftCandidates.filter(c => c.exitReason), c => c.exitReason, 'Без причины');
     const churnRatePct = everEmployed.length ? Math.round((leftCandidates.length / everEmployed.length) * 1000) / 10 : 0;
 
+    // ---- Стажёры: воронка базовой программы и причины отсева (2026-08-20) ----
+    // reachedMentor — прошёл все модули и получил наставника (см. hh_poll.js: наставник
+    // назначается только когда isComplete===true), берём это как прокси «дошёл до конца базовой
+    // программы», не пересчитывая модули заново на сервере.
+    const users = await loadUsers();
+    const trainees = users.filter(u => u.role === 'trainee');
+    const traineeByStatus = HIRE_STATUSES.map(s => ({ key: s, count: trainees.filter(t => (t.hireStatus || 'Активен') === s).length })).filter(x => x.count > 0);
+    const traineeNotActive = trainees
+      .filter(t => (t.hireStatus || 'Активен') !== 'Активен')
+      .map(t => ({ name: t.name || t.login, status: t.hireStatus, comment: t.statusComment || '', mentorName: t.mentorName || null, lastSeen: t.lastSeen || null }))
+      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+
     // ---- Динамика по дням (последние 14 дней, по общему пайплайну) ----
     const days = [];
     for (let i = 13; i >= 0; i--) {
@@ -244,6 +273,13 @@ export default async function handler(req, res) {
         internship: hhInternship,
         employed: hhEmployed,
         funnel: hhFunnel,
+      },
+      traineeFunnel: {
+        total: trainees.length,
+        reachedMentor: trainees.filter(t => t.mentorName).length,
+        activeCount: trainees.filter(t => (t.hireStatus || 'Активен') === 'Активен').length,
+        byStatus: traineeByStatus,
+        notActive: traineeNotActive,
       },
       telegram: {
         totalStarts: parseInt(tgTotalStarts, 10) || 0,
