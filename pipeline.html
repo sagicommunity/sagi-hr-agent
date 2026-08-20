@@ -123,6 +123,11 @@
   .modal .qa .a{font-size:14px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
   .modal .qa .none{color:var(--muted);text-align:center;padding:24px 0}
   @media(max-width:600px){.card{flex-direction:column}.controls select,.controls input{width:100%}}
+  /* 2026-08-20: встраивается в дашборд руководителя (index.html) через iframe ?embed=1 — прячем
+     повторную шапку/переход на другие страницы и второй фон, чтобы не было "страницы в странице". */
+  html.embedded body{background:transparent}
+  html.embedded header{display:none}
+  html.embedded .wrap{padding:0}
 </style>
 </head>
 <body>
@@ -480,6 +485,19 @@ $('#pdfInput').addEventListener('change',async e=>{
 });
 
 $('#gatePass').focus();
+
+// 2026-08-20: если открыты внутри iframe дашборда руководителя (index.html, ?embed=1) — прячем
+// шапку (там уже своя навигация) и сообщаем родителю высоту, чтобы iframe не давал двойной скролл.
+(function(){
+  if(new URLSearchParams(location.search).get('embed')!=='1') return;
+  document.documentElement.classList.add('embedded');
+  function postHeight(){
+    try{ parent.postMessage({type:'sagiFrameHeight', id:'pipeline', height:document.documentElement.scrollHeight}, '*'); }catch(e){}
+  }
+  window.addEventListener('load', postHeight);
+  if(window.ResizeObserver) new ResizeObserver(postHeight).observe(document.body);
+  setInterval(postHeight, 1200);
+})();
 </script>
 </body>
 </html>

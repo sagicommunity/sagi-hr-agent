@@ -158,6 +158,24 @@
   .tag.bad{color:#ff6b6b;border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.12)}
   .tag.warn{color:var(--amber);border-color:rgba(239,159,39,.3);background:var(--amber-bg)}
   .empty{color:var(--muted);text-align:center;padding:34px;border:1px dashed var(--line-2);border-radius:14px}
+
+  /* 2026-08-20: единый дашборд руководителя — аккордеон вместо переходов на отдельные страницы
+     (пайплайн/аналитика встраиваются через iframe того же источника, см. JS ниже). Всё в одном
+     месте, ничего сворачиваемое не грузится, пока не раскрыли — страница не перегружена. */
+  .acc{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  .accItem{border:1px solid var(--line);background:var(--panel);border-radius:16px;overflow:hidden}
+  .accHead{width:100%;display:flex;align-items:center;gap:13px;padding:16px 18px;background:transparent;border:0;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+  .accHead:hover{background:var(--panel-2)}
+  .accIc{font-size:21px;flex:0 0 auto}
+  .accTitle{flex:1;font-family:var(--display);font-weight:700;font-size:15px}
+  .accTitle small{display:block;color:var(--muted);font-weight:500;font-size:12px;margin-top:3px;font-family:var(--font)}
+  .accChev{color:var(--muted);font-size:13px;transition:transform .18s;flex:0 0 auto}
+  .accItem.open .accChev{transform:rotate(180deg)}
+  .accBody{display:none;border-top:1px solid var(--line);padding:18px}
+  .accItem.open .accBody{display:block}
+  .accFrame{width:100%;border:0;display:block;min-height:220px;background:transparent}
+  .copybox textarea{min-height:150px;font-size:13.5px;line-height:1.55}
+  .copiedMsg{color:var(--brand);font-size:13px;font-weight:700;margin-top:8px;display:none}
 </style>
 </head>
 <body>
@@ -304,19 +322,46 @@
       <div class="stat"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
     </div>
 
-    <div class="sectitle">Воронка по вакансии (hh.kz)</div>
-    <div class="sub" id="funnelMeta" style="margin:-6px 0 10px"></div>
-    <div id="funnelWrap"></div>
+    <div class="acc" id="accWrap">
 
-    <div class="sectitle">Инструменты найма</div>
-    <div class="g3">
-      <a class="tile" href="/pipeline.html"><div class="ti">🗂</div><div><h4>Пайплайн</h4><p>Карточки кандидатов и стадии найма.</p></div></a>
-      <a class="tile" href="/apply.html"><div class="ti">📨</div><div><h4>Отклики</h4><p>Публичная форма вакансии.</p></div></a>
-      <a class="tile" href="/analytics.html"><div class="ti">📊</div><div><h4>Аналитика</h4><p>Воронка, конверсия, отток, статистика по каналам.</p></div></a>
+      <div class="accItem" data-acc="broadcast">
+        <button class="accHead" data-toggle="broadcast"><span class="accIc">📣</span><span class="accTitle">Ручная рассылка<small>Готовый безопасный текст для Kaspi, Instagram, WhatsApp и hh.kz (в т.ч. архивные вакансии) — без персональной ссылки, можно слать сколько угодно раз</small></span><span class="accChev">▾</span></button>
+        <div class="accBody" id="accBody-broadcast">
+          <div class="sub" style="margin:0 0 14px">Эта ссылка одна на всех и не привязана к конкретному человеку — в отличие от ссылки, которую hh.kz даёт под каждый отклик отдельно, эту можно отправлять хоть сотне человек в любом чате, ничего не перезапишется. Ответы всё равно попадут сюда же, в общий пайплайн.</div>
+          <div class="copybox">
+            <textarea id="bcText" readonly></textarea>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn small" id="bcCopy">📋 Скопировать текст целиком</button>
+            <button class="btn sec small" id="bcCopyLink">🔗 Скопировать только ссылку</button>
+          </div>
+          <div class="copiedMsg" id="bcCopiedMsg">Скопировано ✓</div>
+          <div class="sub" style="margin-top:14px">Пока эта форма подходит только под вакансию менеджера по продажам. Если понадобится такая же безопасная ссылка под вакансию техподдержки — скажи, добавлю.</div>
+        </div>
+      </div>
+
+      <div class="accItem open" data-acc="employees">
+        <button class="accHead" data-toggle="employees"><span class="accIc">👥</span><span class="accTitle">Сотрудники и прогресс<small>Стажёры и менеджеры, статус обучения, наставник, откуда пришли</small></span><span class="accChev">▾</span></button>
+        <div class="accBody" id="accBody-employees">
+          <div id="bossTableWrap"></div>
+        </div>
+      </div>
+
+      <div class="accItem" data-acc="pipeline">
+        <button class="accHead" data-toggle="pipeline"><span class="accIc">🗂</span><span class="accTitle">Пайплайн найма<small>Карточки кандидатов, стадии, добавление вручную по списку или PDF</small></span><span class="accChev">▾</span></button>
+        <div class="accBody" id="accBody-pipeline">
+          <iframe class="accFrame" id="frame-pipeline" data-src="/pipeline.html?embed=1" title="Пайплайн найма"></iframe>
+        </div>
+      </div>
+
+      <div class="accItem" data-acc="analytics">
+        <button class="accHead" data-toggle="analytics"><span class="accIc">📊</span><span class="accTitle">Аналитика<small>Воронка по этапам, конверсия, каналы, отток сотрудников</small></span><span class="accChev">▾</span></button>
+        <div class="accBody" id="accBody-analytics">
+          <iframe class="accFrame" id="frame-analytics" data-src="/analytics.html?embed=1" title="Аналитика найма"></iframe>
+        </div>
+      </div>
+
     </div>
-
-    <div class="sectitle">Сотрудники и прогресс</div>
-    <div id="bossTableWrap"></div>
   </section>
 
   <!-- EMPLOYEE PROFILE (boss view) -->
@@ -657,7 +702,6 @@ function renderBoss(users, skipStatsFetch){
   });
   $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
   if(!skipStatsFetch) loadTrainerStatsAll(); // не блокируем первую отрисовку — догружаем и перерисовываем
-  loadFunnel();
 
   const wrap=$('#bossTableWrap');
   if(!users.length){ wrap.innerHTML='<div class="empty">Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.</div>'; }
@@ -717,28 +761,45 @@ function renderBoss(users, skipStatsFetch){
   show('screen-boss');
 }
 
-// 2026-08-18, по запросу Sagi «добавь сюда всю воронку по вакансии, сколько было откликов и
-// конверсия» — данные берём из /api/analytics (тот же пароль руководителя, что уже введён).
-let FUNNEL_LOADED=false;
-async function loadFunnel(){
-  const wrap=$('#funnelWrap'); if(!wrap) return;
-  if(!FUNNEL_LOADED) wrap.innerHTML='<div class="empty">Загружаем…</div>';
-  try{
-    const r=await fetch('/api/analytics',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:BOSS_PW})});
-    const d=await r.json().catch(()=>({}));
-    if(!d.ok){ wrap.innerHTML='<div class="empty">Не удалось загрузить воронку'+(d.error?': '+d.error:'')+'.</div>'; return; }
-    FUNNEL_LOADED=true;
-    const hh=d.hhkz||{}; const rows=hh.funnel||[];
-    $('#funnelMeta').textContent='Обновлено '+new Date(d.generatedAt).toLocaleString('ru-RU')+' · откликов по вакансии: '+(hh.totalSeen||0)+' · из них отказались на первом вопросе: '+(hh.totalDeclined||0);
-    if(!rows.length){ wrap.innerHTML='<div class="empty">Пока нет данных по воронке.</div>'; return; }
-    wrap.innerHTML='<table><thead><tr><th>Этап</th><th style="text-align:right">Кандидатов</th><th style="text-align:right">От предыдущего этапа</th><th style="text-align:right">От первого отклика</th></tr></thead><tbody>'+
-      rows.map((r,i)=>{
-        const fromPrev = r.fromPrevPct==null ? '—' : r.fromPrevPct+'%';
-        return '<tr><td>'+r.key+'</td><td style="text-align:right">'+r.count+'</td><td style="text-align:right">'+fromPrev+'</td><td style="text-align:right">'+r.fromStartPct+'%</td></tr>';
-      }).join('')+
-      '</tbody></table>';
-  }catch(e){ wrap.innerHTML='<div class="empty">Не удалось загрузить воронку.</div>'; }
+// 2026-08-20, по запросу Sagi «всё в одном месте, не уходя со страницы»: полная воронка и весь
+// пайплайн теперь встроены аккордеоном ниже (через iframe /pipeline.html и /analytics.html с тем
+// же паролем из localStorage — см. ниже "ЕДИНЫЙ ДАШБОРД РУКОВОДИТЕЛЯ"), отдельная мини-таблица
+// воронки здесь больше не нужна.
+
+/* ---- ЕДИНЫЙ ДАШБОРД РУКОВОДИТЕЛЯ: аккордеон + встроенные пайплайн/аналитика + рассылка ---- */
+document.querySelectorAll('.accHead').forEach(h=>{
+  h.addEventListener('click', ()=>{
+    const item=h.closest('.accItem');
+    const wasOpen=item.classList.contains('open');
+    item.classList.toggle('open', !wasOpen);
+    if(!wasOpen){
+      const frame=item.querySelector('.accFrame');
+      if(frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
+    }
+  });
+});
+// Встроенные страницы сами шлют свою высоту (postMessage), чтобы не было двойного скролла.
+window.addEventListener('message', e=>{
+  const d=e.data;
+  if(!d || d.type!=='sagiFrameHeight' || !d.id) return;
+  const frame=$('#frame-'+d.id);
+  if(frame && d.height) frame.style.height = Math.max(220, d.height+4) + 'px';
+});
+
+// Безопасный универсальный текст для ручной рассылки (Kaspi/Instagram/WhatsApp/hh.kz-архив) — без
+// персональной ссылки-параметра, поэтому не перезаписывает чужие ответы при массовой отправке.
+const BC_TEXT = 'Здравствуйте!\n\nВакансия менеджера по продажам в IT-компании Sagi, работа полностью удалённая.\n\nНиже по ссылке будут вопросы, ответьте, пожалуйста, на них, займёт пару минут, условия прописаны тоже там: https://hr.sagibonus.com/apply.html\n\nТам я сразу увижу ваши ответы.\n\nЕсли удобнее уточнить что-то в звонке или в WhatsApp, пишите: +7 707 700 0087';
+const BC_LINK = 'https://hr.sagibonus.com/apply.html';
+if($('#bcText')) $('#bcText').value = BC_TEXT;
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){
+    try{ const ta=$('#bcText'); ta.select(); document.execCommand('copy'); return true; }catch(e2){ return false; }
+  }
 }
+function flashCopied(){ const m=$('#bcCopiedMsg'); if(!m) return; m.style.display='block'; setTimeout(()=>{ m.style.display='none'; }, 1800); }
+if($('#bcCopy')) $('#bcCopy').addEventListener('click', async()=>{ if(await copyText(BC_TEXT)) flashCopied(); });
+if($('#bcCopyLink')) $('#bcCopyLink').addEventListener('click', async()=>{ if(await copyText(BC_LINK)) flashCopied(); });
 
 /* ---- ПРОФИЛЬ СОТРУДНИКА (вид руководителя) ---- */
 function profModuleRow(m, done){
