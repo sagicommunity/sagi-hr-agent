@@ -147,7 +147,7 @@ async function finalize(wa, st) {
     { q: 'Астана / офис / когда может приступить', a: d.q3 || '' },
   ].filter(x => x.a);
   const ev = await screen(d.name || '', fullText);
-  const invited = ev.verdict !== 'Отказ';
+  const invited = true; // 2026-08-22, по указанию Sagi (та же политика, что и в api/apply.js): не отказываем никому на этапе анкеты — все идут сразу на обучение (ИИ-оценка — только справка в Telegram)
   await waSend(wa, invited ? buildWaInviteText(d.name) : buildWaDeclineText(d.name));
   const phone = digits(st.phone || '');
   const rec = {
