@@ -173,7 +173,7 @@ export default async function handler(req, res) {
     // холодных звонков, компьютера или интернета — НЕ причина для отказа (см. buildScreenPrompt
     // выше), этому всему учат на обучении. «Отказ» от ИИ-скринера ставится только за реальные
     // красные флаги из структурированной анкеты (см. buildScreenPrompt).
-    const invited = evaln.verdict !== 'Отказ';
+    const invited = true; // 2026-08-22, по указанию Sagi: не отказываем никому на этапе анкеты — все идут сразу на обучение (ИИ-оценка выше остаётся только как справка в Telegram, гейтом больше не является)
     const rec = {
       id: refId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 7)),
       name, contact, phone: '', vacancy: vacTitle,
