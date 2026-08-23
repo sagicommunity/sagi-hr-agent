@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sagi — Отклик на вакансию</title>
-<meta name="description" content="Откликнитесь на вакансию в Sagi — менеджер по продажам или менеджер по работе с текущими клиентами, полностью удалённо. Пара коротких вопросов вместо резюме — мы свяжемся." />
+<meta name="description" content="Откликнитесь на вакансию в Sagi — менеджер по продажам, менеджер по работе с текущими клиентами или техподдержка, полностью удалённо. Пара коротких вопросов вместо резюме — мы свяжемся." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -37,7 +37,7 @@
   h1{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.14;letter-spacing:-.5px;text-align:center;margin:12px 0 8px;
     background:linear-gradient(180deg,#fff,#aeb9c6);-webkit-background-clip:text;background-clip:text;color:transparent}
   .lead{color:var(--muted);text-align:center;line-height:1.6;margin:0 auto 22px;max-width:500px}
-  .vacPick{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:520px;margin:0 auto 26px}
+  .vacPick{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;max-width:640px;margin:0 auto 26px}
   .vacBtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-size:13.5px;font-weight:700;padding:13px 12px;border-radius:14px;cursor:pointer;transition:.16s;text-align:center;line-height:1.35}
   .vacBtn:hover{border-color:var(--line-2);color:var(--text)}
   .vacBtn.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.12);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
@@ -92,6 +92,7 @@
       <div class="vacPick" id="vacPick">
         <button type="button" class="vacBtn" data-vac="sales_remote">📞 Менеджер по продажам<br><span style="font-weight:500;color:inherit;opacity:.8">холодные продажи, удалённо</span></button>
         <button type="button" class="vacBtn" data-vac="success_remote">🤝 Менеджер по работе с клиентами<br><span style="font-weight:500;color:inherit;opacity:.8">текущие клиенты, удалённо</span></button>
+        <button type="button" class="vacBtn" data-vac="support_remote">🛠️ Техподдержка<br><span style="font-weight:500;color:inherit;opacity:.8">клиенты Sagi, удалённо</span></button>
       </div>
 
       <form id="applyForm">
@@ -268,8 +269,26 @@ const VAC = {
     showAiComfort: true,
     showKazakh: true,
   },
+  // 2026-08-23, по указанию Sagi: третья вакансия на той же ссылке — техподдержка. Та же философия,
+  // что и у продаж («так же, как первая вакансия») — invited=true всегда, без ИИ-гейта по проценту
+  // (в отличие от success_remote, см. api/apply.js).
+  support_remote: {
+    eyebrow: 'Вакансия · техподдержка',
+    title: 'Специалист технической поддержки — удалённо',
+    lead: 'Первый месяц — 150 000 ₸ оклад + KPI, со второго месяца — 200 000 ₸ оклад + KPI. Первая линия поддержки клиентов Sagi: отвечаете на вопросы в WhatsApp/чате, разбираете типовые технические проблемы, проводите интеграцию клиентам, эскалируете сложное разработчикам. Работа из дома. Резюме не нужно — ответьте на несколько коротких вопросов.',
+    expLabel: 'Есть опыт в техподдержке / клиентском сервисе?',
+    expOptions: [
+      ['Есть опыт в техподдержке / клиентском сервисе', 'Да, есть опыт'],
+      ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
+      ['Это не мой профиль', 'Это не мой профиль'],
+    ],
+    showColdCallHint: false,
+    showAiComfort: true,
+    showKazakh: false,
+  },
 };
-let currentVac = (qs.get('vac') === 'success') ? 'success_remote' : 'sales_remote';
+let currentVac = (qs.get('vac') === 'success') ? 'success_remote'
+  : (qs.get('vac') === 'support') ? 'support_remote' : 'sales_remote';
 
 function renderExpChips(vacKey) {
   const wrap = $('#expChips');
