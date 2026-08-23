@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Статус адаптации</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);--warn:#ffcf66;--danger:#ff7a7a;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:13px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  header .spacer{flex:1}
+  .nav{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+  .navtab{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);padding:7px 14px;border-radius:999px;transition:.16s;white-space:nowrap}
+  .navtab:hover{color:var(--text)}
+  .navtab.active{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);box-shadow:0 4px 14px var(--brand-glow)}
+  @media(max-width:760px){header{flex-wrap:wrap}.nav{order:3;width:100%;overflow-x:auto}}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+
+  .gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,7,10,.75);backdrop-filter:blur(6px);z-index:50}
+  .gate .box{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;padding:26px;width:min(92vw,400px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .gate h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
+  .gate p{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  input,select{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);font:inherit;font-size:14.5px;padding:11px 13px;outline:none;width:100%}
+  input:focus{border-color:rgba(25,227,154,.55)}
+  .btn{border:0;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:700;padding:11px 18px;cursor:pointer;box-shadow:0 6px 18px var(--brand-glow)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+  .err{background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:10px 12px;border-radius:11px;margin-bottom:12px;display:none}
+
+  .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .head h1{font-family:var(--display);font-size:24px;margin:0;flex:1}
+  .pill{font-size:12.5px;color:var(--muted);border:1px solid var(--line);padding:7px 12px;border-radius:999px;background:var(--panel)}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .controls select,.controls input{width:auto;min-width:170px}
+
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+  .scard{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px}
+  .scard .snum{font-family:var(--display);font-weight:800;font-size:24px;color:var(--brand)}
+  .scard .slbl{font-size:12px;color:var(--muted);margin-top:3px}
+
+  .grid{display:flex;flex-direction:column;gap:12px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:16px;padding:16px;cursor:pointer}
+  .card:hover{border-color:var(--line-2)}
+  .crow{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .pct{width:50px;height:50px;flex:0 0 50px;border-radius:12px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:14px;border:1px solid var(--line-2)}
+  .p-hi{background:rgba(25,227,154,.16);color:var(--brand);border-color:rgba(25,227,154,.4)}
+  .p-mid{background:rgba(255,207,102,.14);color:var(--warn);border-color:rgba(255,207,102,.35)}
+  .p-lo{background:rgba(255,122,122,.12);color:#ff9b9b;border-color:rgba(255,122,122,.3)}
+  .cbody{flex:1;min-width:200px}
+  .cbody .nm{font-weight:700;font-size:15.5px}
+  .roletag{display:inline-block;font-size:11px;font-weight:600;color:var(--brand);background:rgba(25,227,154,.1);border:1px solid rgba(25,227,154,.3);border-radius:8px;padding:2px 8px;margin-left:8px;vertical-align:middle}
+  .cmeta{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .readytag{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid rgba(25,227,154,.5);background:rgba(25,227,154,.12);color:var(--brand);white-space:nowrap}
+  .progressTrack{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;margin-top:10px;width:100%}
+  .progressFill{height:100%;background:linear-gradient(90deg,var(--brand-2),var(--brand));border-radius:99px}
+
+  .empty{text-align:center;color:var(--muted);padding:50px 10px}
+
+  .modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(5,7,10,.72);backdrop-filter:blur(6px);z-index:60;padding:20px}
+  .modal.open{display:grid}
+  .modal .sheet{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;width:min(94vw,620px);max-height:86vh;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.65)}
+  .modal .top{display:flex;align-items:flex-start;gap:14px;padding:20px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel-solid)}
+  .modal .top h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
+  .modal .top .mmeta{color:var(--muted);font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap}
+  .modal .x{margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:10px;width:34px;height:34px;font-size:18px;cursor:pointer;flex:0 0 auto}
+  .modal .x:hover{color:var(--text);border-color:var(--line-2)}
+  .modal .qa{padding:8px 22px 22px}
+  .modal .grp{margin:14px 0 6px;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
+  .modal .mitem{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.5}
+  .modal .mitem:last-child{border-bottom:0}
+  .modal .mitem .ic{flex:none}
+  .modal .mitem.no label{color:var(--muted)}
+  .modal .mitem.yes .ic{color:var(--brand)}
+  .modal .mitem.no .ic{color:var(--faint)}
+  @media(max-width:600px){.crow{flex-direction:column;align-items:flex-start}.pct{align-self:flex-start}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi · Статус адаптации</div>
+  </a>
+  <nav class="nav">
+    <a class="navtab" href="/">🏠 Кабинет</a>
+    <a class="navtab" href="/pipeline.html">🗂 Пайплайн</a>
+    <a class="navtab active" href="/onboarding-status.html">✅ Адаптация</a>
+  </nav>
+  <div class="spacer"></div>
+</header>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="head">
+    <h1>Чек-листы адаптации</h1>
+    <span class="pill" id="cnt">0</span>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="controls">
+    <select id="fRole"><option value="">Все роли</option><option value="sales">Продажи</option><option value="success">Работа с клиентами</option><option value="support">Техподдержка</option></select>
+    <select id="fStatus"><option value="">Все статусы</option><option value="ready">✅ Готовы (100%)</option><option value="progress">В процессе</option></select>
+    <input id="fSearch" placeholder="Поиск по имени…" />
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none">Пока никто не начал чек-лист адаптации.</div>
+</div>
+
+<div class="gate" id="gate">
+  <div class="box">
+    <h2>🔒 Статус адаптации</h2>
+    <p>Доступ только для Sagi. Введите пароль.</p>
+    <div class="err" id="gateErr"></div>
+    <input id="gatePass" type="password" placeholder="Пароль" />
+    <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn" id="gateBtn">Войти</button></div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="top">
+      <div>
+        <h2 id="mName">Новичок</h2>
+        <div class="mmeta" id="mMeta"></div>
+      </div>
+      <button class="x" id="mClose" title="Закрыть">×</button>
+    </div>
+    <div class="qa" id="mBody"></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const PASS_KEY='sagiHR_onboardingPass';
+let PASS=localStorage.getItem(PASS_KEY)||'', DATA=[], ITEMS_BY_ROLE={}, ROLE_LABELS={};
+
+async function api(payload){
+  const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,password:PASS})});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function pctCls(p){ return p>=100?'p-hi':(p>=50?'p-mid':'p-lo'); }
+function timeAgo(ts){
+  if(!ts) return '—';
+  const d=Date.now()-ts, m=Math.floor(d/60000), h=Math.floor(d/3600000), day=Math.floor(d/86400000);
+  if(m<1) return 'только что';
+  if(m<60) return m+' мин назад';
+  if(h<24) return h+' ч назад';
+  if(day<30) return day+' дн назад';
+  return new Date(ts).toLocaleDateString('ru-RU');
+}
+
+function summaryCards(){
+  const total=DATA.length;
+  const ready=DATA.filter(x=>x.percent>=100).length;
+  const inProgress=total-ready;
+  const byRole={sales:0,success:0,support:0};
+  DATA.forEach(x=>{ if(byRole[x.role]!=null) byRole[x.role]++; });
+  return [
+    [total,'Всего чек-листов'],
+    [ready,'Готовы (100%)'],
+    [inProgress,'В процессе'],
+    [byRole.sales,'Продажи'],
+    [byRole.success,'Работа с клиентами'],
+    [byRole.support,'Техподдержка'],
+  ];
+}
+
+function render(){
+  $('#summary').innerHTML = summaryCards().map(([n,l])=>'<div class="scard"><div class="snum">'+n+'</div><div class="slbl">'+esc(l)+'</div></div>').join('');
+  const grid=$('#grid'); grid.innerHTML='';
+  const fr=$('#fRole').value, fs=$('#fStatus').value, q=$('#fSearch').value.toLowerCase().trim();
+  let items=DATA.filter(x=>
+    (!fr||x.role===fr) &&
+    (!fs||(fs==='ready'?x.percent>=100:x.percent<100)) &&
+    (!q||(x.name||'').toLowerCase().includes(q))
+  );
+  $('#cnt').textContent=DATA.length+' чел.';
+  $('#empty').style.display=items.length?'none':'block';
+  for(const it of items){
+    const card=document.createElement('div'); card.className='card'; card.dataset.id=it.id;
+    card.innerHTML=
+      '<div class="crow">'+
+        '<div class="pct '+pctCls(it.percent)+'">'+it.percent+'%</div>'+
+        '<div class="cbody">'+
+          '<div class="nm">'+esc(it.name||'Без имени')+'<span class="roletag">'+esc(ROLE_LABELS[it.role]||it.role)+'</span></div>'+
+          '<div class="cmeta">'+it.done+'/'+it.total+' пунктов · начал(а) '+timeAgo(it.startedAt)+' · обновлено '+timeAgo(it.updatedAt)+'</div>'+
+          '<div class="progressTrack"><div class="progressFill" style="width:'+it.percent+'%"></div></div>'+
+        '</div>'+
+        (it.percent>=100?'<span class="readytag">✅ Готов(а) к работе</span>':'')+
+      '</div>';
+    card.addEventListener('click',()=>openItem(it.id));
+    grid.appendChild(card);
+  }
+}
+
+function openItem(id){
+  const it=DATA.find(x=>x.id===id); if(!it) return;
+  $('#mName').textContent=it.name||'Без имени';
+  $('#mMeta').innerHTML=[esc(ROLE_LABELS[it.role]||it.role), it.done+'/'+it.total+' · '+it.percent+'%', 'начал(а) '+timeAgo(it.startedAt), 'обновлено '+timeAgo(it.updatedAt)].join(' · ');
+  const groups = ['common', it.role];
+  let html='';
+  for(const g of groups){
+    const gitems=ITEMS_BY_ROLE[it.role]||[];
+    const relevant = g==='common' ? gitems.filter(x=>x[0].startsWith('common')) : gitems.filter(x=>x[0].startsWith(it.role));
+    if(!relevant.length) continue;
+    html+='<div class="grp">'+(g==='common'?'Общее для всех':(ROLE_LABELS[it.role]||it.role))+'</div>';
+    for(const [key,text] of relevant){
+      const yes=!!(it.checked&&it.checked[key]);
+      html+='<div class="mitem '+(yes?'yes':'no')+'"><span class="ic">'+(yes?'✅':'⬜️')+'</span><label>'+esc(text)+'</label></div>';
+    }
+  }
+  $('#mBody').innerHTML=html;
+  $('#modal').classList.add('open');
+}
+$('#mClose').addEventListener('click',()=>$('#modal').classList.remove('open'));
+$('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') $('#modal').classList.remove('open'); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') $('#modal').classList.remove('open'); });
+
+async function load(){
+  const d=await api({action:'list'});
+  DATA=d.items||[];
+  ITEMS_BY_ROLE=d.itemsByRole||{};
+  ROLE_LABELS=d.roleLabels||{};
+  render();
+}
+
+async function unlock(){
+  PASS=$('#gatePass').value; $('#gateErr').style.display='none';
+  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
+}
+$('#gateBtn').addEventListener('click',unlock);
+$('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
+
+(async()=>{
+  if(!PASS) return;
+  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); }
+})();
+
+['#fRole','#fStatus','#fSearch'].forEach(s=>$(s).addEventListener('input',render));
+</script>
+</body>
+</html>

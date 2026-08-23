@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Чек-лист адаптации</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);--warn:#ffcf66;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),radial-gradient(760px 540px at 6% 112%,rgba(56,128,255,.07),transparent 54%),var(--bg);
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:14px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.55);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+  .mark{width:36px;height:36px;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;font-size:18px;flex:none;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  .brand small{display:block;color:var(--muted);font-weight:500;font-size:11.5px;margin-top:2px;font-family:var(--font)}
+  header .spacer{flex:1}
+
+  .wrap{max-width:720px;margin:0 auto;padding:34px 20px 90px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;color:var(--brand)}
+  h1{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.16;letter-spacing:-.5px;margin:10px 0 10px}
+  .lead{color:var(--muted);line-height:1.65;margin:0 0 8px;max-width:60ch}
+
+  input,select{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);font:inherit;font-size:14.5px;padding:12px 14px;outline:none;width:100%}
+  input:focus,select:focus{border-color:rgba(25,227,154,.55)}
+  label.fl{display:block;font-size:12.5px;font-weight:700;color:var(--muted);margin:16px 0 6px}
+  .btn{border:0;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:700;padding:12px 20px;cursor:pointer;box-shadow:0 6px 18px var(--brand-glow)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+  .btn.sec{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:none}
+  .err{background:rgba(255,122,122,.1);border:1px solid rgba(255,122,122,.35);color:#ff9b9b;font-size:13px;padding:10px 12px;border-radius:11px;margin:14px 0;display:none}
+
+  .startCard{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:24px;margin-top:22px}
+  .roleGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+  .roleOpt{border:1px solid var(--line);background:var(--panel-solid);color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:14px 10px;border-radius:12px;cursor:pointer;text-align:center;transition:.14s}
+  .roleOpt:hover{border-color:var(--line-2);color:var(--text)}
+  .roleOpt.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.12);color:var(--text)}
+  @media(max-width:520px){.roleGrid{grid-template-columns:1fr}}
+
+  .linkNote{display:flex;gap:10px;align-items:flex-start;background:rgba(122,167,255,.08);border:1px solid rgba(122,167,255,.28);border-radius:14px;padding:13px 15px;margin:22px 0 8px;font-size:13px;line-height:1.6;color:var(--muted)}
+  .linkNote b{color:var(--text)}
+  .linkNote .ic{flex:none;font-size:16px;line-height:1.4}
+  .linkRow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .linkRow input{flex:1;min-width:180px;font-size:12.5px;color:var(--muted)}
+  .copyBtn{border:1px solid var(--line);background:var(--panel-solid);color:var(--text);font:inherit;font-size:12.5px;font-weight:700;padding:0 14px;border-radius:10px;cursor:pointer}
+  .copyBtn:hover{border-color:var(--brand)}
+
+  .roleHead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:26px 0 4px;flex-wrap:wrap}
+  .roleHead h2{font-family:var(--display);font-weight:700;font-size:19px;margin:0}
+  .roleStatus{font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .roleStatus.ready{border-color:rgba(25,227,154,.5);background:rgba(25,227,154,.12);color:var(--brand)}
+
+  .progressTrack{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;margin:12px 0 22px}
+  .progressFill{height:100%;background:linear-gradient(90deg,var(--brand-2),var(--brand));border-radius:99px;transition:width .25s ease}
+
+  .group{margin-bottom:26px}
+  .groupLabel{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+  .item{display:flex;align-items:flex-start;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .item:last-child{border-bottom:none}
+  .item input[type=checkbox]{appearance:none;-webkit-appearance:none;width:21px;height:21px;flex:none;border-radius:7px;border:1.5px solid var(--line-2);background:rgba(0,0,0,.3);cursor:pointer;margin-top:1px;position:relative;transition:.12s}
+  .item input[type=checkbox]:hover{border-color:var(--brand)}
+  .item input[type=checkbox]:checked{background:linear-gradient(140deg,var(--brand),var(--brand-2));border-color:var(--brand-2)}
+  .item input[type=checkbox]:checked::after{content:'';position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid var(--brand-ink);border-width:0 2.5px 2.5px 0;transform:rotate(40deg)}
+  .item input[type=checkbox]:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .item label{flex:1;font-size:14.5px;line-height:1.5;cursor:pointer}
+  .item.checked label{color:var(--faint);text-decoration:line-through;text-decoration-color:var(--line-2)}
+
+  .doneBanner{border:1px solid rgba(25,227,154,.5);background:rgba(25,227,154,.1);border-radius:16px;padding:18px 20px;margin:24px 0;display:none}
+  .doneBanner.show{display:block}
+  .doneBanner .t{font-family:var(--display);font-weight:700;font-size:16px;color:var(--brand);margin-bottom:4px}
+  .doneBanner .s{color:var(--muted);font-size:13.5px;line-height:1.55}
+
+  footer{color:var(--faint);font-size:11.5px;text-align:center;margin-top:40px;line-height:1.6}
+  .saveNote{color:var(--faint);font-size:12px;text-align:right;margin-top:-6px;min-height:16px}
+  @media(max-width:560px){h1{font-size:23px}.wrap{padding:24px 16px 80px}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi<small>Чек-лист адаптации</small></div>
+  </a>
+  <div class="spacer"></div>
+</header>
+
+<div class="wrap">
+
+  <!-- Экран 1: имя + роль (показывается, если в ссылке нет ?id= или запись ещё не найдена) -->
+  <div id="startScreen">
+    <div class="eyebrow">Новичок Sagi</div>
+    <h1>Чек-лист адаптации</h1>
+    <p class="lead">Здесь — всё, что вам нужно получить и настроить перед началом работы. Отмечайте пункты по мере готовности, дальше просто сохраните эту страницу — вернуться можно в любой момент.</p>
+
+    <div class="startCard">
+      <label class="fl">Ваше имя</label>
+      <input id="nameInput" placeholder="Имя Фамилия" maxlength="120" />
+      <label class="fl">Ваша роль</label>
+      <div class="roleGrid" id="roleGrid">
+        <button type="button" class="roleOpt" data-role="sales">Продажи</button>
+        <button type="button" class="roleOpt" data-role="success">Работа с клиентами</button>
+        <button type="button" class="roleOpt" data-role="support">Техподдержка</button>
+      </div>
+      <div class="err" id="startErr"></div>
+      <div style="margin-top:18px"><button class="btn" id="startBtn">Начать чек-лист</button></div>
+    </div>
+  </div>
+
+  <!-- Экран 2: сам чек-лист -->
+  <div id="checklistScreen" style="display:none">
+    <div class="eyebrow">Новичок Sagi</div>
+    <h1 id="clTitle">Чек-лист адаптации</h1>
+    <p class="lead" id="clLead"></p>
+
+    <div class="linkNote">
+      <div class="ic">🔖</div>
+      <div>
+        <b>Это ваша личная ссылка</b> — сохраните её (в закладки или себе в заметки), чтобы вернуться и продолжить позже. Она не требует пароля, но храните её как обычную личную ссылку.
+        <div class="linkRow">
+          <input id="myLink" readonly />
+          <button class="copyBtn" id="copyBtn" type="button">Скопировать</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="roleHead">
+      <h2 id="roleHeading">Прогресс</h2>
+      <span class="roleStatus" id="roleStatus">0%</span>
+    </div>
+    <div class="progressTrack"><div class="progressFill" id="progressFill" style="width:0%"></div></div>
+    <div class="saveNote" id="saveNote"></div>
+
+    <div class="doneBanner" id="doneBanner">
+      <div class="t">🎉 Всё готово!</div>
+      <div class="s">Все пункты чек-листа отмечены — Sagi уже получил уведомление, что вы готовы к работе.</div>
+    </div>
+
+    <div id="groups"></div>
+  </div>
+
+  <div class="err" id="loadErr" style="display:none"></div>
+  <footer>Sagi · платформа лояльности для бизнеса · Если что-то не работает, напишите в WhatsApp: +7 707 700 0087</footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+
+// 2026-08-24: пункты чек-листа дублируются здесь только для отображения формулировок —
+// источник истины и подсчёт done/total всегда на сервере (api/onboarding.js), чтобы процент
+// нельзя было подделать из браузера и чтобы список не разъезжался с уведомлениями в Telegram.
+const ITEMS = {
+  common: [
+    ['common1','Личный кабинет в Sagi Business / Sagi Bonus'],
+    ['common2','Документ с условиями оплаты и KPI (usloviya.html)'],
+    ['common3','WhatsApp Business настроен и готов к работе'],
+    ['common4','Доступ к общему Telegram-чату команды'],
+    ['common5','Доступ к внутреннему чату техподдержки (по своим вопросам, не клиентским)'],
+  ],
+  sales: [
+    ['sales1','Доступ к тестовому аккаунту Sagi'],
+    ['sales2','База знаний по функционалу платформы'],
+    ['sales3','Обучающие видео-материалы'],
+    ['sales4','Список целевых клиентов для холодных звонков'],
+    ['sales5','Скрипты звонков и работы с возражениями'],
+    ['sales6','Доступ и обучение по видеовстречам с клиентами (как назначать и проводить демо — Zoom / Google Meet)'],
+    ['sales7','СИП-телефония — доступ и настройка для исходящих звонков'],
+    ['sales8','Список текущих клиентов по городам'],
+    ['sales9','Доступ к Битрикс24 / CRM'],
+    ['sales10','Инструкция по рассылкам и звонкам через 2ГИС + готовые тексты для WhatsApp-рассылок'],
+    ['sales11','Ссылка на приложение / сайт Sagi для показа клиенту'],
+  ],
+  success: [
+    ['success1','Доступ к Битрикс24 / CRM с базой текущих клиентов'],
+    ['success2','Список текущих клиентов со сроками продления (1 / 3 / 6 / 12 мес)'],
+    ['success3','Материалы по продлению и допродаже (как показать клиенту неиспользуемые функции)'],
+    ['success4','Доступ и обучение по ИИ-инструментам компании (черновики сообщений, сводки перед звонком)'],
+    ['success5','WhatsApp Business настроен'],
+    ['success6','Ссылка на приложение / сайт Sagi для показа клиенту'],
+  ],
+  support: [
+    ['support1','Доступ к тестовому аккаунту Sagi'],
+    ['support2','База знаний по функционалу платформы + FAQ'],
+    ['support3','Обучающие видео-материалы'],
+    ['support4','Доступ к Битрикс24 / CRM с обращениями клиентов'],
+    ['support5','Инструкция по типовым техническим проблемам (вход в аккаунт, начисление/списание бонусов и т.п.)'],
+    ['support6','Инструкция по проведению интеграций клиентам (в т.ч. кассовые системы: iiko, r-keeper, 1С, МойСклад)'],
+    ['support7','Доступ и обучение по ИИ-инструментам (диагностика, черновики ответов клиентам)'],
+    ['support8','Ссылка на приложение / сайт Sagi для тестирования'],
+  ],
+};
+const ROLE_LABEL = { sales:'Менеджер по продажам', success:'Работа с текущими клиентами', support:'Техподдержка' };
+const GROUP_LABEL = { common:'Общее для всех', sales:'Продажи', success:'Работа с клиентами', support:'Техподдержка' };
+
+function itemsForRole(role){ return ITEMS.common.concat(ITEMS[role]||[]); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+async function api(payload){
+  const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+
+function newId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+function getIdFromUrl(){
+  const p=new URLSearchParams(location.search);
+  return (p.get('id')||'').trim();
+}
+function setIdInUrl(id){
+  const url=new URL(location.href);
+  url.searchParams.set('id',id);
+  history.replaceState(null,'',url.toString());
+}
+
+let ID='', RECORD=null, saveTimer=null;
+
+let selectedRole='';
+document.querySelectorAll('.roleOpt').forEach(b=>b.addEventListener('click',()=>{
+  selectedRole=b.dataset.role;
+  document.querySelectorAll('.roleOpt').forEach(x=>x.classList.toggle('active',x===b));
+}));
+
+$('#startBtn').addEventListener('click', async ()=>{
+  const name=$('#nameInput').value.trim();
+  const errBox=$('#startErr'); errBox.style.display='none';
+  if(!name){ errBox.textContent='Введите имя'; errBox.style.display='block'; return; }
+  if(!selectedRole){ errBox.textContent='Выберите роль'; errBox.style.display='block'; return; }
+  $('#startBtn').disabled=true;
+  try{
+    ID = getIdFromUrl() || newId();
+    const d = await api({action:'save', id:ID, name, role:selectedRole, checked:{}});
+    RECORD=d.item;
+    setIdInUrl(ID);
+    showChecklist();
+  }catch(e){
+    errBox.textContent=e.message; errBox.style.display='block';
+  }finally{
+    $('#startBtn').disabled=false;
+  }
+});
+
+function showChecklist(){
+  $('#startScreen').style.display='none';
+  $('#checklistScreen').style.display='block';
+  $('#myLink').value = location.href;
+  $('#clTitle').textContent = 'Здравствуйте, '+(RECORD.name||'')+'!';
+  $('#clLead').textContent = 'Отмечайте пункты по мере готовности — прогресс сохраняется автоматически, а Sagi увидит, когда всё будет закрыто.';
+  $('#roleHeading').textContent = ROLE_LABEL[RECORD.role] || RECORD.role;
+  renderGroups();
+  renderProgress();
+}
+
+function renderGroups(){
+  const box=$('#groups'); box.innerHTML='';
+  const groups = RECORD.role ? ['common', RECORD.role] : ['common'];
+  for(const g of groups){
+    const items = ITEMS[g]||[];
+    if(!items.length) continue;
+    const wrap=document.createElement('div'); wrap.className='group';
+    wrap.innerHTML = '<div class="groupLabel">'+esc(GROUP_LABEL[g]||g)+'</div>';
+    for(const [key,text] of items){
+      const checked = !!(RECORD.checked && RECORD.checked[key]);
+      const row=document.createElement('div');
+      row.className='item'+(checked?' checked':'');
+      row.innerHTML = '<input type="checkbox" id="it_'+key+'" '+(checked?'checked':'')+' /><label for="it_'+key+'">'+esc(text)+'</label>';
+      wrap.appendChild(row);
+    }
+    box.appendChild(wrap);
+  }
+  box.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener('change', onToggle);
+  });
+}
+
+function onToggle(e){
+  const key = e.target.id.replace(/^it_/, '');
+  RECORD.checked = RECORD.checked || {};
+  if(e.target.checked) RECORD.checked[key]=true; else delete RECORD.checked[key];
+  e.target.closest('.item').classList.toggle('checked', e.target.checked);
+  renderProgress();
+  scheduleSave();
+}
+
+function renderProgress(){
+  const items = itemsForRole(RECORD.role);
+  const total = items.length;
+  let done=0; for(const [k] of items) if(RECORD.checked && RECORD.checked[k]) done++;
+  const pct = total ? Math.round(done/total*100) : 0;
+  $('#progressFill').style.width = pct+'%';
+  $('#roleStatus').textContent = done+'/'+total+' · '+pct+'%';
+  $('#roleStatus').classList.toggle('ready', pct>=100);
+  $('#doneBanner').classList.toggle('show', pct>=100);
+}
+
+function scheduleSave(){
+  $('#saveNote').textContent='Сохраняю…';
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(doSave, 500);
+}
+async function doSave(){
+  try{
+    const d = await api({action:'save', id:ID, name:RECORD.name, role:RECORD.role, checked:RECORD.checked});
+    RECORD = { ...RECORD, ...d.item };
+    $('#saveNote').textContent='Сохранено ✓';
+    setTimeout(()=>{ if($('#saveNote').textContent==='Сохранено ✓') $('#saveNote').textContent=''; }, 1500);
+  }catch(e){
+    $('#saveNote').textContent='Не удалось сохранить: '+e.message;
+  }
+}
+
+$('#copyBtn').addEventListener('click', async ()=>{
+  try{
+    await navigator.clipboard.writeText(location.href);
+    $('#copyBtn').textContent='Скопировано ✓';
+    setTimeout(()=>{ $('#copyBtn').textContent='Скопировать'; }, 1500);
+  }catch(e){
+    $('#myLink').select();
+    document.execCommand('copy');
+  }
+});
+
+// Автозагрузка по ?id= из ссылки — если запись уже есть, сразу показываем чек-лист.
+(async ()=>{
+  const id = getIdFromUrl();
+  if(!id){ return; }
+  ID=id;
+  try{
+    const d = await api({action:'get', id});
+    if(d.item){
+      RECORD=d.item;
+      showChecklist();
+    }
+    // Если записи ещё нет (например, ссылку скопировали до первого сохранения) — остаёмся
+    // на стартовом экране, при этом id из ссылки сохраняется и будет использован при "Начать".
+  }catch(e){
+    $('#loadErr').textContent = 'Не удалось загрузить чек-лист: '+e.message;
+    $('#loadErr').style.display='block';
+  }
+})();
+</script>
+</body>
+</html>
