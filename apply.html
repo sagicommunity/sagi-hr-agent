@@ -150,6 +150,18 @@
           </div>
         </div>
 
+        <!-- 2026-08-23, по правкам Асемгуль (COO): для success_remote казахский — реальное требование
+             (не «плюс», как для продаж), поэтому спрашиваем отдельным полем, чтобы ИИ-скрининг мог
+             это оценить (см. api/apply.js, matchPercent). -->
+        <div class="field" id="kazakhField" style="display:none">
+          <label>Уровень казахского языка? <span class="req">*</span></label>
+          <div class="chips" data-field="kazakh">
+            <button type="button" class="chip" data-value="Свободно / родной">Свободно / родной</button>
+            <button type="button" class="chip" data-value="Разговорный уровень">Разговорный уровень</button>
+            <button type="button" class="chip" data-value="Не говорю по-казахски">Не говорю по-казахски</button>
+          </div>
+        </div>
+
         <div class="field">
           <label>Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч? <span class="req">*</span></label>
           <div class="chips" data-field="techReady">
@@ -240,11 +252,12 @@ const VAC = {
     ],
     showColdCallHint: true,
     showAiComfort: false,
+    showKazakh: false,
   },
   success_remote: {
     eyebrow: 'Вакансия · работа с клиентами',
     title: 'Менеджер по работе с текущими клиентами — удалённо',
-    lead: 'Ведёте базу текущих клиентов Sagi: продления, помощь с продуктом, партнёрства между клиентами и рост базы через рекомендации довольных клиентов. Работа из дома. Резюме не нужно — ответьте на несколько коротких вопросов.',
+    lead: 'Оклад 150 000 ₸ (при хороших показателях уже через месяц — 200 000 ₸) + % по мотивационной сетке за продления, рекомендации и партнёрства между клиентами. Ведёте базу текущих клиентов Sagi: продления, помощь с продуктом, партнёрства между клиентами и рост базы через рекомендации довольных клиентов. Работа из дома. Резюме не нужно — ответьте на несколько коротких вопросов.',
     expLabel: 'Есть опыт работы с текущими клиентами / удержанием?',
     expOptions: [
       ['Есть опыт работы с текущими клиентами / удержанием', 'Да, есть опыт'],
@@ -253,6 +266,7 @@ const VAC = {
     ],
     showColdCallHint: false,
     showAiComfort: true,
+    showKazakh: true,
   },
 };
 let currentVac = (qs.get('vac') === 'success') ? 'success_remote' : 'sales_remote';
@@ -281,7 +295,8 @@ function applyVac(vacKey) {
   $('#expLabel').innerHTML = v.expLabel + ' <span class="req">*</span>';
   $('#coldCallHint').style.display = v.showColdCallHint ? 'block' : 'none';
   $('#aiComfortField').style.display = v.showAiComfort ? 'block' : 'none';
-  chipState.expSales = ''; chipState.aiComfort = '';
+  $('#kazakhField').style.display = v.showKazakh ? 'block' : 'none';
+  chipState.expSales = ''; chipState.aiComfort = ''; chipState.kazakh = '';
   renderExpChips(vacKey);
   document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.classList.toggle('active', b.dataset.vac === vacKey));
 }
@@ -328,6 +343,7 @@ form.addEventListener('submit', async e => {
   e.preventDefault();
   err.style.display = 'none';
   const needAiComfort = VAC[currentVac].showAiComfort;
+  const needKazakh = VAC[currentVac].showKazakh;
   const payload = {
     name: $('#name').value.trim(),
     contact: $('#contact').value.trim(),
@@ -338,6 +354,7 @@ form.addEventListener('submit', async e => {
     techReady: chipValue('techReady'),
     noCombine: chipValue('noCombine'),
     aiComfort: needAiComfort ? chipValue('aiComfort') : '',
+    kazakh: needKazakh ? chipValue('kazakh') : '',
     startWhen: $('#startWhen').value.trim(),
     comment: $('#comment').value.trim(),
     referrerName: $('#referrerName').value.trim(),
@@ -345,7 +362,7 @@ form.addEventListener('submit', async e => {
     vacancy: currentVac,
     refId: refId,
   };
-  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort)) {
+  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh)) {
     err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
     err.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
