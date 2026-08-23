@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sagi — Отклик на вакансию менеджера по продажам</title>
-<meta name="description" content="Откликнитесь на позицию менеджера по продажам в Sagi, полностью удалённо. Пара коротких вопросов вместо резюме — мы свяжемся." />
+<title>Sagi — Отклик на вакансию</title>
+<meta name="description" content="Откликнитесь на вакансию в Sagi — менеджер по продажам или менеджер по работе с текущими клиентами, полностью удалённо. Пара коротких вопросов вместо резюме — мы свяжемся." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -36,7 +36,11 @@
   .eyebrow{font-size:12px;font-weight:700;letter-spacing:2.4px;text-transform:uppercase;color:var(--brand);text-align:center}
   h1{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.14;letter-spacing:-.5px;text-align:center;margin:12px 0 8px;
     background:linear-gradient(180deg,#fff,#aeb9c6);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .lead{color:var(--muted);text-align:center;line-height:1.6;margin:0 auto 26px;max-width:500px}
+  .lead{color:var(--muted);text-align:center;line-height:1.6;margin:0 auto 22px;max-width:500px}
+  .vacPick{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:520px;margin:0 auto 26px}
+  .vacBtn{border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-size:13.5px;font-weight:700;padding:13px 12px;border-radius:14px;cursor:pointer;transition:.16s;text-align:center;line-height:1.35}
+  .vacBtn:hover{border-color:var(--line-2);color:var(--text)}
+  .vacBtn.active{border-color:rgba(25,227,154,.55);background:rgba(25,227,154,.12);color:var(--text);box-shadow:0 0 0 3px rgba(25,227,154,.08)}
   form{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:0 18px 50px rgba(0,0,0,.4)}
   label{display:block;font-size:13px;font-weight:600;color:var(--text);margin:0 0 9px}
   label .req{color:var(--brand)}
@@ -65,14 +69,14 @@
   .refBox{border:1px dashed var(--line-2);border-radius:14px;padding:14px 16px 16px;margin:6px 0 18px;background:rgba(255,255,255,.02)}
   .refAd{max-width:600px;margin:16px auto 0;padding:16px 18px;border-radius:16px;border:1px solid rgba(25,227,154,.28);background:rgba(25,227,154,.07);color:var(--muted);font-size:13px;line-height:1.6;text-align:center}
   .refAd b{color:var(--text)}
-  @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}.row2{grid-template-columns:1fr}}
+  @media(max-width:560px){h1{font-size:24px}form,.result{padding:20px}.row2{grid-template-columns:1fr}.vacPick{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
   <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
     <div class="mark">S</div>
-    <div class="brand">Sagi<small>Карьера в отделе продаж</small></div>
+    <div class="brand">Sagi<small>Карьера в Sagi</small></div>
   </a>
   <div class="spacer"></div>
   <a class="back" href="/">🏠 Главная</a>
@@ -81,9 +85,15 @@
 <div class="wrap">
   <div class="card">
     <div id="formView">
-      <div class="eyebrow">Вакансия · удалённые продажи</div>
-      <h1>Менеджер по продажам в Sagi — удалённо</h1>
-      <p class="lead">Средний доход менеджера — от 600 000 до 1 200 000 ₸ в месяц: оклад + KPI за звонки и встречи + % с продаж без потолка. Работа из дома: холодные звонки, поиск ЛПР, закрытие сделок через онлайн-демо. Резюме не нужно — ответьте на несколько коротких вопросов, ИИ-рекрутер сразу рассмотрит заявку.</p>
+      <div class="eyebrow" id="vacEyebrow">Вакансия · удалённые продажи</div>
+      <h1 id="vacTitle">Менеджер по продажам в Sagi — удалённо</h1>
+      <p class="lead" id="vacLead">Средний доход менеджера — от 600 000 до 1 200 000 ₸ в месяц: оклад + KPI за звонки и встречи + % с продаж без потолка. Работа из дома: холодные звонки, поиск ЛПР, закрытие сделок через онлайн-демо. Резюме не нужно — ответьте на несколько коротких вопросов, ИИ-рекрутер сразу рассмотрит заявку.</p>
+
+      <div class="vacPick" id="vacPick">
+        <button type="button" class="vacBtn" data-vac="sales_remote">📞 Менеджер по продажам<br><span style="font-weight:500;color:inherit;opacity:.8">холодные продажи, удалённо</span></button>
+        <button type="button" class="vacBtn" data-vac="success_remote">🤝 Менеджер по работе с клиентами<br><span style="font-weight:500;color:inherit;opacity:.8">текущие клиенты, удалённо</span></button>
+      </div>
+
       <form id="applyForm">
         <div class="err" id="err"></div>
 
@@ -127,11 +137,16 @@
         </div>
 
         <div class="field">
-          <label>Есть опыт в продажах / холодных звонках? <span class="req">*</span></label>
-          <div class="chips" data-field="expSales">
-            <button type="button" class="chip" data-value="Есть опыт в продажах и холодных звонках">Да, есть опыт</button>
-            <button type="button" class="chip" data-value="Опыта нет, но готов(а) учиться">Опыта нет, готов(а) учиться</button>
-            <button type="button" class="chip" data-value="Холодные звонки — не моё">Холодные звонки — не моё</button>
+          <label id="expLabel">Есть опыт в продажах / холодных звонках? <span class="req">*</span></label>
+          <div class="chips" data-field="expSales" id="expChips"></div>
+        </div>
+
+        <div class="field" id="aiComfortField" style="display:none">
+          <label>Насколько уверенно пользуетесь ИИ-инструментами (ChatGPT, Claude и т.п.) в работе? <span class="req">*</span></label>
+          <div class="chips" data-field="aiComfort">
+            <button type="button" class="chip" data-value="Свободно пользуюсь ИИ-инструментами в работе">Свободно пользуюсь</button>
+            <button type="button" class="chip" data-value="Пользуюсь иногда">Пользуюсь иногда</button>
+            <button type="button" class="chip" data-value="Не пробовал(а), но готов(а) научиться">Готов(а) научиться</button>
           </div>
         </div>
 
@@ -144,16 +159,16 @@
         </div>
 
         <div class="field">
-          <label>Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать обучению и стажировке максимум времени и внимания? <span class="req">*</span></label>
+          <label>Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать работе максимум времени и внимания? <span class="req">*</span></label>
           <div class="chips" data-field="noCombine">
             <button type="button" class="chip" data-value="Ничего из этого нет, это будет основная занятость">Ничего из этого нет, это будет основная занятость</button>
             <button type="button" class="chip" data-value="Есть, но готов(а) поставить это в приоритет и уделять достаточно времени">Есть, но готов(а) поставить это в приоритет</button>
             <button type="button" class="chip" data-value="Есть, и я не готов(а) менять приоритеты ради этого">Есть, и не готов(а) менять приоритеты</button>
           </div>
-          <div class="hint">Отвечайте честно, это не повод для отказа само по себе — но стажировка требует реальной вовлечённости, лучше сразу понимать, подходит ли вам это по времени.</div>
+          <div class="hint">Отвечайте честно, это не повод для отказа само по себе — но работа требует реальной вовлечённости, лучше сразу понимать, подходит ли вам это по времени.</div>
         </div>
 
-        <div class="hint" style="background:rgba(25,227,154,.06);border:1px solid rgba(25,227,154,.25);border-radius:12px;padding:12px 14px;margin:-6px 0 18px;color:var(--text)">
+        <div class="hint" id="coldCallHint" style="background:rgba(25,227,154,.06);border:1px solid rgba(25,227,154,.25);border-radius:12px;padding:12px 14px;margin:-6px 0 18px;color:var(--text)">
           ℹ️ Как это устроено: первое время (обычно около месяца) — это холодные звонки, вы сами ищете и закрываете клиентов с нуля, этому и учим на стажировке. Тёплые лиды от компании подключаем не сразу, а когда менеджер уверенно продаёт самостоятельно: закрывает сделки по холодным звонкам и уверенно проводит демонстрации по видеосвязи. Обычно это второй месяц работы. Подробнее: <a href="/usloviya.html" target="_blank" rel="noopener">условия работы</a>.
         </div>
 
@@ -181,7 +196,7 @@
       </form>
 
       <div class="refAd">
-        🎁 <b>Приведи друга — получи $50.</b> После того как выйдете на обучение, вы сможете рекомендовать эту вакансию друзьям. Если ваш друг присоединится и проработает от 2 месяцев (или сделает продажу уже в первый месяц) — вы получите $50 за него. Друг просто указывает ваше имя и телефон в этой же форме.
+        🎁 <b>Приведи друга — получи $50.</b> После того как выйдете на работу, вы сможете рекомендовать эту вакансию друзьям. Если ваш друг присоединится и проработает от 2 месяцев (или сделает продажу уже в первый месяц) — вы получите $50 за него. Друг просто указывает ваше имя и телефон в этой же форме.
       </div>
     </div>
 
@@ -208,12 +223,77 @@ if (refSrc === 'hh' && qs.get('neg')) refId = 'hh_' + qs.get('neg');
 else if (refSrc === 'tg' && qs.get('chat')) refId = 'tg_' + qs.get('chat');
 const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram' };
 
+// 2026-08-23, по указанию Sagi: одна ссылка теперь ведёт на ДВЕ вакансии — кандидат выбирает
+// сам (переключатель ниже), по умолчанию открывается «Менеджер по продажам» (все старые ссылки
+// на hh.kz/Telegram уже отправлены без ?vac=, чтобы не ломать текущую воронку), но можно прислать
+// прямую ссылку вида ?vac=success на вторую вакансию — тогда сразу откроется она.
+const VAC = {
+  sales_remote: {
+    eyebrow: 'Вакансия · удалённые продажи',
+    title: 'Менеджер по продажам в Sagi — удалённо',
+    lead: 'Средний доход менеджера — от 600 000 до 1 200 000 ₸ в месяц: оклад + KPI за звонки и встречи + % с продаж без потолка. Работа из дома: холодные звонки, поиск ЛПР, закрытие сделок через онлайн-демо. Резюме не нужно — ответьте на несколько коротких вопросов, ИИ-рекрутер сразу рассмотрит заявку.',
+    expLabel: 'Есть опыт в продажах / холодных звонках?',
+    expOptions: [
+      ['Есть опыт в продажах и холодных звонках', 'Да, есть опыт'],
+      ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
+      ['Холодные звонки — не моё', 'Холодные звонки — не моё'],
+    ],
+    showColdCallHint: true,
+    showAiComfort: false,
+  },
+  success_remote: {
+    eyebrow: 'Вакансия · работа с клиентами',
+    title: 'Менеджер по работе с текущими клиентами — удалённо',
+    lead: 'Ведёте базу текущих клиентов Sagi: продления, помощь с продуктом, партнёрства между клиентами и рост базы через рекомендации довольных клиентов. Работа из дома. Резюме не нужно — ответьте на несколько коротких вопросов.',
+    expLabel: 'Есть опыт работы с текущими клиентами / удержанием?',
+    expOptions: [
+      ['Есть опыт работы с текущими клиентами / удержанием', 'Да, есть опыт'],
+      ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
+      ['Это не мой профиль', 'Это не мой профиль'],
+    ],
+    showColdCallHint: false,
+    showAiComfort: true,
+  },
+};
+let currentVac = (qs.get('vac') === 'success') ? 'success_remote' : 'sales_remote';
+
+function renderExpChips(vacKey) {
+  const wrap = $('#expChips');
+  wrap.innerHTML = '';
+  VAC[vacKey].expOptions.forEach(([value, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.value = value; b.textContent = label;
+    b.addEventListener('click', () => {
+      wrap.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      b.classList.add('active');
+      chipState.expSales = value;
+    });
+    wrap.appendChild(b);
+  });
+}
+
+function applyVac(vacKey) {
+  currentVac = vacKey;
+  const v = VAC[vacKey];
+  $('#vacEyebrow').textContent = v.eyebrow;
+  $('#vacTitle').textContent = v.title;
+  $('#vacLead').textContent = v.lead;
+  $('#expLabel').innerHTML = v.expLabel + ' <span class="req">*</span>';
+  $('#coldCallHint').style.display = v.showColdCallHint ? 'block' : 'none';
+  $('#aiComfortField').style.display = v.showAiComfort ? 'block' : 'none';
+  chipState.expSales = ''; chipState.aiComfort = '';
+  renderExpChips(vacKey);
+  document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.classList.toggle('active', b.dataset.vac === vacKey));
+}
+document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.addEventListener('click', () => applyVac(b.dataset.vac)));
+
 // 2026-08-19, по указанию Sagi: вместо резюме — короткая структурированная анкета (те же
 // вопросы, что раньше задавались в переписке hh.kz/Telegram). Готовые варианты ответа (chips)
 // вместо свободного текста там, где это уместно — быстрее заполнять с телефона.
 const chipState = {};
 document.querySelectorAll('.chips').forEach(group => {
   const field = group.dataset.field;
+  if (field === 'expSales') return; // рендерится динамически в renderExpChips выше
   const otherInput = document.querySelector(`.chipOther[data-for="${field}"]`);
   group.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -242,9 +322,12 @@ function chipValue(field) {
   return v;
 }
 
+applyVac(currentVac);
+
 form.addEventListener('submit', async e => {
   e.preventDefault();
   err.style.display = 'none';
+  const needAiComfort = VAC[currentVac].showAiComfort;
   const payload = {
     name: $('#name').value.trim(),
     contact: $('#contact').value.trim(),
@@ -254,14 +337,15 @@ form.addEventListener('submit', async e => {
     expSales: chipValue('expSales'),
     techReady: chipValue('techReady'),
     noCombine: chipValue('noCombine'),
+    aiComfort: needAiComfort ? chipValue('aiComfort') : '',
     startWhen: $('#startWhen').value.trim(),
     comment: $('#comment').value.trim(),
     referrerName: $('#referrerName').value.trim(),
     referrerPhone: $('#referrerPhone').value.trim(),
-    vacancy: 'sales_remote',
+    vacancy: currentVac,
     refId: refId,
   };
-  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen) {
+  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort)) {
     err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
     err.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
