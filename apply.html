@@ -142,6 +142,30 @@
           <div class="chips" data-field="expSales" id="expChips"></div>
         </div>
 
+        <!-- 2026-08-24, вопросы для support_remote по конкретному списку от Sagi -->
+        <div class="field" id="cashIntegrationField" style="display:none">
+          <label>Есть ли у вас опыт интеграции программ с кассовыми системами (например: iiko, r-keeper, 1С, МойСклад и т.п.)? <span class="req">*</span></label>
+          <div class="chips" data-field="cashIntegration">
+            <button type="button" class="chip" data-value="Да, есть опыт интеграции с кассовыми системами">Да, есть опыт</button>
+            <button type="button" class="chip" data-value="Опыта нет">Опыта нет</button>
+          </div>
+          <input id="cashIntegrationDetail" style="margin-top:10px" maxlength="200" placeholder="Если да — с какими именно? (необязательно)" />
+        </div>
+
+        <div class="field" id="supportTicketsField" style="display:none">
+          <label>Если есть опыт в техподдержке — сколько заявок/обращений в среднем обрабатывали в день? <span class="opt">(необязательно)</span></label>
+          <input id="supportTicketsPerDay" maxlength="120" placeholder="Например: 20-30 в день" />
+        </div>
+
+        <div class="field" id="bitrixField" style="display:none">
+          <label>Умеете пользоваться CRM Битрикс24? Если да — на каком уровне? <span class="req">*</span></label>
+          <div class="chips" data-field="bitrix24">
+            <button type="button" class="chip" data-value="Свободно / уверенно пользуюсь Битрикс24">Свободно / уверенно</button>
+            <button type="button" class="chip" data-value="Базовый уровень">Базовый уровень</button>
+            <button type="button" class="chip" data-value="Не пользовался(лась) Битрикс24">Не пользовался(лась)</button>
+          </div>
+        </div>
+
         <div class="field" id="aiComfortField" style="display:none">
           <label>Насколько уверенно пользуетесь ИИ-инструментами (ChatGPT, Claude и т.п.) в работе? <span class="req">*</span></label>
           <div class="chips" data-field="aiComfort">
@@ -164,21 +188,26 @@
         </div>
 
         <div class="field">
-          <label>Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч? <span class="req">*</span></label>
-          <div class="chips" data-field="techReady">
-            <button type="button" class="chip" data-value="Да, есть компьютер и стабильный интернет">Да</button>
-            <button type="button" class="chip" data-value="Нет">Нет</button>
-          </div>
+          <label id="techReadyLabel">Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч? <span class="req">*</span></label>
+          <div class="chips" data-field="techReady" id="techReadyChips"></div>
         </div>
 
         <div class="field">
-          <label>Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать работе максимум времени и внимания? <span class="req">*</span></label>
+          <label id="noCombineLabel">Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать работе максимум времени и внимания? <span class="req">*</span></label>
           <div class="chips" data-field="noCombine">
             <button type="button" class="chip" data-value="Ничего из этого нет, это будет основная занятость">Ничего из этого нет, это будет основная занятость</button>
             <button type="button" class="chip" data-value="Есть, но готов(а) поставить это в приоритет и уделять достаточно времени">Есть, но готов(а) поставить это в приоритет</button>
             <button type="button" class="chip" data-value="Есть, и я не готов(а) менять приоритеты ради этого">Есть, и не готов(а) менять приоритеты</button>
           </div>
           <div class="hint">Отвечайте честно, это не повод для отказа само по себе — но работа требует реальной вовлечённости, лучше сразу понимать, подходит ли вам это по времени.</div>
+        </div>
+
+        <div class="field" id="productMgmtField" style="display:none">
+          <label>Есть опыт в Product Management? <span class="req">*</span></label>
+          <div class="chips" data-field="productManagement">
+            <button type="button" class="chip" data-value="Да, есть опыт в Product Management">Да, есть опыт</button>
+            <button type="button" class="chip" data-value="Нет">Нет</button>
+          </div>
         </div>
 
         <div class="hint" id="coldCallHint" style="background:rgba(25,227,154,.06);border:1px solid rgba(25,227,154,.25);border-radius:12px;padding:12px 14px;margin:-6px 0 18px;color:var(--text)">
@@ -251,9 +280,16 @@ const VAC = {
       ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
       ['Холодные звонки — не моё', 'Холодные звонки — не моё'],
     ],
+    techReadyLabel: 'Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч?',
+    techReadyOptions: [
+      ['Да, есть компьютер и стабильный интернет', 'Да'],
+      ['Нет', 'Нет'],
+    ],
+    noCombineLabel: 'Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать работе максимум времени и внимания?',
     showColdCallHint: true,
     showAiComfort: false,
     showKazakh: false,
+    showSupportExtra: false,
   },
   success_remote: {
     eyebrow: 'Вакансия · работа с клиентами',
@@ -265,45 +301,64 @@ const VAC = {
       ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
       ['Это не мой профиль', 'Это не мой профиль'],
     ],
+    techReadyLabel: 'Есть компьютер/ноутбук и стабильный интернет для звонков и видео-встреч?',
+    techReadyOptions: [
+      ['Да, есть компьютер и стабильный интернет', 'Да'],
+      ['Нет', 'Нет'],
+    ],
+    noCombineLabel: 'Чем сейчас занимаетесь помимо этого — работа, учёба, свои проекты, уход за ребёнком и т.п.? Готовы отдавать работе максимум времени и внимания?',
     showColdCallHint: false,
     showAiComfort: true,
     showKazakh: true,
+    showSupportExtra: false,
   },
   // 2026-08-23, по указанию Sagi: третья вакансия на той же ссылке — техподдержка. Та же философия,
   // что и у продаж («так же, как первая вакансия») — invited=true всегда, без ИИ-гейта по проценту
   // (в отличие от success_remote, см. api/apply.js).
+  // 2026-08-24, по указанию Sagi: заменил общий вопросник на конкретный список вопросов для
+  // техподдержки, который он прислал (кассовые интеграции, объём заявок, Битрикс24, совмещение,
+  // ноутбук, Product Management, готовность приступить) — см. showSupportExtra ниже.
   support_remote: {
     eyebrow: 'Вакансия · техподдержка',
     title: 'Специалист технической поддержки — удалённо',
     lead: 'Первый месяц — 150 000 ₸ оклад + KPI, со второго месяца — 200 000 ₸ оклад + KPI. Первая линия поддержки клиентов Sagi: отвечаете на вопросы в WhatsApp/чате, разбираете типовые технические проблемы, проводите интеграцию клиентам, эскалируете сложное разработчикам. Работа из дома. Резюме не нужно — ответьте на несколько коротких вопросов.',
-    expLabel: 'Есть опыт в техподдержке / клиентском сервисе?',
+    expLabel: 'Имеется ли у вас опыт работы в техподдержке?',
     expOptions: [
       ['Есть опыт в техподдержке / клиентском сервисе', 'Да, есть опыт'],
       ['Опыта нет, но готов(а) учиться', 'Опыта нет, готов(а) учиться'],
       ['Это не мой профиль', 'Это не мой профиль'],
     ],
+    techReadyLabel: 'Есть ли у вас ноутбук?',
+    techReadyOptions: [
+      ['Да, есть ноутбук', 'Да'],
+      ['Нет', 'Нет'],
+    ],
+    noCombineLabel: 'Не собираетесь совмещать с другой работой или учёбой?',
     showColdCallHint: false,
-    showAiComfort: true,
+    showAiComfort: false,
     showKazakh: false,
+    showSupportExtra: true,
   },
 };
 let currentVac = (qs.get('vac') === 'success') ? 'success_remote'
   : (qs.get('vac') === 'support') ? 'support_remote' : 'sales_remote';
 
-function renderExpChips(vacKey) {
-  const wrap = $('#expChips');
+function renderChipGroup(wrapSelector, options, field) {
+  const wrap = $(wrapSelector);
   wrap.innerHTML = '';
-  VAC[vacKey].expOptions.forEach(([value, label]) => {
+  options.forEach(([value, label]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'chip'; b.dataset.value = value; b.textContent = label;
     b.addEventListener('click', () => {
       wrap.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
       b.classList.add('active');
-      chipState.expSales = value;
+      chipState[field] = value;
     });
     wrap.appendChild(b);
   });
 }
+function renderExpChips(vacKey) { renderChipGroup('#expChips', VAC[vacKey].expOptions, 'expSales'); }
+function renderTechChips(vacKey) { renderChipGroup('#techReadyChips', VAC[vacKey].techReadyOptions, 'techReady'); }
 
 function applyVac(vacKey) {
   currentVac = vacKey;
@@ -312,11 +367,19 @@ function applyVac(vacKey) {
   $('#vacTitle').textContent = v.title;
   $('#vacLead').textContent = v.lead;
   $('#expLabel').innerHTML = v.expLabel + ' <span class="req">*</span>';
+  $('#techReadyLabel').innerHTML = v.techReadyLabel + ' <span class="req">*</span>';
+  $('#noCombineLabel').innerHTML = v.noCombineLabel + ' <span class="req">*</span>';
   $('#coldCallHint').style.display = v.showColdCallHint ? 'block' : 'none';
   $('#aiComfortField').style.display = v.showAiComfort ? 'block' : 'none';
   $('#kazakhField').style.display = v.showKazakh ? 'block' : 'none';
+  ['cashIntegrationField', 'supportTicketsField', 'bitrixField', 'productMgmtField'].forEach(id => {
+    $('#' + id).style.display = v.showSupportExtra ? 'block' : 'none';
+  });
   chipState.expSales = ''; chipState.aiComfort = ''; chipState.kazakh = '';
+  chipState.techReady = ''; chipState.cashIntegration = ''; chipState.bitrix24 = ''; chipState.productManagement = '';
+  $('#cashIntegrationDetail').value = ''; $('#supportTicketsPerDay').value = '';
   renderExpChips(vacKey);
+  renderTechChips(vacKey);
   document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.classList.toggle('active', b.dataset.vac === vacKey));
 }
 document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.addEventListener('click', () => applyVac(b.dataset.vac)));
@@ -327,7 +390,7 @@ document.querySelectorAll('#vacPick .vacBtn').forEach(b => b.addEventListener('c
 const chipState = {};
 document.querySelectorAll('.chips').forEach(group => {
   const field = group.dataset.field;
-  if (field === 'expSales') return; // рендерится динамически в renderExpChips выше
+  if (field === 'expSales' || field === 'techReady') return; // рендерятся динамически выше
   const otherInput = document.querySelector(`.chipOther[data-for="${field}"]`);
   group.querySelectorAll('.chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -363,6 +426,7 @@ form.addEventListener('submit', async e => {
   err.style.display = 'none';
   const needAiComfort = VAC[currentVac].showAiComfort;
   const needKazakh = VAC[currentVac].showKazakh;
+  const needSupportExtra = VAC[currentVac].showSupportExtra;
   const payload = {
     name: $('#name').value.trim(),
     contact: $('#contact').value.trim(),
@@ -374,6 +438,11 @@ form.addEventListener('submit', async e => {
     noCombine: chipValue('noCombine'),
     aiComfort: needAiComfort ? chipValue('aiComfort') : '',
     kazakh: needKazakh ? chipValue('kazakh') : '',
+    cashIntegration: needSupportExtra ? chipValue('cashIntegration') : '',
+    cashIntegrationDetail: needSupportExtra ? $('#cashIntegrationDetail').value.trim() : '',
+    supportTicketsPerDay: needSupportExtra ? $('#supportTicketsPerDay').value.trim() : '',
+    bitrix24: needSupportExtra ? chipValue('bitrix24') : '',
+    productManagement: needSupportExtra ? chipValue('productManagement') : '',
     startWhen: $('#startWhen').value.trim(),
     comment: $('#comment').value.trim(),
     referrerName: $('#referrerName').value.trim(),
@@ -381,7 +450,7 @@ form.addEventListener('submit', async e => {
     vacancy: currentVac,
     refId: refId,
   };
-  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh)) {
+  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh) || (needSupportExtra && (!payload.cashIntegration || !payload.bitrix24 || !payload.productManagement))) {
     err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
     err.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
