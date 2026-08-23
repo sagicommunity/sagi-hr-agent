@@ -31,6 +31,12 @@
   @media(max-width:760px){header{flex-wrap:wrap}.nav{order:3;width:100%;overflow-x:auto}}
   .wrap{max-width:1080px;margin:0 auto;padding:22px}
 
+  /* 2026-08-24: встраивается в дашборд руководителя (index.html) через iframe ?embed=1 — прячем
+     header и убираем внешние отступы, чтобы не было двойной шапки (как pipeline.html/checklist.html). */
+  html.embedded body{background:transparent}
+  html.embedded header{display:none}
+  html.embedded .wrap{padding:0}
+
   .gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(5,7,10,.75);backdrop-filter:blur(6px);z-index:50}
   .gate .box{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:20px;padding:26px;width:min(92vw,400px);box-shadow:0 30px 80px rgba(0,0,0,.6)}
   .gate h2{font-family:var(--display);font-size:19px;margin:0 0 6px}
@@ -146,6 +152,21 @@
 
 <script>
 const $=s=>document.querySelector(s);
+
+// 2026-08-24: если открыты внутри iframe дашборда руководителя (index.html, ?embed=1) — прячем
+// header (там уже своя навигация) и сообщаем родителю высоту, чтобы iframe не давал двойной скролл
+// (тот же приём, что в pipeline.html/checklist.html/analytics.html).
+(function(){
+  if(new URLSearchParams(location.search).get('embed')!=='1') return;
+  document.documentElement.classList.add('embedded');
+  function postHeight(){
+    try{ parent.postMessage({type:'sagiFrameHeight', id:'onboarding', height:document.documentElement.scrollHeight}, '*'); }catch(e){}
+  }
+  window.addEventListener('load', postHeight);
+  if(window.ResizeObserver) new ResizeObserver(postHeight).observe(document.body);
+  setInterval(postHeight, 1200);
+})();
+
 const PASS_KEY='sagiHR_onboardingPass';
 let PASS=localStorage.getItem(PASS_KEY)||'', DATA=[], ITEMS_BY_ROLE={}, ROLE_LABELS={};
 
