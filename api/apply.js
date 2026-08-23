@@ -129,6 +129,10 @@ function buildSupportScreenPrompt() {
 
 Опыт интеграции с кассовыми системами (iiko, r-keeper, 1С, МойСклад и т.п.), уровень CRM Битрикс24 и опыт в Product Management — это ПЛЮСЫ, не обязательные требования: их отсутствие НЕ повод для отказа, просто учитывай при оценке (сильнее кандидат — выше score, но verdict «Отказ» ставь только за реальные красные флаги ниже).
 
+Готовность к гибкому графику (вечера/выходные) — просто информация для нас, НЕ повод для отказа в любую сторону (мы ещё не решили, нужен ли гибкий график для этой роли) — упомяни в summary, если кандидат явно ограничен только стандартным графиком, но не снижай verdict из-за этого.
+
+Грамотность письменной речи — учитывай при оценке (общение с клиентами в основном перепиской), явно слабая самооценка — не сама по себе повод для «Отказ», но упомяни в summary как момент, который стоит проверить на практике.
+
 Реальные красные флаги, из-за которых можно поставить «Отказ»:
 - кандидат прямо говорит, что общение с клиентами / разбор их проблем — не его(её);
 - явно нет ноутбука — обязательное условие для полностью удалённой работы;
@@ -221,11 +225,16 @@ export default async function handler(req, res) {
     const supportTicketsPerDay = (body?.supportTicketsPerDay || '').toString().slice(0, 120).trim();
     const bitrix24 = (body?.bitrix24 || '').toString().slice(0, 200).trim();
     const productManagement = (body?.productManagement || '').toString().slice(0, 200).trim();
+    // 2026-08-24, добавлено по указанию Sagi: график (готовность к вечерам/выходным, если
+    // потребуется) и самооценка грамотности письменной речи (общение с клиентами в основном
+    // перепиской в WhatsApp/чате) — тоже только для support_remote.
+    const workSchedule = (body?.workSchedule || '').toString().slice(0, 200).trim();
+    const literacy = (body?.literacy || '').toString().slice(0, 200).trim();
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
     const needAiComfort = isSuccess || isSupport;
     const needSupportExtra = isSupport;
-    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement))) {
+    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement || !workSchedule || !literacy))) {
       res.status(400).json({ error: 'Заполните, пожалуйста, все обязательные поля анкеты.' }); return;
     }
 
@@ -245,7 +254,11 @@ export default async function handler(req, res) {
     }
     answers.push({ q: techReadyQLabel, a: techReady });
     answers.push({ q: 'Чем занят помимо работы и готов(а) ли поставить работу в приоритет', a: noCombine });
-    if (isSupport) answers.push({ q: 'Опыт в Product Management', a: productManagement });
+    if (isSupport) {
+      answers.push({ q: 'Опыт в Product Management', a: productManagement });
+      answers.push({ q: 'Готовность к гибкому графику (вечера/выходные)', a: workSchedule });
+      answers.push({ q: 'Самооценка грамотности письменной речи', a: literacy });
+    }
     answers.push({ q: 'Когда готов(а) приступить', a: startWhen });
     if (isSuccess) answers.push({ q: 'Уровень казахского языка', a: kazakh });
     if (needAiComfort) answers.push({ q: 'Комфорт с ИИ-инструментами (ChatGPT/Claude) в работе', a: aiComfort });
@@ -258,7 +271,7 @@ export default async function handler(req, res) {
       const userContent = isSuccess
         ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт работы с текущими клиентами/удержанием: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Уровень казахского языка: ${kazakh}\n5) Комфорт с ИИ-инструментами: ${aiComfort}\n6) Когда готов(а) приступить: ${startWhen}\n7) Комментарий кандидата: ${comment || '—'}`
         : isSupport
-        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт интеграции с кассовыми системами: ${cashIntegration}${cashIntegrationDetail ? ` (${cashIntegrationDetail})` : ''}\n2) Опыт в техподдержке/клиентском сервисе: ${expSales}${supportTicketsPerDay ? `; заявок в день: ${supportTicketsPerDay}` : ''}\n3) Уровень владения CRM Битрикс24: ${bitrix24}\n4) Комфорт с ИИ-инструментами: ${aiComfort}\n5) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n6) Есть ли ноутбук: ${techReady}\n7) Опыт в Product Management: ${productManagement}\n8) Когда готов(а) приступить: ${startWhen}\n9) Комментарий кандидата: ${comment || '—'}`
+        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт интеграции с кассовыми системами: ${cashIntegration}${cashIntegrationDetail ? ` (${cashIntegrationDetail})` : ''}\n2) Опыт в техподдержке/клиентском сервисе: ${expSales}${supportTicketsPerDay ? `; заявок в день: ${supportTicketsPerDay}` : ''}\n3) Уровень владения CRM Битрикс24: ${bitrix24}\n4) Комфорт с ИИ-инструментами: ${aiComfort}\n5) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n6) Есть ли ноутбук: ${techReady}\n7) Опыт в Product Management: ${productManagement}\n8) Готовность к гибкому графику (вечера/выходные): ${workSchedule}\n9) Самооценка грамотности письменной речи: ${literacy}\n10) Когда готов(а) приступить: ${startWhen}\n11) Комментарий кандидата: ${comment || '—'}`
         : `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в продажах/холодных звонках: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить обучение в приоритет: ${noCombine}\n4) Когда готов(а) приступить: ${startWhen}\n5) Комментарий кандидата: ${comment || '—'}`;
       const ar = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
