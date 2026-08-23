@@ -166,6 +166,27 @@
           </div>
         </div>
 
+        <!-- 2026-08-24, по указанию Sagi: два дополнительных вопроса для support_remote — график
+             работы (часть общения с клиентами может требовать вечера/выходные) и грамотность
+             письменной речи (общение с клиентами в основном текстом в WhatsApp/чате). -->
+        <div class="field" id="workScheduleField" style="display:none">
+          <label>Готовы работать по гибкому графику (иногда вечера или выходные, если потребуется)? <span class="req">*</span></label>
+          <div class="chips" data-field="workSchedule">
+            <button type="button" class="chip" data-value="Да, готов(а) к гибкому графику">Да, готов(а)</button>
+            <button type="button" class="chip" data-value="Готов(а) частично, не всегда">Частично, не всегда</button>
+            <button type="button" class="chip" data-value="Нет, только стандартный график Пн-Пт">Нет, только Пн-Пт</button>
+          </div>
+        </div>
+
+        <div class="field" id="literacyField" style="display:none">
+          <label>Как оцениваете свою грамотность в письменном русском языке? Общение с клиентами в основном идёт перепиской <span class="req">*</span></label>
+          <div class="chips" data-field="literacy">
+            <button type="button" class="chip" data-value="Отлично, пишу грамотно">Отлично, пишу грамотно</button>
+            <button type="button" class="chip" data-value="Нормально, могут быть небольшие ошибки">Нормально, бывают мелкие ошибки</button>
+            <button type="button" class="chip" data-value="Слабо">Слабо</button>
+          </div>
+        </div>
+
         <div class="field" id="aiComfortField" style="display:none">
           <label>Насколько уверенно пользуетесь ИИ-инструментами (ChatGPT, Claude и т.п.) в работе? <span class="req">*</span></label>
           <div class="chips" data-field="aiComfort">
@@ -372,11 +393,12 @@ function applyVac(vacKey) {
   $('#coldCallHint').style.display = v.showColdCallHint ? 'block' : 'none';
   $('#aiComfortField').style.display = v.showAiComfort ? 'block' : 'none';
   $('#kazakhField').style.display = v.showKazakh ? 'block' : 'none';
-  ['cashIntegrationField', 'supportTicketsField', 'bitrixField', 'productMgmtField'].forEach(id => {
+  ['cashIntegrationField', 'supportTicketsField', 'bitrixField', 'productMgmtField', 'workScheduleField', 'literacyField'].forEach(id => {
     $('#' + id).style.display = v.showSupportExtra ? 'block' : 'none';
   });
   chipState.expSales = ''; chipState.aiComfort = ''; chipState.kazakh = '';
   chipState.techReady = ''; chipState.cashIntegration = ''; chipState.bitrix24 = ''; chipState.productManagement = '';
+  chipState.workSchedule = ''; chipState.literacy = '';
   $('#cashIntegrationDetail').value = ''; $('#supportTicketsPerDay').value = '';
   renderExpChips(vacKey);
   renderTechChips(vacKey);
@@ -443,6 +465,8 @@ form.addEventListener('submit', async e => {
     supportTicketsPerDay: needSupportExtra ? $('#supportTicketsPerDay').value.trim() : '',
     bitrix24: needSupportExtra ? chipValue('bitrix24') : '',
     productManagement: needSupportExtra ? chipValue('productManagement') : '',
+    workSchedule: needSupportExtra ? chipValue('workSchedule') : '',
+    literacy: needSupportExtra ? chipValue('literacy') : '',
     startWhen: $('#startWhen').value.trim(),
     comment: $('#comment').value.trim(),
     referrerName: $('#referrerName').value.trim(),
@@ -450,7 +474,7 @@ form.addEventListener('submit', async e => {
     vacancy: currentVac,
     refId: refId,
   };
-  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh) || (needSupportExtra && (!payload.cashIntegration || !payload.bitrix24 || !payload.productManagement))) {
+  if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh) || (needSupportExtra && (!payload.cashIntegration || !payload.bitrix24 || !payload.productManagement || !payload.workSchedule || !payload.literacy))) {
     err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
     err.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
