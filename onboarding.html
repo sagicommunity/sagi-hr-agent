@@ -74,6 +74,25 @@
   .item input[type=checkbox]:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   .item label{flex:1;font-size:14.5px;line-height:1.5;cursor:pointer}
   .item.checked label{color:var(--faint);text-decoration:line-through;text-decoration-color:var(--line-2)}
+  .itemBody{flex:1}
+
+  .res{margin-top:2px}
+  .res summary{list-style:none;cursor:pointer;color:var(--brand);font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px;padding:2px 0}
+  .res summary::-webkit-details-marker{display:none}
+  .res summary::before{content:'▸';font-size:10px;transition:.12s}
+  .res[open] summary::before{content:'▾'}
+  .resList{margin:8px 0 2px;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+  .resItem{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .resItem a{font-size:13.5px;font-weight:600}
+  .resItem a:hover{text-decoration:underline}
+  .resTag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:999px;white-space:nowrap}
+  .resTag.first{color:var(--brand);background:rgba(25,227,154,.12);border:1px solid rgba(25,227,154,.35)}
+  .resTag.next{color:var(--warn);background:rgba(255,207,102,.1);border:1px solid rgba(255,207,102,.3)}
+  .resTag.opt{color:var(--muted);background:var(--panel);border:1px solid var(--line)}
+
+  .tipNote{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin:0 0 22px;font-size:13px;line-height:1.6;color:var(--muted)}
+  .tipNote b{color:var(--text)}
+  .tipNote .ic{flex:none;font-size:16px;line-height:1.4}
 
   .doneBanner{border:1px solid rgba(25,227,154,.5);background:rgba(25,227,154,.1);border-radius:16px;padding:18px 20px;margin:24px 0;display:none}
   .doneBanner.show{display:block}
@@ -145,6 +164,13 @@
       <div class="s">Все пункты чек-листа отмечены — Sagi уже получил уведомление, что вы готовы к работе.</div>
     </div>
 
+    <div class="tipNote">
+      <div class="ic">💡</div>
+      <div>
+        <b>Как проходить:</b> идите по списку сверху вниз, сначала «Общее для всех», потом — раздел своей роли. У некоторых пунктов есть видео-материалы — нажмите «Материалы», чтобы развернуть список. Смотрите видео с пометкой «сначала» в первую очередь, остальное можно позже, в удобном порядке. Если что-то не работает или есть вопросы — пишите в WhatsApp: <a href="https://wa.me/77077000087" target="_blank" rel="noopener">+7 707 700 0087</a>.
+      </div>
+    </div>
+
     <div id="groups"></div>
   </div>
 
@@ -200,6 +226,25 @@ const ITEMS = {
 };
 const ROLE_LABEL = { sales:'Менеджер по продажам', success:'Работа с текущими клиентами', support:'Техподдержка' };
 const GROUP_LABEL = { common:'Общее для всех', sales:'Продажи', success:'Работа с клиентами', support:'Техподдержка' };
+
+// 2026-08-24, по указанию Sagi: материалы, которые раньше рассылались новичкам одним большим
+// списком (утомительно), теперь разложены по конкретным пунктам чек-листа — открываются по клику,
+// не загромождают список по умолчанию. tag: 'first' — смотреть в первую очередь, 'next' — после
+// того как освоились, 'opt' — по желанию/когда пригодится.
+const RESOURCES = {
+  sales3: [
+    { label:'Sagi — обучение о продукте', url:'https://youtu.be/Sum2NJLNPSA', tag:'first', tagText:'сначала' },
+    { label:'Где брать клиентов и разбор скрипта', url:'https://drive.google.com/file/d/11g978xc_cmCCQxuOdix6QfJGBEOVGTmD/view', tag:'first', tagText:'сначала' },
+    { label:'Система продаж (3 день стажировки)', url:'https://drive.google.com/file/d/1hybEb95149fNcR-aFiWnkRpPX-aoW0nU/view', tag:'next', tagText:'потом' },
+    { label:'Вебинар для партнёров Sagi', url:'https://youtu.be/1JEZR37aLuE', tag:'opt', tagText:'по желанию' },
+  ],
+  sales6: [
+    { label:'Пример реальной встречи в Zoom с клиентом', url:'https://drive.google.com/file/d/1PpfYfGxJ-JqI09raKZ_pe3Dzqe6S6ncO/view', tag:'next', tagText:'потом' },
+  ],
+  support3: [
+    { label:'Sagi — обучение о продукте', url:'https://youtu.be/Sum2NJLNPSA', tag:'first', tagText:'сначала' },
+  ],
+};
 
 function itemsForRole(role){ return ITEMS.common.concat(ITEMS[role]||[]); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -271,7 +316,14 @@ function renderGroups(){
       const checked = !!(RECORD.checked && RECORD.checked[key]);
       const row=document.createElement('div');
       row.className='item'+(checked?' checked':'');
-      row.innerHTML = '<input type="checkbox" id="it_'+key+'" '+(checked?'checked':'')+' /><label for="it_'+key+'">'+esc(text)+'</label>';
+      const res = RESOURCES[key];
+      let resHtml = '';
+      if(res && res.length){
+        resHtml = '<details class="res"><summary>Материалы ('+res.length+')</summary><ul class="resList">' +
+          res.map(r=>'<li class="resItem"><a href="'+esc(r.url)+'" target="_blank" rel="noopener">🎥 '+esc(r.label)+'</a><span class="resTag '+r.tag+'">'+esc(r.tagText)+'</span></li>').join('') +
+          '</ul></details>';
+      }
+      row.innerHTML = '<input type="checkbox" id="it_'+key+'" '+(checked?'checked':'')+' /><div class="itemBody"><label for="it_'+key+'">'+esc(text)+'</label>'+resHtml+'</div>';
       wrap.appendChild(row);
     }
     box.appendChild(wrap);
