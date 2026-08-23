@@ -118,8 +118,10 @@ function buildSuccessScreenPrompt() {
 // как у продаж, а не решающий фактор.
 // 2026-08-24, по указанию Sagi: конкретный список вопросов для техподдержки (кассовые интеграции,
 // объём заявок в день, CRM Битрикс24, совмещение с другой работой/учёбой, наличие ноутбука, опыт
-// в Product Management, готовность приступить) — заменил общий вопросник. Комфорт с ИИ-инструментами
-// больше НЕ отдельный обязательный вопрос для этой роли (убран по этому же указанию).
+// в Product Management, готовность приступить) — заменил общий вопросник.
+// 2026-08-24, уточнение Sagi в тот же день: вопрос про комфорт с ИИ-инструментами вернули обратно
+// (сначала убрал по ошибке при замене вопросника) — эта роль реально требует ИИ-инструменты в
+// повседневной работе (диагностика, черновики ответов), поэтому это снова часть анкеты и красный флаг.
 function buildSupportScreenPrompt() {
   return `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, sagi.kz). Оцениваешь кандидата на позицию специалиста технической поддержки, работающего ПОЛНОСТЬЮ УДАЛЁННО: отвечает клиентам в WhatsApp/чате, разбирает типовые технические проблемы (вход в аккаунт, начисление/списание бонусов, интеграции), проводит интеграцию клиентам, эскалирует сложное разработчикам.
 
@@ -130,6 +132,7 @@ function buildSupportScreenPrompt() {
 Реальные красные флаги, из-за которых можно поставить «Отказ»:
 - кандидат прямо говорит, что общение с клиентами / разбор их проблем — не его(её);
 - явно нет ноутбука — обязательное условие для полностью удалённой работы;
+- полное отсутствие готовности пользоваться ИИ-инструментами в повседневной работе — для этой роли это рабочий инструмент, не опция;
 - на вопрос про совмещение прямо говорит, что не готов(а) менять приоритеты ради этой работы;
 - явная грубость, неадекватность или полное отсутствие мотивации в комментарии.
 
@@ -203,9 +206,9 @@ export default async function handler(req, res) {
     const isSuccess = vacancy === 'success_remote';
     const isSupport = vacancy === 'support_remote';
     const vacTitle = VAC_TITLES[vacancy];
-    // Комфорт с ИИ-инструментами — вопрос ТОЛЬКО для success_remote (см. apply.html: showAiComfort).
-    // 2026-08-24, по указанию Sagi: для support_remote этот вопрос убран — заменён конкретным
-    // списком вопросов (кассовые интеграции, Битрикс24, Product Management и т.д., см. ниже).
+    // Комфорт с ИИ-инструментами — вопрос для success_remote И support_remote (см. apply.html:
+    // showAiComfort). 2026-08-24: для support_remote вопрос ненадолго убирали, потом Sagi в тот же
+    // день попросил вернуть — эта роль реально требует ИИ-инструменты в повседневной работе.
     // Уровень казахского — вопрос ТОЛЬКО для success_remote (см. apply.html: showKazakh), добавлен
     // 2026-08-23 по правке Асемгуль (COO): для этой роли это реальное требование, а не «плюс».
     const aiComfort = (body?.aiComfort || '').toString().slice(0, 200).trim();
@@ -220,7 +223,7 @@ export default async function handler(req, res) {
     const productManagement = (body?.productManagement || '').toString().slice(0, 200).trim();
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
-    const needAiComfort = isSuccess;
+    const needAiComfort = isSuccess || isSupport;
     const needSupportExtra = isSupport;
     if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement))) {
       res.status(400).json({ error: 'Заполните, пожалуйста, все обязательные поля анкеты.' }); return;
@@ -255,7 +258,7 @@ export default async function handler(req, res) {
       const userContent = isSuccess
         ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт работы с текущими клиентами/удержанием: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Уровень казахского языка: ${kazakh}\n5) Комфорт с ИИ-инструментами: ${aiComfort}\n6) Когда готов(а) приступить: ${startWhen}\n7) Комментарий кандидата: ${comment || '—'}`
         : isSupport
-        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт интеграции с кассовыми системами: ${cashIntegration}${cashIntegrationDetail ? ` (${cashIntegrationDetail})` : ''}\n2) Опыт в техподдержке/клиентском сервисе: ${expSales}${supportTicketsPerDay ? `; заявок в день: ${supportTicketsPerDay}` : ''}\n3) Уровень владения CRM Битрикс24: ${bitrix24}\n4) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n5) Есть ли ноутбук: ${techReady}\n6) Опыт в Product Management: ${productManagement}\n7) Когда готов(а) приступить: ${startWhen}\n8) Комментарий кандидата: ${comment || '—'}`
+        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт интеграции с кассовыми системами: ${cashIntegration}${cashIntegrationDetail ? ` (${cashIntegrationDetail})` : ''}\n2) Опыт в техподдержке/клиентском сервисе: ${expSales}${supportTicketsPerDay ? `; заявок в день: ${supportTicketsPerDay}` : ''}\n3) Уровень владения CRM Битрикс24: ${bitrix24}\n4) Комфорт с ИИ-инструментами: ${aiComfort}\n5) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n6) Есть ли ноутбук: ${techReady}\n7) Опыт в Product Management: ${productManagement}\n8) Когда готов(а) приступить: ${startWhen}\n9) Комментарий кандидата: ${comment || '—'}`
         : `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в продажах/холодных звонках: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить обучение в приоритет: ${noCombine}\n4) Когда готов(а) приступить: ${startWhen}\n5) Комментарий кандидата: ${comment || '—'}`;
       const ar = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
