@@ -78,6 +78,7 @@ const VAC_TITLES = {
   sales: 'Менеджер по продажам',
   sales_remote: 'Менеджер по продажам, удалённо',
   success_remote: 'Менеджер по работе с текущими клиентами, удалённо',
+  support_remote: 'Специалист технической поддержки, удалённо',
 };
 
 // 2026-08-23, по указанию Sagi: вторая вакансия на той же ссылке (apply.html?vac=success) —
@@ -107,6 +108,30 @@ function buildSuccessScreenPrompt() {
 
 Верни ТОЛЬКО валидный JSON, без markdown и пояснений:
 {"matchPercent": <число 0-100>, "score": <число 0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения по сути, включая по какому пункту(-ам) недобор, если есть>", "strengths": ["<сильная сторона>", ...], "flags": ["<красный флаг>", ...]}`;
+}
+
+// 2026-08-23, по указанию Sagi: третья вакансия на той же ссылке (apply.html?vac=support) —
+// техподдержка клиентов Sagi (отвечает на вопросы в WhatsApp/чате, разбирает типовые технические
+// проблемы, проводит интеграцию клиентам, эскалирует сложное разработчикам). Sagi явно сказал
+// сделать «так же, как первая вакансия» (продажи) — то есть БЕЗ гейта по проценту, как у
+// success_remote: invited=true для всех (см. handler ниже), эта оценка — только справка в Telegram,
+// как у продаж, а не решающий фактор.
+function buildSupportScreenPrompt() {
+  return `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, sagi.kz). Оцениваешь кандидата на позицию специалиста технической поддержки, работающего ПОЛНОСТЬЮ УДАЛЁННО: отвечает клиентам в WhatsApp/чате, разбирает типовые технические проблемы (вход в аккаунт, начисление/списание бонусов, интеграции), проводит интеграцию клиентам, эскалирует сложное разработчикам.
+
+ВАЖНО: это стартовая позиция, это НЕ холодные продажи и НЕ работа на удержание/рост базы — кандидат реагирует на входящие обращения клиентов. Резюме не запрашиваем — оценивай СТРОГО по структурированным ответам анкеты ниже, не додумывай. Отсутствие опыта именно в техподдержке — НЕ повод для отказа, это нормально для новичка.
+
+Реальные красные флаги, из-за которых можно поставить «Отказ»:
+- кандидат прямо говорит, что общение с клиентами / разбор их проблем — не его(её);
+- явно нет компьютера/ноутбука или стабильного интернета — обязательное условие для полностью удалённой работы;
+- полное отсутствие готовности пользоваться ИИ-инструментами в повседневной работе — для этой роли это рабочий инструмент, не опция;
+- на вопрос про совмещение прямо говорит, что не готов(а) менять приоритеты ради этой работы;
+- явная грубость, неадекватность или полное отсутствие мотивации в комментарии.
+
+Во всех остальных случаях ставь «Брать на интервью» или «Резерв» (используй «Резерв» при неоднозначных сигналах, не спеши сразу на «Отказ»).
+
+Верни ТОЛЬКО валидный JSON, без markdown и пояснений:
+{"score": <число 0-10>, "verdict": "Брать на интервью" | "Резерв" | "Отказ", "summary": "<2-3 предложения по сути>", "strengths": ["<сильная сторона>", ...], "flags": ["<красный флаг>", ...]}`;
 }
 
 // Уведомление в Telegram по КАЖДОЙ заявке через форму (2026-08-17: единая политика с hh.kz и
@@ -164,35 +189,41 @@ export default async function handler(req, res) {
     // в первый месяц — это считает api/pipeline.js (computeReferralStatus) и вручную отмечает Sagi.
     const referrerName = (body?.referrerName || '').toString().slice(0, 80).trim();
     const referrerPhone = (body?.referrerPhone || '').toString().slice(0, 60).trim();
-    // 2026-08-23: добавлена вторая вакансия (success_remote) на той же ссылке apply.html.
+    // 2026-08-23: добавлены вторая (success_remote) и третья (support_remote) вакансии на той же
+    // ссылке apply.html.
     const vacancy = (body?.vacancy === 'sales_remote') ? 'sales_remote'
-      : (body?.vacancy === 'success_remote') ? 'success_remote' : 'sales';
-    const isRemote = vacancy === 'sales_remote' || vacancy === 'success_remote';
+      : (body?.vacancy === 'success_remote') ? 'success_remote'
+      : (body?.vacancy === 'support_remote') ? 'support_remote' : 'sales';
+    const isRemote = vacancy !== 'sales';
     const isSuccess = vacancy === 'success_remote';
+    const isSupport = vacancy === 'support_remote';
     const vacTitle = VAC_TITLES[vacancy];
-    // Комфорт с ИИ-инструментами и уровень казахского — вопросы только для success_remote (см.
-    // apply.html: showAiComfort/showKazakh). Казахский добавлен 2026-08-23 по правке Асемгуль (COO):
-    // для этой роли это реальное требование («разговорный казахский»), а не «плюс», как для продаж.
+    // Комфорт с ИИ-инструментами — вопрос для success_remote И support_remote (обе роли требуют
+    // уверенного пользования ИИ-инструментами в повседневной работе, см. apply.html: showAiComfort).
+    // Уровень казахского — вопрос ТОЛЬКО для success_remote (см. apply.html: showKazakh), добавлен
+    // 2026-08-23 по правке Асемгуль (COO): для этой роли это реальное требование, а не «плюс».
     const aiComfort = (body?.aiComfort || '').toString().slice(0, 200).trim();
     const kazakh = (body?.kazakh || '').toString().slice(0, 200).trim();
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
-    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (isSuccess && (!aiComfort || !kazakh))) {
+    const needAiComfort = isSuccess || isSupport;
+    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh)) {
       res.status(400).json({ error: 'Заполните, пожалуйста, все обязательные поля анкеты.' }); return;
     }
 
+    const expQLabel = isSuccess ? 'Опыт работы с текущими клиентами / удержанием'
+      : isSupport ? 'Опыт в техподдержке / клиентском сервисе'
+      : 'Опыт в продажах / холодных звонках';
     const answers = [
       { q: 'Город', a: city },
       { q: 'Откуда узнали о вакансии', a: source },
-      { q: isSuccess ? 'Опыт работы с текущими клиентами / удержанием' : 'Опыт в продажах / холодных звонках', a: expSales },
+      { q: expQLabel, a: expSales },
       { q: 'Компьютер и стабильный интернет', a: techReady },
       { q: 'Чем занят помимо работы и готов(а) ли поставить работу в приоритет', a: noCombine },
       { q: 'Когда готов(а) приступить', a: startWhen },
     ];
-    if (isSuccess) {
-      answers.push({ q: 'Уровень казахского языка', a: kazakh });
-      answers.push({ q: 'Комфорт с ИИ-инструментами (ChatGPT/Claude) в работе', a: aiComfort });
-    }
+    if (isSuccess) answers.push({ q: 'Уровень казахского языка', a: kazakh });
+    if (needAiComfort) answers.push({ q: 'Комфорт с ИИ-инструментами (ChatGPT/Claude) в работе', a: aiComfort });
     if (comment) answers.push({ q: 'Комментарий кандидата', a: comment });
 
     // matchPercent используется только для success_remote (гейт от Асемгуль, см. buildSuccessScreenPrompt);
@@ -201,12 +232,15 @@ export default async function handler(req, res) {
     try {
       const userContent = isSuccess
         ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт работы с текущими клиентами/удержанием: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Уровень казахского языка: ${kazakh}\n5) Комфорт с ИИ-инструментами: ${aiComfort}\n6) Когда готов(а) приступить: ${startWhen}\n7) Комментарий кандидата: ${comment || '—'}`
+        : isSupport
+        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в техподдержке/клиентском сервисе: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Комфорт с ИИ-инструментами: ${aiComfort}\n5) Когда готов(а) приступить: ${startWhen}\n6) Комментарий кандидата: ${comment || '—'}`
         : `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в продажах/холодных звонках: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить обучение в приоритет: ${noCombine}\n4) Когда готов(а) приступить: ${startWhen}\n5) Комментарий кандидата: ${comment || '—'}`;
       const ar = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6', max_tokens: 800, system: isSuccess ? buildSuccessScreenPrompt() : buildScreenPrompt(isRemote),
+          model: 'claude-sonnet-4-6', max_tokens: 800,
+          system: isSuccess ? buildSuccessScreenPrompt() : isSupport ? buildSupportScreenPrompt() : buildScreenPrompt(isRemote),
           messages: [{ role: 'user', content: userContent }],
         }),
       });
@@ -291,11 +325,20 @@ export default async function handler(req, res) {
     // неизвестен), чтобы не сообщать кандидату ложный отказ из-за сбоя. Такие заявки уходят в
     // pipeline.html со статусом «Квалификация» на ручную проверку.
     const holdTextSuccess = `${name}, спасибо за отклик на позицию «${vacTitle}»! Заявку получили, ответы рассматриваем — в ближайшее время с вами свяжутся по указанному контакту.\n\nЕсли появятся вопросы, пишите в WhatsApp: +7 707 700 0087.`;
+    // 2026-08-23: для support_remote (как и для success_remote изначально) ЕЩЁ НЕТ готового процесса
+    // выхода — Sagi попросил «так же, как первая вакансия» (т.е. invited=true всегда, без гейта), но
+    // у продаж следующий шаг — обучение с модулями на hr.sagibonus.com, а для техподдержки такого
+    // трека нет. Пока нейтральный текст «заявку получили, свяжемся», БЕЗ выдумывания шагов
+    // регистрации/обучения, которых не существует. Заменить, как только Sagi опишет реальный
+    // следующий шаг для этой роли (флагнуто ему отдельным сообщением 2026-08-23).
+    const inviteTextSupport = `${name}, спасибо за отклик на позицию «${vacTitle}»! Заявку получили, ответы посмотрели — в ближайшее время с вами свяжутся по указанному контакту и расскажут о следующем шаге.\n\nЕсли появятся вопросы, пишите в WhatsApp: +7 707 700 0087.`;
     const declineText = `${name}, спасибо за отклик! Сейчас, судя по ответам, эта позиция не очень совпадает с тем, что нужно для этой роли. Если что-то изменится или откроется другая подходящая позиция, обязательно свяжемся. Удачи!`;
 
-    const message = !isSuccess
-      ? (invited ? inviteTextSales : declineText)
-      : (!successMatchKnown ? holdTextSuccess : (invited ? inviteTextSuccess : declineText));
+    const message = isSuccess
+      ? (!successMatchKnown ? holdTextSuccess : (invited ? inviteTextSuccess : declineText))
+      : isSupport
+      ? (invited ? inviteTextSupport : declineText)
+      : (invited ? inviteTextSales : declineText);
 
     res.status(200).json({ ok: true, score: evaln.score, verdict: evaln.verdict, summary: evaln.summary, matchPercent: evaln.matchPercent, invited, message });
   } catch (e) {
