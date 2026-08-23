@@ -116,15 +116,20 @@ function buildSuccessScreenPrompt() {
 // сделать «так же, как первая вакансия» (продажи) — то есть БЕЗ гейта по проценту, как у
 // success_remote: invited=true для всех (см. handler ниже), эта оценка — только справка в Telegram,
 // как у продаж, а не решающий фактор.
+// 2026-08-24, по указанию Sagi: конкретный список вопросов для техподдержки (кассовые интеграции,
+// объём заявок в день, CRM Битрикс24, совмещение с другой работой/учёбой, наличие ноутбука, опыт
+// в Product Management, готовность приступить) — заменил общий вопросник. Комфорт с ИИ-инструментами
+// больше НЕ отдельный обязательный вопрос для этой роли (убран по этому же указанию).
 function buildSupportScreenPrompt() {
   return `Ты — HR-скринер компании Sagi (loyalty-платформа для B2B МСБ, sagi.kz). Оцениваешь кандидата на позицию специалиста технической поддержки, работающего ПОЛНОСТЬЮ УДАЛЁННО: отвечает клиентам в WhatsApp/чате, разбирает типовые технические проблемы (вход в аккаунт, начисление/списание бонусов, интеграции), проводит интеграцию клиентам, эскалирует сложное разработчикам.
 
 ВАЖНО: это стартовая позиция, это НЕ холодные продажи и НЕ работа на удержание/рост базы — кандидат реагирует на входящие обращения клиентов. Резюме не запрашиваем — оценивай СТРОГО по структурированным ответам анкеты ниже, не додумывай. Отсутствие опыта именно в техподдержке — НЕ повод для отказа, это нормально для новичка.
 
+Опыт интеграции с кассовыми системами (iiko, r-keeper, 1С, МойСклад и т.п.), уровень CRM Битрикс24 и опыт в Product Management — это ПЛЮСЫ, не обязательные требования: их отсутствие НЕ повод для отказа, просто учитывай при оценке (сильнее кандидат — выше score, но verdict «Отказ» ставь только за реальные красные флаги ниже).
+
 Реальные красные флаги, из-за которых можно поставить «Отказ»:
 - кандидат прямо говорит, что общение с клиентами / разбор их проблем — не его(её);
-- явно нет компьютера/ноутбука или стабильного интернета — обязательное условие для полностью удалённой работы;
-- полное отсутствие готовности пользоваться ИИ-инструментами в повседневной работе — для этой роли это рабочий инструмент, не опция;
+- явно нет ноутбука — обязательное условие для полностью удалённой работы;
 - на вопрос про совмещение прямо говорит, что не готов(а) менять приоритеты ради этой работы;
 - явная грубость, неадекватность или полное отсутствие мотивации в комментарии.
 
@@ -198,30 +203,47 @@ export default async function handler(req, res) {
     const isSuccess = vacancy === 'success_remote';
     const isSupport = vacancy === 'support_remote';
     const vacTitle = VAC_TITLES[vacancy];
-    // Комфорт с ИИ-инструментами — вопрос для success_remote И support_remote (обе роли требуют
-    // уверенного пользования ИИ-инструментами в повседневной работе, см. apply.html: showAiComfort).
+    // Комфорт с ИИ-инструментами — вопрос ТОЛЬКО для success_remote (см. apply.html: showAiComfort).
+    // 2026-08-24, по указанию Sagi: для support_remote этот вопрос убран — заменён конкретным
+    // списком вопросов (кассовые интеграции, Битрикс24, Product Management и т.д., см. ниже).
     // Уровень казахского — вопрос ТОЛЬКО для success_remote (см. apply.html: showKazakh), добавлен
     // 2026-08-23 по правке Асемгуль (COO): для этой роли это реальное требование, а не «плюс».
     const aiComfort = (body?.aiComfort || '').toString().slice(0, 200).trim();
     const kazakh = (body?.kazakh || '').toString().slice(0, 200).trim();
+    // 2026-08-24, по указанию Sagi: конкретные вопросы для support_remote (список от Sagi) —
+    // кассовые интеграции, объём обращений в день, CRM Битрикс24, Product Management. cashIntegrationDetail
+    // и supportTicketsPerDay — необязательные уточнения (не блокируют отправку формы).
+    const cashIntegration = (body?.cashIntegration || '').toString().slice(0, 200).trim();
+    const cashIntegrationDetail = (body?.cashIntegrationDetail || '').toString().slice(0, 200).trim();
+    const supportTicketsPerDay = (body?.supportTicketsPerDay || '').toString().slice(0, 120).trim();
+    const bitrix24 = (body?.bitrix24 || '').toString().slice(0, 200).trim();
+    const productManagement = (body?.productManagement || '').toString().slice(0, 200).trim();
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
-    const needAiComfort = isSuccess || isSupport;
-    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh)) {
+    const needAiComfort = isSuccess;
+    const needSupportExtra = isSupport;
+    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement))) {
       res.status(400).json({ error: 'Заполните, пожалуйста, все обязательные поля анкеты.' }); return;
     }
 
     const expQLabel = isSuccess ? 'Опыт работы с текущими клиентами / удержанием'
       : isSupport ? 'Опыт в техподдержке / клиентском сервисе'
       : 'Опыт в продажах / холодных звонках';
+    const techReadyQLabel = isSupport ? 'Есть ли ноутбук' : 'Компьютер и стабильный интернет';
     const answers = [
       { q: 'Город', a: city },
       { q: 'Откуда узнали о вакансии', a: source },
       { q: expQLabel, a: expSales },
-      { q: 'Компьютер и стабильный интернет', a: techReady },
-      { q: 'Чем занят помимо работы и готов(а) ли поставить работу в приоритет', a: noCombine },
-      { q: 'Когда готов(а) приступить', a: startWhen },
     ];
+    if (isSupport && supportTicketsPerDay) answers.push({ q: 'Сколько заявок в день обрабатывали', a: supportTicketsPerDay });
+    if (isSupport) {
+      answers.push({ q: 'Опыт интеграции с кассовыми системами', a: cashIntegration + (cashIntegrationDetail ? ` (${cashIntegrationDetail})` : '') });
+      answers.push({ q: 'Уровень владения CRM Битрикс24', a: bitrix24 });
+    }
+    answers.push({ q: techReadyQLabel, a: techReady });
+    answers.push({ q: 'Чем занят помимо работы и готов(а) ли поставить работу в приоритет', a: noCombine });
+    if (isSupport) answers.push({ q: 'Опыт в Product Management', a: productManagement });
+    answers.push({ q: 'Когда готов(а) приступить', a: startWhen });
     if (isSuccess) answers.push({ q: 'Уровень казахского языка', a: kazakh });
     if (needAiComfort) answers.push({ q: 'Комфорт с ИИ-инструментами (ChatGPT/Claude) в работе', a: aiComfort });
     if (comment) answers.push({ q: 'Комментарий кандидата', a: comment });
@@ -233,7 +255,7 @@ export default async function handler(req, res) {
       const userContent = isSuccess
         ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт работы с текущими клиентами/удержанием: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Уровень казахского языка: ${kazakh}\n5) Комфорт с ИИ-инструментами: ${aiComfort}\n6) Когда готов(а) приступить: ${startWhen}\n7) Комментарий кандидата: ${comment || '—'}`
         : isSupport
-        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в техподдержке/клиентском сервисе: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n4) Комфорт с ИИ-инструментами: ${aiComfort}\n5) Когда готов(а) приступить: ${startWhen}\n6) Комментарий кандидата: ${comment || '—'}`
+        ? `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт интеграции с кассовыми системами: ${cashIntegration}${cashIntegrationDetail ? ` (${cashIntegrationDetail})` : ''}\n2) Опыт в техподдержке/клиентском сервисе: ${expSales}${supportTicketsPerDay ? `; заявок в день: ${supportTicketsPerDay}` : ''}\n3) Уровень владения CRM Битрикс24: ${bitrix24}\n4) Чем занят помимо работы и готовность поставить работу в приоритет: ${noCombine}\n5) Есть ли ноутбук: ${techReady}\n6) Опыт в Product Management: ${productManagement}\n7) Когда готов(а) приступить: ${startWhen}\n8) Комментарий кандидата: ${comment || '—'}`
         : `Вакансия: ${vacTitle}\nКандидат: ${name}\nГород: ${city}\nИсточник: ${source}\n\nОтветы анкеты:\n1) Опыт в продажах/холодных звонках: ${expSales}\n2) Компьютер и стабильный интернет: ${techReady}\n3) Чем занят помимо работы и готовность поставить обучение в приоритет: ${noCombine}\n4) Когда готов(а) приступить: ${startWhen}\n5) Комментарий кандидата: ${comment || '—'}`;
       const ar = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
