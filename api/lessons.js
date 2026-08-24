@@ -1,6 +1,6 @@
 // Vercel Serverless Function — правки контента учебных модулей (lessons.js) поверх git-файла,
 // 2026-08-24, по указанию Sagi: хочет сам смотреть и редактировать модули как руководитель,
-// без пересборки/деплоя на каждую правку. lessons.js (basic+adv, 19 модулей) остаётся исходным
+// без пересборки/деплоя на каждую правку. lessons.js (basic+adv, 20 модулей) остаётся исходным
 // набором по умолчанию; правки хранятся отдельно в Redis HASH hr:lessons (field=moduleId,
 // value=JSON {title,desc,content,quiz,updatedAt}) и НАКЛАДЫВАЮТСЯ поверх дефолта на клиенте —
 // и в кабинете стажёра (index.html), и в просмотрщике (training-preview.html). Так правки сразу
@@ -34,6 +34,7 @@ const VALID_IDS = new Set([
   'intro', 'problem', 'bonuses', 'communication', 'crm', 'app', 'call-script', 'meeting-script', 'cases', 'final',
   'product-competitive', 'product-features', 'objections-hard', 'objections-followup',
   'b2b-prospecting', 'b2b-pipeline', 'b2b-closing', 'cases-wins', 'cases-mistakes',
+  'emotional-triggers',
 ]);
 
 async function loadOverrides() {
