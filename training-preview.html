@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi — Материалы обучения</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);
+    --blue:#378ADD;--amber:#EF9F27;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15px;min-height:100vh;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  header{display:flex;align-items:center;gap:11px;padding:13px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:10}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800;box-shadow:0 6px 20px var(--brand-glow)}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  header .spacer{flex:1}
+  .nav{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+  .navtab{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--muted);padding:7px 14px;border-radius:999px;transition:.16s;white-space:nowrap}
+  .navtab:hover{color:var(--text)}
+  .navtab.active{background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);box-shadow:0 4px 14px var(--brand-glow)}
+  @media(max-width:760px){header{flex-wrap:wrap}.nav{order:3;width:100%;overflow-x:auto}}
+  .wrap{max-width:900px;margin:0 auto;padding:22px}
+
+  /* встраивается в дашборд руководителя (index.html) через iframe ?embed=1 */
+  html.embedded body{background:transparent}
+  html.embedded header{display:none}
+  html.embedded .wrap{padding:0}
+
+  .head{margin-bottom:18px}
+  .head h1{font-family:var(--display);font-size:24px;margin:0 0 6px}
+  .head p{color:var(--muted);font-size:13.5px;margin:0}
+
+  .stage{margin:26px 0 14px}
+  .stage h2{font-family:var(--display);font-size:16px;margin:0 0 4px}
+  .stage .stagesub{color:var(--muted);font-size:12.5px}
+
+  .modcard{border:1px solid var(--line);background:var(--panel);border-radius:16px;margin-bottom:12px;overflow:hidden;scroll-margin-top:80px;transition:border-color .5s,background .5s}
+  .modcard.flash{border-color:rgba(25,227,154,.7);background:rgba(25,227,154,.06)}
+  .mchead{display:flex;align-items:center;gap:12px;padding:15px 16px}
+  .midx{flex:0 0 26px;height:26px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted)}
+  .mctitle{flex:1;min-width:0}
+  .mctitle h3{font-family:var(--display);font-size:15px;margin:0}
+  .mctitle .mdesc{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .permalink{flex:0 0 auto;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;font:inherit}
+  .permalink:hover{color:var(--text);border-color:var(--line-2)}
+  .permalink.copied{color:var(--brand);border-color:rgba(25,227,154,.4)}
+
+  details{border-top:1px solid var(--line)}
+  details summary{list-style:none;cursor:pointer;padding:11px 16px;font-size:13px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px;user-select:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:'▸';font-size:11px;transition:transform .15s}
+  details[open] summary::before{transform:rotate(90deg)}
+  details summary:hover{color:var(--text)}
+  .mcontent{padding:2px 18px 18px}
+
+  /* lesson content styling (as in index.html trainee reader) */
+  .mcontent h3{font-family:var(--display);font-weight:700;font-size:16px;color:var(--text);margin:20px 0 8px}
+  .mcontent h3:first-child{margin-top:4px}
+  .mcontent p{margin:0 0 12px;font-size:14px;line-height:1.65;color:#d7dee6}
+  .mcontent ul{margin:0 0 14px;padding-left:20px}
+  .mcontent li{margin:0 0 6px;font-size:14px;color:#d7dee6}
+  .mcontent strong{color:#fff}
+  .mcontent table{border-collapse:separate;border-spacing:0;width:100%;margin:14px 0;font-size:13px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .mcontent th,.mcontent td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  .mcontent th{background:var(--panel-2);color:var(--text);font-weight:700}
+  .mcontent tr:last-child td{border-bottom:0}
+  .mcontent .stats{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+  .mcontent .stat-box{flex:1;min-width:120px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:14px;text-align:center}
+  .mcontent .stat-num{font-family:var(--display);font-weight:800;font-size:20px;color:var(--brand)}
+  .mcontent .stat-lbl{color:var(--muted);font-size:12px;margin-top:4px}
+  .mcontent .key-points{display:flex;flex-direction:column;gap:9px;margin:12px 0}
+  .mcontent .key-point{border:1px solid var(--line);background:var(--panel);border-left:3px solid var(--brand);border-radius:10px;padding:11px 13px;font-size:13px}
+  .mcontent .key-point.orange{border-left-color:var(--amber)}
+  .mcontent .key-point.blue{border-left-color:var(--blue)}
+  .mcontent .technique-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  @media(max-width:600px){.mcontent .technique-grid{grid-template-columns:1fr}}
+  .mcontent .technique-card{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px 14px}
+  .mcontent .technique-name{font-weight:700;color:var(--text);font-size:13.5px;margin-bottom:4px}
+  .mcontent .technique-desc{color:var(--muted);font-size:12.5px;line-height:1.5}
+  .mcontent .technique-example{color:var(--brand);font-size:12px;margin-top:6px;font-style:italic}
+  .mcontent .case-box{background:#fff;color:#1f2937;border:1px solid #d7d2c7;border-radius:12px;padding:14px 16px;margin:14px 0}
+  .mcontent .case-box *{color:#1f2937 !important}
+  .mcontent .case-box strong{color:#0a0a0a !important}
+  .mcontent .case-box .case-title{font-weight:800;color:#0f6e56 !important;margin-bottom:6px}
+  .mcontent .script-box{border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .mcontent .script-label{font-size:12px;font-weight:700;color:var(--brand);margin:8px 0 4px}
+  .mcontent .script-line,.mcontent .script-you{font-size:13px;line-height:1.55;color:#d7dee6}
+  .mcontent .script-you{color:#fff;background:rgba(25,227,154,.08);border-left:3px solid var(--brand);border-radius:8px;padding:8px 11px}
+
+  .quizlist{padding:2px 18px 18px}
+  .qblk{border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:12px 14px;margin-bottom:9px}
+  .qq{font-weight:600;font-size:13.5px;margin-bottom:8px}
+  .qopt{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;font-size:13px;color:var(--muted)}
+  .qopt.correct{border-color:rgba(25,227,154,.5);background:rgba(25,227,154,.08);color:var(--text)}
+  .qopt.correct::after{content:'✓ верно';margin-left:auto;font-size:11px;font-weight:700;color:var(--brand);flex:0 0 auto}
+
+  .empty{text-align:center;color:var(--muted);padding:40px 10px}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi · Материалы обучения</div>
+  </a>
+  <nav class="nav">
+    <a class="navtab" href="/">🏠 Кабинет</a>
+    <a class="navtab" href="/onboarding-status.html">✅ Адаптация</a>
+    <a class="navtab active" href="/training-preview.html">📚 Обучение</a>
+  </nav>
+  <div class="spacer"></div>
+</header>
+
+<div class="wrap">
+  <div class="head">
+    <h1>Учебные модули</h1>
+    <p>Весь контент ниже — прямо из того, что видят стажёры на сайте. Нажмите «Скопировать ссылку» у любого модуля, чтобы переслать его или вернуться к нему позже.</p>
+  </div>
+  <div id="stages"></div>
+  <div class="empty" id="empty" style="display:none">Не удалось загрузить материалы (lessons.js).</div>
+</div>
+
+<script src="/lessons.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+
+// встраивается в дашборд руководителя (index.html) через iframe ?embed=1
+(function(){
+  if(new URLSearchParams(location.search).get('embed')!=='1') return;
+  document.documentElement.classList.add('embedded');
+  function postHeight(){
+    try{ parent.postMessage({type:'sagiFrameHeight', id:'training', height:document.documentElement.scrollHeight}, '*'); }catch(e){}
+  }
+  window.addEventListener('load', postHeight);
+  if(window.ResizeObserver) new ResizeObserver(postHeight).observe(document.body);
+  setInterval(postHeight, 1200);
+})();
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+function renderQuiz(quiz){
+  if(!quiz||!quiz.length) return '<div class="empty" style="padding:10px">Вопросов пока нет.</div>';
+  return quiz.map((q,i)=>{
+    const opts=(q.options||[]).map((o,oi)=>'<div class="qopt'+(oi===q.correct?' correct':'')+'">'+esc(o)+'</div>').join('');
+    return '<div class="qblk"><div class="qq">'+(i+1)+'. '+esc(q.q)+'</div>'+opts+'</div>';
+  }).join('');
+}
+
+function moduleCard(m, idx){
+  const div=document.createElement('div');
+  div.className='modcard'; div.id=m.id;
+  div.innerHTML=
+    '<div class="mchead">'+
+      '<div class="midx">'+(idx+1)+'</div>'+
+      '<div class="mctitle"><h3>'+esc(m.title)+'</h3><div class="mdesc">'+esc(m.desc||'')+'</div></div>'+
+      '<button class="permalink" data-copy="'+esc(m.id)+'">🔗 Ссылка</button>'+
+    '</div>'+
+    '<details><summary>Содержание модуля</summary><div class="mcontent">'+m.content+'</div></details>'+
+    '<details><summary>Тест ('+((m.quiz||[]).length)+' вопр.)</summary><div class="quizlist">'+renderQuiz(m.quiz)+'</div></details>';
+  return div;
+}
+
+function stageBlock(titleHtml, subText, modules){
+  const wrap=document.createElement('div');
+  const h=document.createElement('div'); h.className='stage';
+  h.innerHTML='<h2>'+titleHtml+'</h2><div class="stagesub">'+esc(subText)+'</div>';
+  wrap.appendChild(h);
+  modules.forEach((m,i)=>wrap.appendChild(moduleCard(m,i)));
+  return wrap;
+}
+
+function init(){
+  const L = window.LESSONS;
+  if(!L || !L.basic || !L.adv){ $('#empty').style.display='block'; return; }
+  const stages=$('#stages');
+  stages.appendChild(stageBlock('1. Обучение (базовые модули)', 'Проходят все при найме, до звонка с командой — сейчас доступно менеджерам по продажам, дедлайн 3 часа с регистрации', L.basic));
+  stages.appendChild(stageBlock('2. Стажировка (продвинутые модули)', 'Открывается вручную после созвона с кандидатом — сейчас видно только менеджерам', L.adv));
+
+  document.addEventListener('click', e=>{
+    const btn=e.target.closest('.permalink');
+    if(!btn) return;
+    const id=btn.dataset.copy;
+    const url=location.origin+location.pathname+'#'+id;
+    const done=()=>{ btn.textContent='✓ Скопировано'; btn.classList.add('copied'); setTimeout(()=>{ btn.textContent='🔗 Ссылка'; btn.classList.remove('copied'); },1600); };
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done).catch(()=>{ history.replaceState(null,'','#'+id); done(); }); }
+    else { history.replaceState(null,'','#'+id); done(); }
+    history.replaceState(null,'','#'+id);
+  });
+
+  if(location.hash){
+    const id=decodeURIComponent(location.hash.slice(1));
+    const el=document.getElementById(id);
+    if(el){
+      const det=el.querySelector('details'); if(det) det.open=true;
+      setTimeout(()=>{ el.scrollIntoView({block:'start'}); el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1800); },80);
+    }
+  }
+}
+init();
+</script>
+</body>
+</html>

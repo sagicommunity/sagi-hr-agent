@@ -114,6 +114,14 @@
   .lesson-body .stat-lbl{color:var(--muted);font-size:12px;margin-top:4px}
   .lesson-body .key-points{display:flex;flex-direction:column;gap:9px;margin:12px 0}
   .lesson-body .key-point{border:1px solid var(--line);background:var(--panel);border-left:3px solid var(--brand);border-radius:10px;padding:11px 13px;font-size:13.5px}
+  .lesson-body .key-point.orange{border-left-color:var(--amber)}
+  .lesson-body .key-point.blue{border-left-color:var(--blue)}
+  .lesson-body .technique-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  @media(max-width:680px){.lesson-body .technique-grid{grid-template-columns:1fr}}
+  .lesson-body .technique-card{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px 14px}
+  .lesson-body .technique-name{font-weight:700;color:var(--text);font-size:14px;margin-bottom:4px}
+  .lesson-body .technique-desc{color:var(--muted);font-size:13px;line-height:1.5}
+  .lesson-body .technique-example{color:var(--brand);font-size:12.5px;margin-top:6px;font-style:italic}
   .lesson-body .case-box{background:#fff;color:#1f2937;border:1px solid #d7d2c7;border-radius:12px;padding:14px 16px;margin:14px 0}
   .lesson-body .case-box *{color:#1f2937 !important}
   .lesson-body .case-box strong{color:#0a0a0a !important}
@@ -359,6 +367,13 @@
         <button class="accHead" data-toggle="onboarding"><span class="accIc">✅</span><span class="accTitle">Адаптация новичков<small>Чек-лист адаптации: кто что получил, кто на 100% готов к работе</small></span><span class="accChev">▾</span></button>
         <div class="accBody" id="accBody-onboarding">
           <iframe class="accFrame" id="frame-onboarding" data-src="/onboarding-status.html?embed=1" title="Адаптация новичков"></iframe>
+        </div>
+      </div>
+
+      <div class="accItem" data-acc="training">
+        <button class="accHead" data-toggle="training"><span class="accIc">📚</span><span class="accTitle">Материалы обучения<small>Все учебные модули: тема, содержание и тест каждого — для просмотра и правок</small></span><span class="accChev">▾</span></button>
+        <div class="accBody" id="accBody-training">
+          <iframe class="accFrame" id="frame-training" data-src="/training-preview.html?embed=1" title="Материалы обучения"></iframe>
         </div>
       </div>
 
