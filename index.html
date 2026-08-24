@@ -185,6 +185,14 @@
     text-decoration:none;font-size:14px;transition:.15s}
   .contactBtn:hover{border-color:rgba(25,227,154,.5);background:var(--panel)}
 
+  /* 2026-08-24, по указанию Sagi: «увидеть тех, кого перевёл на стажировку» — быстрый фильтр
+     по роли над списком сотрудников, чтобы не искать глазами по бейджам в таблице. */
+  .roleFilter{display:flex;gap:8px;margin:14px 0}
+  .rfBtn{padding:8px 14px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel-2);
+    color:var(--muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s}
+  .rfBtn:hover{color:var(--text)}
+  .rfBtn.active{background:var(--panel);border-color:rgba(25,227,154,.5);color:var(--text)}
+
   /* 2026-08-24: раньше был один длинный аккордеон — все 7 разделов стопкой, можно было открыть
      сразу несколько, страница разрасталась и было неудобно ориентироваться (жалоба Sagi). Теперь
      слева список разделов (как вкладки), справа — только выбранный, один открыт за раз. Разделы
@@ -302,13 +310,17 @@
          базовой программы — таймер держит стажёра в тонусе, не даёт забыть/отложить. Показывается
          только стажёрам (не менеджерам), пока не пройдено всё и статус не помечен вручную. Сервер
          (api/hh_poll.js, тот же часовой прогон) проверяет срок независимо от того, открыт ли у
-         человека кабинет — если время вышло, статус сам уйдёт в «Не подходит», а Sagi решит. -->
+         человека кабинет — если время вышло, статус сам уйдёт в «Не подходит», а Sagi решит.
+         2026-08-24: тот же таймер теперь показывается и на СТАЖИРОВКУ (продвинутые модули) —
+         с момента перевода (promotedAt), максимум 2 дня, по указанию Sagi. Это только клиентское
+         напоминание-таймер, без авто-статуса «Не подходит» на сервере — человек уже прошёл отбор
+         и работает, жёстко его блокировать выключением аккаунта не стали. -->
     <div class="card" id="deadlineCard" style="display:none;margin-bottom:6px;border:1px solid rgba(255,159,67,.35)">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <b>⏰ Осталось на обучение</b>
+        <b id="deadlineLabel">⏰ Осталось на обучение</b>
         <span id="deadlineTimer" style="font-weight:800;font-size:18px">--</span>
       </div>
-      <div class="sub" style="margin-top:6px">На базовую программу даётся 3 часа с момента регистрации, обычно этого хватает с запасом (сама программа занимает около часа). Постарайтесь не откладывать и закончить все модули, пока время не истекло.</div>
+      <div class="sub" style="margin-top:6px" id="deadlineSub">На базовую программу даётся 3 часа с момента регистрации, обычно этого хватает с запасом (сама программа занимает около часа). Постарайтесь не откладывать и закончить все модули, пока время не истекло.</div>
     </div>
 
     <div class="sectitle">🎧 Тренажёр</div>
@@ -360,6 +372,11 @@
 
         <div class="bossPane active" data-pane="employees">
           <div class="paneHead"><h2>👥 Сотрудники и прогресс</h2><p>Стажёры и менеджеры, статус обучения, наставник, откуда пришли</p></div>
+          <div class="roleFilter" id="roleFilter">
+            <button class="rfBtn active" data-role="all">Все</button>
+            <button class="rfBtn" data-role="trainee">📘 Обучение</button>
+            <button class="rfBtn" data-role="manager">🎓 Стажировка</button>
+          </div>
           <div id="bossTableWrap"></div>
         </div>
 
@@ -415,8 +432,9 @@
           <div class="sectitle" id="profName" style="margin-top:0">Имя</div>
           <span class="tag" id="profRole"></span>
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn small" id="profPromote">🎓 Перевести в менеджеры</button>
+          <button class="btn sec small" id="profNotifyWA" style="display:none">📣 Уведомить о стажировке (WhatsApp)</button>
           <button class="btn sec small" id="profDelete" style="color:#ff6b6b;border-color:#ff6b6b">🗑 Удалить</button>
         </div>
       </div>
@@ -500,7 +518,15 @@ function phoneDigitsIntl(p){
   return d;
 }
 function telLink(p){ const d=phoneDigitsIntl(p); return d?('tel:+'+d):''; }
-function waLink(p){ const d=phoneDigitsIntl(p); return d?('https://wa.me/'+d):''; }
+function waLink(p, text){ const d=phoneDigitsIntl(p); return d?('https://wa.me/'+d+(text?('?text='+encodeURIComponent(text)):'')):''; }
+// 2026-08-24, по указанию Sagi: готовый текст для уведомления о стажировке — открываем ссылку
+// wa.me с этим текстом в СВОЁМ WhatsApp Sagi (он сам жмёт «Отправить»), никакой автоматической
+// рассылки через API — так нет риска блокировки номера за спам-рассылку.
+function stazhirovkaNotifyText(u){
+  const first=(u.name||'').split(' ')[0]||u.name||'';
+  const deadline=new Date((u.promotedAt||Date.now())+MANAGER_DEADLINE_MS).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  return 'Привет, '+first+'! 🎉 Вам открылся блок стажировки — продвинутые модули, тренажёр возражений, разбор звонков. Пожалуйста, пройдите до '+deadline+' (даётся 2 дня). Вход: https://hr.sagibonus.com/';
+}
 function contactBtnsHtml(phone){
   if(!phone) return '<span style="color:var(--muted)">—</span>';
   return '<div class="contactBtns">'+
@@ -641,13 +667,29 @@ function moduleRow(m, done, locked){
 // стажёры не теряли фокус и не откладывали. Реальная деадлайн-логика (авто-статус «Не подходит»
 // по истечении срока) — на сервере (hh_poll.js), этот таймер только показывает обратный отсчёт.
 const TRAINEE_DEADLINE_MS=3*60*60*1000;
+// 2026-08-24, по указанию Sagi: аналогичный таймер на СТАЖИРОВКУ (9 продвинутых модулей) — раньше
+// после перевода срок вообще не ограничивался. «Максимум день-два» — берём 48 часов с момента
+// перевода (u.promotedAt). Только клиентское напоминание, без сервера — см. комментарий у #deadlineCard.
+const MANAGER_DEADLINE_MS=48*60*60*1000;
 let deadlineInterval=null;
 function updateDeadlineTimer(u, doneCount, totalCount){
   const card=$('#deadlineCard');
   if(deadlineInterval){ clearInterval(deadlineInterval); deadlineInterval=null; }
   const flagged = u.hireStatus && u.hireStatus!=='Активен';
-  if(u.role==='manager' || flagged || doneCount>=totalCount || !u.createdAt){ card.style.display='none'; return; }
-  const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
+  if(flagged){ card.style.display='none'; return; }
+  let deadlineAt;
+  if(u.role==='manager'){
+    const advDone=ADV.filter(m=>(u.progress||{})[m.id]).length;
+    if(!u.promotedAt || advDone>=ADV.length){ card.style.display='none'; return; }
+    deadlineAt = u.promotedAt + MANAGER_DEADLINE_MS;
+    $('#deadlineLabel').textContent='⏰ Осталось на стажировку';
+    $('#deadlineSub').textContent='На продвинутые модули стажировки даётся 2 дня с момента открытия доступа. Постарайтесь не откладывать и закончить все модули, пока время не истекло.';
+  } else {
+    if(doneCount>=totalCount || !u.createdAt){ card.style.display='none'; return; }
+    deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
+    $('#deadlineLabel').textContent='⏰ Осталось на обучение';
+    $('#deadlineSub').textContent='На базовую программу даётся 3 часа с момента регистрации, обычно этого хватает с запасом (сама программа занимает около часа). Постарайтесь не откладывать и закончить все модули, пока время не истекло.';
+  }
   const tick=()=>{
     const left = deadlineAt - Date.now();
     if(left<=0){ card.style.display='none'; if(deadlineInterval){ clearInterval(deadlineInterval); deadlineInterval=null; } return; }
@@ -765,6 +807,15 @@ $('#lesBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabine
 
 /* ---- BOSS PANEL ---- */
 let BOSS_USERS={}; // login -> user, кэш последнего списка от 'list' (для клика по строке / профиля)
+// 2026-08-24, по указанию Sagi: фильтр «Все / Обучение / Стажировка» над списком сотрудников.
+let bossRoleFilter='all';
+document.querySelectorAll('.rfBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    bossRoleFilter=btn.dataset.role;
+    document.querySelectorAll('.rfBtn').forEach(b=>b.classList.toggle('active', b===btn));
+    if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
+  });
+});
 
 let TRAINER_STATS_MAP={}; // login -> {events, overall} — с ИИ-тренажёра (agent.html), см. loadTrainerStatsAll
 let LAST_BOSS_USERS=[];
@@ -799,9 +850,10 @@ function renderBoss(users, skipStatsFetch){
   if(!skipStatsFetch) loadTrainerStatsAll(); // не блокируем первую отрисовку — догружаем и перерисовываем
 
   const wrap=$('#bossTableWrap');
-  if(!users.length){ wrap.innerHTML='<div class="empty">Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.</div>'; }
+  const filteredUsers = bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter);
+  if(!filteredUsers.length){ wrap.innerHTML='<div class="empty">'+(users.length?'Никого нет в этом фильтре.':'Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.')+'</div>'; }
   else{
-    let rows=users.sort((a,b)=>b.lastSeen-a.lastSeen).map((u,i)=>{
+    let rows=filteredUsers.sort((a,b)=>b.lastSeen-a.lastSeen).map((u,i)=>{
       const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
       const done=all.filter(m=>(u.progress||{})[m.id]).length;
       const pct=Math.round(done/all.length*100);
@@ -983,6 +1035,18 @@ function renderProfile(u){
     BOSS_USERS[u.login]=res.user;
     renderProfile(res.user);
   };
+
+  // 2026-08-24, по указанию Sagi: кнопка «Уведомить о стажировке» — открывает WhatsApp с готовым
+  // текстом (имя, дедлайн 2 дня, ссылка), отправляет сам Sagi вручную одним кликом. Видна, только
+  // пока стажировка реально открыта, не пройдена и есть номер телефона — незачем показывать иначе.
+  const notifyBtn=$('#profNotifyWA');
+  const advLeft = u.role==='manager' && ADV.filter(m=>!(prog||{})[m.id]).length>0;
+  if(u.role==='manager' && advLeft && u.phone){
+    notifyBtn.style.display='inline-block';
+    notifyBtn.onclick=()=>window.open(waLink(u.phone, stazhirovkaNotifyText(u)), '_blank');
+  } else {
+    notifyBtn.style.display='none';
+  }
   $('#profDelete').onclick=async()=>{
     if(!confirm('Удалить '+u.name+' (@'+u.login+')? Это действие необратимо.')) return;
     const res=await api({action:'delete', password:BOSS_PW, login:u.login});
