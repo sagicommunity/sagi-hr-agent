@@ -55,6 +55,20 @@
   .role p{color:var(--muted);font-size:13px;line-height:1.5;margin:0}
   .role .go{margin-top:auto;font-size:13px;font-weight:700;color:var(--brand)}
 
+  /* 2026-08-24, по указанию Sagi: было три карточки в один ряд (Стажёр / Действующий менеджер /
+     Руководитель) — сбивало с толку («стыдно» возвращаться в «стажёр» после повышения) и ставило
+     руководителя визуально на одну ступень с обычным сотрудником. Теперь один общий пункт
+     «Обучение» на всех сотрудников (внутри — обычные вход/регистрация, ничего не потеряно), а
+     руководитель — отдельная приподнятая ссылка над карточкой, не в общем ряду. */
+  .entryTop{display:flex;justify-content:flex-end;margin-top:22px}
+  .bossPill{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;
+    border:1px solid rgba(239,159,39,.35);background:rgba(239,159,39,.08);color:var(--text);
+    font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:.16s}
+  .bossPill:hover{background:rgba(239,159,39,.16);border-color:rgba(239,159,39,.55);transform:translateY(-1px)}
+  .bossPill .ic{font-size:15px}
+  @media(max-width:560px){.entryTop{justify-content:center}}
+  .roles.roles-single{grid-template-columns:1fr;max-width:480px;margin-left:auto;margin-right:auto;margin-top:14px}
+
   /* cards / forms */
   .card{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
   .authbox{max-width:420px;margin:40px auto}
@@ -215,24 +229,18 @@
       <h1>Добро пожаловать в Sagi HR</h1>
       <p class="lead">Единый кабинет для обучения и развития команды продаж. Выберите, кто вы — покажем нужный раздел.</p>
     </div>
-    <div class="roles">
+    <div class="entryTop">
+      <button class="bossPill" data-role="boss">
+        <span class="ic">🎯</span> Я руководитель — панель управления →
+      </button>
+    </div>
+
+    <div class="roles roles-single">
       <button class="role blue" data-role="trainee">
-        <div class="ic">👨‍🎓</div>
-        <h3>Стажёр</h3>
-        <p>Соискатель, который пришёл учиться. Базовая программа с нуля: продукт, скрипты, тесты.</p>
-        <div class="go">Зарегистрироваться / войти →</div>
-      </button>
-      <button class="role" data-role="manager">
-        <div class="ic">💼</div>
-        <h3>Действующий менеджер</h3>
-        <p>Постоянное дообучение: продвинутые модули, тренажёр возражений, разбор звонков.</p>
-        <div class="go">Войти в кабинет →</div>
-      </button>
-      <button class="role amber" data-role="boss">
-        <div class="ic">🎯</div>
-        <h3>Руководитель</h3>
-        <p>Все сотрудники и их прогресс, пайплайн найма, отклики, аналитика. Вход по паролю.</p>
-        <div class="go">Войти →</div>
+        <div class="ic">🎓</div>
+        <h3>Обучение</h3>
+        <p>Единый кабинет для всей команды продаж. Первый раз здесь — зарегистрируйтесь и пройдите базовую программу с нуля. Уже работаете — просто входите и продолжайте: продвинутые модули, тренажёр возражений, разбор звонков.</p>
+        <div class="go">Войти или зарегистрироваться →</div>
       </button>
     </div>
   </section>
@@ -520,10 +528,16 @@ const $=s=>document.querySelector(s);
 const show=id=>{ ['screen-entry','screen-auth','screen-boss-login','screen-cabinet','screen-boss','screen-profile','screen-lesson']
   .forEach(s=>$('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); };
 let authMode='login';   // 'login' | 'register'
-let authRole='trainee';
 
-/* ---- ENTRY ---- */
-document.querySelectorAll('.role').forEach(b=>b.addEventListener('click',async()=>{
+/* ---- ENTRY ----
+   2026-08-24: единая кнопка «Обучение» на входе (раньше были отдельные «Стажёр»/«Действующий
+   менеджер» — см. .bossPill/.roles-single выше). Роль при регистрации всегда 'trainee' —
+   до менеджера сотрудника повышает руководитель из панели (#profPromote), самостоятельная
+   регистрация сразу менеджером никогда и не была задумана как отдельный путь.
+   По умолчанию открываем форму входа (это единая точка и для новых, и для старых сотрудников),
+   но если человек пришёл по ссылке-приглашению с hh.kz (?hh=...), это почти всегда новый
+   стажёр — для него сразу открываем регистрацию. */
+document.querySelectorAll('.role, .bossPill').forEach(b=>b.addEventListener('click',async()=>{
   const r=b.dataset.role;
   if(r==='boss'){
     if(BOSS_PW){
@@ -533,8 +547,7 @@ document.querySelectorAll('.role').forEach(b=>b.addEventListener('click',async()
     }
     $('#bossErr').style.display='none'; $('#f-boss').value=''; show('screen-boss-login'); $('#f-boss').focus(); return;
   }
-  authRole=r;
-  authMode = (r==='trainee') ? 'register' : 'login';
+  authMode = REF_HH ? 'register' : 'login';
   renderAuth();
   show('screen-auth');
 }));
@@ -542,9 +555,7 @@ document.querySelectorAll('.role').forEach(b=>b.addEventListener('click',async()
 function renderAuth(){
   const reg = authMode==='register';
   $('#authTitle').textContent = reg ? 'Регистрация' : 'Вход';
-  $('#authSub').textContent = authRole==='trainee'
-    ? 'Стажёр — базовая программа обучения с нуля.'
-    : 'Действующий менеджер — продвинутые модули и тренажёр.';
+  $('#authSub').textContent = 'Обучение и развитие команды продаж — единый кабинет для новых стажёров и действующих менеджеров.';
   $('#regNameWrap').style.display = reg ? 'block' : 'none';
   $('#authSubmit').textContent = reg ? 'Создать аккаунт' : 'Войти';
   $('#authSwitch').innerHTML = reg
@@ -562,7 +573,7 @@ $('#authSubmit').onclick=async()=>{
   const name=$('#f-name').value, login=$('#f-login').value, pass=$('#f-pass').value, phone=$('#f-phone').value;
   const btn=$('#authSubmit'), old=btn.textContent; btn.disabled=true; btn.textContent='Подождите…';
   const res = authMode==='register'
-    ? await api({action:'register', name, login, password:pass, role:authRole, hh:REF_HH, phone})
+    ? await api({action:'register', name, login, password:pass, role:'trainee', hh:REF_HH, phone})
     : await api({action:'login', login, password:pass});
   btn.disabled=false; btn.textContent=old;
   if(!res.ok){ const e=$('#authErr'); e.textContent=res.error||'Ошибка'; e.style.display='block'; return; }
