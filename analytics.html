@@ -81,6 +81,15 @@
 </style>
 </head>
 <body>
+<script>
+// 2026-08-24, по указанию Sagi: см. тот же приём в pipeline.html — уводим в единую панель
+// руководителя при обычном открытии (не встроенном через ?embed=1), чтобы не было двух разных
+// навигаций на одни и те же данные.
+(function(){
+  if(new URLSearchParams(location.search).get('embed')==='1') return;
+  location.replace('/?boss=1&tab=analytics');
+})();
+</script>
 <header>
   <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
     <div class="mark">S</div>
@@ -176,7 +185,7 @@
   <div class="refresh" id="refreshedAt"></div>
 </div>
 
-<div class="gate" id="gate">
+<div class="gate" id="gate" style="display:none">
   <div class="box">
     <h2>🔒 Аналитика найма</h2>
     <p>Доступ для рекрутера/РОПа. Тот же пароль, что и в Пайплайне.</p>
@@ -185,6 +194,21 @@
     <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn" id="gateBtn">Войти</button></div>
   </div>
 </div>
+<div class="gate" id="gateLoading" style="display:none">
+  <div class="box" style="text-align:center">
+    <p style="margin:0;color:var(--muted)">Входим по сохранённому паролю…</p>
+  </div>
+</div>
+<script>
+// 2026-08-24, по указанию Sagi: раньше при каждом открытии этой вкладки на секунду мигала
+// пустая форма пароля, пока шёл автовход по сохранённому паролю руководителя — выглядело так,
+// будто пароль спрашивают заново. Теперь сразу решаем, что показать, до отрисовки: если пароль
+// уже сохранён — лёгкий "Входим…", иначе — сама форма (первый вход).
+(function(){
+  var hasPass = !!localStorage.getItem('sagiHR_ropPass');
+  document.getElementById(hasPass?'gateLoading':'gate').style.display='grid';
+})();
+</script>
 
 <script>
 const $=s=>document.querySelector(s);
@@ -328,7 +352,7 @@ async function load(){
 
 async function unlock(){
   PASS = $('#gatePass').value; $('#gateErr').style.display='none';
-  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gateLoading').style.display='none'; $('#gate').style.display='none'; $('#app').style.display='block'; }
   catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
 }
 $('#gateBtn').addEventListener('click', unlock);
@@ -339,8 +363,8 @@ $('#gatePass').focus();
 // Автовход, если пароль уже сохранён в этом браузере.
 (async()=>{
   if(!PASS) return;
-  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
-  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); }
+  try{ await load(); $('#gateLoading').style.display='none'; $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateLoading').style.display='none'; $('#gate').style.display='grid'; }
 })();
 
 // 2026-08-20: если открыты внутри iframe дашборда руководителя (index.html, ?embed=1) — прячем

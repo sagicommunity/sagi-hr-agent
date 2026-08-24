@@ -131,6 +131,17 @@
 </style>
 </head>
 <body>
+<script>
+// 2026-08-24, по указанию Sagi: раньше эта страница была отдельным входом со своей навигацией —
+// получалось два разных интерфейса на одни и те же данные (эта страница + единая панель
+// руководителя в index.html), путало и мешало следить за всем в одном месте. Теперь при обычном
+// открытии (не как вкладка внутри панели, т.е. без ?embed=1) сразу уводим в единую панель на
+// нужный раздел — своя шапка/навигация ниже используется только пока грузится этот редирект.
+(function(){
+  if(new URLSearchParams(location.search).get('embed')==='1') return;
+  location.replace('/?boss=1&tab=pipeline');
+})();
+</script>
 <header>
   <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
     <div class="mark">S</div>
@@ -187,7 +198,7 @@
   <div class="empty" id="empty" style="display:none">Кандидатов пока нет. Нажмите «➕ Добавить кандидатов» или дождитесь откликов с формы.</div>
 </div>
 
-<div class="gate" id="gate">
+<div class="gate" id="gate" style="display:none">
   <div class="box">
     <h2>🔒 Пайплайн найма</h2>
     <p>Доступ для рекрутера/РОПа. Введите пароль.</p>
@@ -196,6 +207,19 @@
     <div style="margin-top:14px;display:flex;justify-content:flex-end"><button class="btn" id="gateBtn">Войти</button></div>
   </div>
 </div>
+<div class="gate" id="gateLoading" style="display:none">
+  <div class="box" style="text-align:center">
+    <p style="margin:0;color:var(--muted)">Входим по сохранённому паролю…</p>
+  </div>
+</div>
+<script>
+// 2026-08-24, по указанию Sagi: убираем "мигание" пустой формы пароля при каждом открытии —
+// см. тот же приём в analytics.html/onboarding-status.html.
+(function(){
+  var hasPass = !!localStorage.getItem('sagiHR_ropPass');
+  document.getElementById(hasPass?'gateLoading':'gate').style.display='grid';
+})();
+</script>
 
 <div class="modal" id="modal">
   <div class="sheet">
@@ -424,7 +448,7 @@ $('#funnelModal').addEventListener('click',e=>{ if(e.target.id==='funnelModal') 
 // gate
 async function unlock(){
   PASS=$('#gatePass').value; $('#gateErr').style.display='none';
-  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gate').style.display='none'; $('#app').style.display='block'; }
+  try{ await load(); localStorage.setItem(PASS_KEY,PASS); $('#gateLoading').style.display='none'; $('#gate').style.display='none'; $('#app').style.display='block'; }
   catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateErr').textContent=e.message; $('#gateErr').style.display='block'; }
 }
 $('#gateBtn').addEventListener('click',unlock);
@@ -434,8 +458,8 @@ $('#gatePass').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
 // страницы) — если пароль поменяли, тихо падаем обратно на экран входа.
 (async()=>{
   if(!PASS) return;
-  try{ await load(); $('#gate').style.display='none'; $('#app').style.display='block'; }
-  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); }
+  try{ await load(); $('#gateLoading').style.display='none'; $('#gate').style.display='none'; $('#app').style.display='block'; }
+  catch(e){ PASS=''; localStorage.removeItem(PASS_KEY); $('#gateLoading').style.display='none'; $('#gate').style.display='grid'; }
 })();
 
 // controls

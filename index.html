@@ -176,6 +176,15 @@
   .tag.warn{color:var(--amber);border-color:rgba(239,159,39,.3);background:var(--amber-bg)}
   .empty{color:var(--muted);text-align:center;padding:34px;border:1px dashed var(--line-2);border-radius:14px}
 
+  /* 2026-08-24, по указанию Sagi: раньше номер телефона приходилось копировать вручную и
+     вставлять в свой WhatsApp — неудобно. Теперь прямо в списке и в карточке сотрудника есть
+     кнопки «Позвонить» (tel:) и «Написать в WhatsApp» (wa.me) с номером сотрудника. */
+  .contactBtns{display:flex;gap:6px}
+  .contactBtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+    border-radius:10px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text);
+    text-decoration:none;font-size:14px;transition:.15s}
+  .contactBtn:hover{border-color:rgba(25,227,154,.5);background:var(--panel)}
+
   /* 2026-08-24: раньше был один длинный аккордеон — все 7 разделов стопкой, можно было открыть
      сразу несколько, страница разрасталась и было неудобно ориентироваться (жалоба Sagi). Теперь
      слева список разделов (как вкладки), справа — только выбранный, один открыт за раз. Разделы
@@ -420,6 +429,7 @@
         <div style="display:flex;gap:8px">
           <input id="profPhone" placeholder="Не указан" maxlength="30" />
           <button class="btn sec small" id="profPhoneSave">Сохранить</button>
+          <div class="contactBtns" id="profContactBtns"></div>
         </div>
       </div>
       <div style="margin-top:16px">
@@ -478,6 +488,26 @@ async function api(payload){
 // красные (реально выбыл/не подходит) или жёлтые (промежуточное состояние, требует внимания).
 const HIRE_STATUSES=['Активен','Не подходит','Не выходит на связь','На паузе','Уволен','Ушёл сам'];
 const HIRE_STATUS_CLASS={'Активен':'','Не подходит':'bad','Уволен':'bad','Ушёл сам':'bad','Не выходит на связь':'warn','На паузе':'warn'};
+// 2026-08-24, по указанию Sagi: быстрые ссылки «Позвонить»/«WhatsApp» из номера телефона
+// сотрудника — без ручного копирования номера. Казахстан/Россия: восьмёрку в начале меняем
+// на семёрку, 10-значный номер без кода страны дополняем семёркой — так wa.me и tel: получают
+// корректный международный номер в обоих частых форматах ввода.
+function phoneDigitsIntl(p){
+  let d=(p||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.length===11 && d[0]==='8') d='7'+d.slice(1);
+  else if(d.length===10) d='7'+d;
+  return d;
+}
+function telLink(p){ const d=phoneDigitsIntl(p); return d?('tel:+'+d):''; }
+function waLink(p){ const d=phoneDigitsIntl(p); return d?('https://wa.me/'+d):''; }
+function contactBtnsHtml(phone){
+  if(!phone) return '<span style="color:var(--muted)">—</span>';
+  return '<div class="contactBtns">'+
+    '<a class="contactBtn" href="'+telLink(phone)+'" title="Позвонить">📞</a>'+
+    '<a class="contactBtn" href="'+waLink(phone)+'" target="_blank" rel="noopener" title="Написать в WhatsApp">💬</a>'+
+    '</div>';
+}
 const SESSION_KEY='sagiHR_session';
 function saveSession(login,token){ localStorage.setItem(SESSION_KEY, JSON.stringify({login,token})); }
 function getSession(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch{ return null; } }
@@ -494,6 +524,10 @@ const REF_HH = new URLSearchParams(location.search).get('hh') || '';
 // Теперь на общей странице входа этой кнопки нет вообще — руководитель заходит по отдельной
 // приватной ссылке hr.sagibonus.com/?boss=1 (см. enterBoss()/restore session ниже).
 const BOSS_ENTRY = new URLSearchParams(location.search).get('boss') === '1';
+// 2026-08-24: старые самостоятельные страницы (pipeline.html, analytics.html, onboarding-status.html,
+// training-preview.html) при обычном открытии теперь сами редиректят сюда с ?tab=<ключ> — открываем
+// сразу нужный раздел единой панели, а не список сотрудников по умолчанию.
+const BOSS_TAB = new URLSearchParams(location.search).get('tab') || '';
 
 /* ---- Программа обучения (контент + тесты в lessons.js) ---- */
 const BASIC = (window.LESSONS && window.LESSONS.basic) || [];
@@ -786,6 +820,7 @@ function renderBoss(users, skipStatsFetch){
       // видимая пометка для ручного решения (юридически рискованно жёстко отклонять по возрасту).
       const ageBadge=u.ageOutOfRange ? ' <span class="tag warn" title="Вне диапазона 20-35 лет — не автоотказ, решение за тобой">'+(u.age!=null?u.age+' лет':'возраст')+' ⚠️</span>' : '';
       return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b>'+ageBadge+'<br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
+        '<td>'+contactBtnsHtml(u.phone)+'</td>'+
         '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'" title="'+(u.role==='manager'?'Роль в базе: manager':'Роль в базе: trainee')+'">'+(u.role==='manager'?'🎓 Стажировка':'📘 Обучение')+'</span></td>'+
         '<td>'+statusCell+'</td>'+
         '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
@@ -797,10 +832,10 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Контакт</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
-        if(e.target.closest('.bossDelBtn')) return;
+        if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn')) return;
         const u=BOSS_USERS[tr.dataset.login];
         if(u) renderProfile(u);
       });
@@ -820,7 +855,11 @@ function renderBoss(users, skipStatsFetch){
     });
   }
   show('screen-boss');
+  // Открыть нужный раздел по ?tab=... (редирект со старых самостоятельных страниц) — только один
+  // раз при первом входе в панель, чтобы периодическое обновление статистики не сбрасывало вкладку.
+  if(BOSS_TAB && !bossTabApplied){ bossTabApplied=true; selectBossTab(BOSS_TAB); }
 }
+let bossTabApplied=false;
 
 // 2026-08-20, по запросу Sagi «всё в одном месте, не уходя со страницы»: полная воронка и весь
 // пайплайн теперь встроены аккордеоном ниже (через iframe /pipeline.html и /analytics.html с тем
@@ -832,15 +871,20 @@ function renderBoss(users, skipStatsFetch){
    (жалоба Sagi: неудобно, «слетает» при переключении). Теперь — один активный раздел за раз, как в
    обычной админке. iframe-разделы грузятся один раз при первом клике на вкладку и дальше просто
    показываются/прячутся через CSS (src не сбрасывается — не перезагружаются заново). */
+// 2026-08-24: вынесено в функцию — нужна и по клику на вкладку, и чтобы открыть нужный раздел
+// сразу по ссылке (?boss=1&tab=...), когда сюда редиректят старые самостоятельные страницы
+// (pipeline.html, analytics.html и т.д. — см. их редирект наверху, если открыты не как ?embed=1).
+function selectBossTab(tab){
+  const btn=document.querySelector('.bnItem[data-tab="'+tab+'"]');
+  if(!btn) return;
+  document.querySelectorAll('.bnItem').forEach(b=>b.classList.toggle('active', b===btn));
+  document.querySelectorAll('.bossPane').forEach(p=>p.classList.toggle('active', p.dataset.pane===tab));
+  const pane=document.querySelector('.bossPane[data-pane="'+tab+'"]');
+  const frame=pane && pane.querySelector('.accFrame');
+  if(frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
+}
 document.querySelectorAll('.bnItem').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const tab=btn.dataset.tab;
-    document.querySelectorAll('.bnItem').forEach(b=>b.classList.toggle('active', b===btn));
-    document.querySelectorAll('.bossPane').forEach(p=>p.classList.toggle('active', p.dataset.pane===tab));
-    const pane=document.querySelector('.bossPane[data-pane="'+tab+'"]');
-    const frame=pane && pane.querySelector('.accFrame');
-    if(frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
-  });
+  btn.addEventListener('click', ()=>selectBossTab(btn.dataset.tab));
 });
 // Встроенные страницы сами шлют свою высоту (postMessage), чтобы не было двойного скролла.
 window.addEventListener('message', e=>{
@@ -884,6 +928,7 @@ function renderProfile(u){
   $('#profDone').textContent=done+' / '+all.length;
   $('#profPct').textContent=pct+'%';
   $('#profPhone').value=u.phone||'';
+  $('#profContactBtns').innerHTML=u.phone ? ('<a class="contactBtn" href="'+telLink(u.phone)+'" title="Позвонить">📞</a>'+'<a class="contactBtn" href="'+waLink(u.phone)+'" target="_blank" rel="noopener" title="Написать в WhatsApp">💬</a>') : '';
   $('#profStatus').innerHTML=HIRE_STATUSES.map(s=>'<option value="'+s+'"'+(s===(u.hireStatus||'Активен')?' selected':'')+'>'+s+'</option>').join('');
   $('#profStatusComment').value=u.statusComment||'';
 
@@ -951,6 +996,7 @@ function renderProfile(u){
     btn.disabled=false; btn.textContent=old;
     if(!res.ok){ alert(res.error||'Не удалось сохранить'); return; }
     u.phone=$('#profPhone').value; BOSS_USERS[u.login]=u;
+    $('#profContactBtns').innerHTML=u.phone ? ('<a class="contactBtn" href="'+telLink(u.phone)+'" title="Позвонить">📞</a>'+'<a class="contactBtn" href="'+waLink(u.phone)+'" target="_blank" rel="noopener" title="Написать в WhatsApp">💬</a>') : '';
   };
   $('#profStatusSave').onclick=async()=>{
     const btn=$('#profStatusSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';

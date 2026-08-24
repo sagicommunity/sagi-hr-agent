@@ -151,6 +151,15 @@
 </style>
 </head>
 <body>
+<script>
+// 2026-08-24, по указанию Sagi: см. тот же приём в pipeline.html — уводим в единую панель
+// руководителя при обычном открытии (не встроенном через ?embed=1), чтобы не было двух разных
+// навигаций на одни и те же данные.
+(function(){
+  if(new URLSearchParams(location.search).get('embed')==='1') return;
+  location.replace('/?boss=1&tab=training');
+})();
+</script>
 <header>
   <a href="/" title="На главную" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
     <div class="mark">S</div>
