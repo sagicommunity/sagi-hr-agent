@@ -491,6 +491,23 @@ const REF_HH = new URLSearchParams(location.search).get('hh') || '';
 const BASIC = (window.LESSONS && window.LESSONS.basic) || [];
 const ADV   = (window.LESSONS && window.LESSONS.adv)   || [];
 const byId  = id => BASIC.concat(ADV).find(m=>m.id===id);
+// 2026-08-24: Sagi правит модули сам через training-preview.html (руководитель) — правки
+// хранятся отдельно от lessons.js (api/lessons.js, Redis) и накладываются здесь поверх
+// дефолтного контента, чтобы стажёры сразу видели актуальную версию без нового деплоя.
+async function applyLessonOverrides(){
+  try{
+    const r=await fetch('/api/lessons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'public'})});
+    const d=await r.json();
+    if(!d.ok||!d.overrides) return;
+    for(const [id,ov] of Object.entries(d.overrides)){
+      const m=byId(id); if(!m) continue;
+      if(ov.title) m.title=ov.title;
+      if(ov.desc!=null) m.desc=ov.desc;
+      if(ov.content!=null) m.content=ov.content;
+      if(Array.isArray(ov.quiz) && ov.quiz.length) m.quiz=ov.quiz;
+    }
+  }catch(e){ /* нет правок или сеть — остаёмся на дефолтном контенте */ }
+}
 
 /* ---- helpers ---- */
 const $=s=>document.querySelector(s);
@@ -943,6 +960,7 @@ $('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $
 
 /* ---- restore session ---- */
 (async function(){
+  await applyLessonOverrides();
   const s=getSession();
   if(s && s.login && s.token){
     const res=await api({action:'me', login:s.login, token:s.token});

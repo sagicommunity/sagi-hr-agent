@@ -12,7 +12,7 @@
     --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;--panel-2:rgba(255,255,255,.06);
     --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
     --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);
-    --blue:#378ADD;--amber:#EF9F27;
+    --blue:#378ADD;--amber:#EF9F27;--danger:#ff7a7a;
     --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     --display:'Unbounded','Manrope',sans-serif;
   }
@@ -37,9 +37,16 @@
   html.embedded header{display:none}
   html.embedded .wrap{padding:0}
 
-  .head{margin-bottom:18px}
+  .bossBtn{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--muted);border:1px solid var(--line);padding:8px 14px;border-radius:999px;background:var(--panel);cursor:pointer;font:inherit}
+  .bossBtn:hover{color:var(--text);border-color:var(--line-2)}
+  .bossBtn.on{color:var(--brand);border-color:rgba(25,227,154,.4);background:rgba(25,227,154,.08)}
+
+  .head{margin-bottom:18px;display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .head .htxt{flex:1;min-width:220px}
   .head h1{font-family:var(--display);font-size:24px;margin:0 0 6px}
   .head p{color:var(--muted);font-size:13.5px;margin:0}
+  .editBanner{display:none;align-items:center;gap:9px;background:rgba(25,227,154,.08);border:1px solid rgba(25,227,154,.35);color:var(--brand);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:16px}
+  body.editmode .editBanner{display:flex}
 
   .stage{margin:26px 0 14px}
   .stage h2{font-family:var(--display);font-size:16px;margin:0 0 4px}
@@ -47,14 +54,21 @@
 
   .modcard{border:1px solid var(--line);background:var(--panel);border-radius:16px;margin-bottom:12px;overflow:hidden;scroll-margin-top:80px;transition:border-color .5s,background .5s}
   .modcard.flash{border-color:rgba(25,227,154,.7);background:rgba(25,227,154,.06)}
+  .modcard.editing{border-color:rgba(239,159,39,.5)}
   .mchead{display:flex;align-items:center;gap:12px;padding:15px 16px}
   .midx{flex:0 0 26px;height:26px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted)}
   .mctitle{flex:1;min-width:0}
-  .mctitle h3{font-family:var(--display);font-size:15px;margin:0}
+  .mctitle h3{font-family:var(--display);font-size:15px;margin:0;display:flex;align-items:center;gap:8px}
   .mctitle .mdesc{color:var(--muted);font-size:12.5px;margin-top:2px}
-  .permalink{flex:0 0 auto;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;font:inherit}
-  .permalink:hover{color:var(--text);border-color:var(--line-2)}
+  .editedTag{font-size:10.5px;font-weight:700;color:var(--amber);background:rgba(239,159,39,.14);border:1px solid rgba(239,159,39,.35);border-radius:7px;padding:2px 7px}
+  .headbtns{flex:0 0 auto;display:flex;gap:7px}
+  .permalink,.editBtn,.savebtn,.cancelbtn,.revertbtn{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;font:inherit;font-weight:600}
+  .permalink:hover,.editBtn:hover{color:var(--text);border-color:var(--line-2)}
   .permalink.copied{color:var(--brand);border-color:rgba(25,227,154,.4)}
+  .editBtn.on{color:var(--amber);border-color:rgba(239,159,39,.4)}
+  .savebtn{color:var(--brand-ink);background:linear-gradient(140deg,var(--brand),var(--brand-2));border:0}
+  .savebtn:disabled{opacity:.55;cursor:not-allowed}
+  .revertbtn{color:var(--danger);border-color:rgba(255,122,122,.35)}
 
   details{border-top:1px solid var(--line)}
   details summary{list-style:none;cursor:pointer;padding:11px 16px;font-size:13px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:7px;user-select:none}
@@ -106,6 +120,34 @@
   .qopt.correct::after{content:'✓ верно';margin-left:auto;font-size:11px;font-weight:700;color:var(--brand);flex:0 0 auto}
 
   .empty{text-align:center;color:var(--muted);padding:40px 10px}
+
+  /* --- edit mode --- */
+  .edform{padding:14px 16px 4px}
+  .edrow{margin-bottom:10px}
+  .edrow label{display:block;font-size:11.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px}
+  .edrow input[type=text]{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;color:var(--text);font:inherit;font-size:14px;padding:9px 11px;outline:none}
+  .edrow input[type=text]:focus{border-color:rgba(25,227,154,.5)}
+  .toolbar{display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap}
+  .toolbar button{border:1px solid var(--line);background:var(--panel-2);color:var(--muted);border-radius:7px;padding:5px 10px;font-size:12.5px;font-weight:700;cursor:pointer;font:inherit}
+  .toolbar button:hover{color:var(--text);border-color:var(--line-2)}
+  .edcontent{min-height:160px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px 14px;outline:none}
+  .edcontent:focus{border-color:rgba(25,227,154,.5)}
+  .edhint{color:var(--faint);font-size:11.5px;margin-top:6px}
+  .edquiz{padding:12px 16px 16px}
+  .eqblk{border:1px solid var(--line);background:var(--panel-2);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .eqblk .qtop{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .eqblk .qtop input{flex:1}
+  .eqopt{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .eqopt input[type=radio]{accent-color:var(--brand);flex:0 0 auto}
+  .eqopt input[type=text]{flex:1}
+  .eqopt .rmopt,.qtop .rmq{flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--faint);border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:13px}
+  .eqopt .rmopt:hover,.qtop .rmq:hover{color:var(--danger);border-color:rgba(255,122,122,.4)}
+  .addbtn{border:1px dashed var(--line-2);background:transparent;color:var(--muted);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font:inherit;width:100%;margin-top:4px}
+  .addbtn:hover{color:var(--text);border-color:var(--brand)}
+  .editbar{display:flex;gap:8px;padding:12px 16px 16px;flex-wrap:wrap}
+  .savemsg{font-size:12px;font-weight:700;margin-left:auto;align-self:center}
+  .savemsg.ok{color:var(--brand)}
+  .savemsg.err{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -120,13 +162,17 @@
     <a class="navtab active" href="/training-preview.html">📚 Обучение</a>
   </nav>
   <div class="spacer"></div>
+  <button class="bossBtn" id="bossBtn">🔒 Войти как руководитель</button>
 </header>
 
 <div class="wrap">
   <div class="head">
-    <h1>Учебные модули</h1>
-    <p>Весь контент ниже — прямо из того, что видят стажёры на сайте. Нажмите «Скопировать ссылку» у любого модуля, чтобы переслать его или вернуться к нему позже.</p>
+    <div class="htxt">
+      <h1>Учебные модули</h1>
+      <p>Весь контент ниже — то, что реально видят стажёры на сайте. Нажмите «Ссылка», чтобы переслать конкретный модуль.</p>
+    </div>
   </div>
+  <div class="editBanner">✏️ Режим редактирования включён — у каждого модуля появилась кнопка «Править». Правки применяются сразу, без нового деплоя.</div>
   <div id="stages"></div>
   <div class="empty" id="empty" style="display:none">Не удалось загрузить материалы (lessons.js).</div>
 </div>
@@ -149,6 +195,37 @@ const $=s=>document.querySelector(s);
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
+// тот же ключ, что и на pipeline.html/analytics.html/index.html — один пароль руководителя
+// на все админ-страницы сайта, чтобы не логиниться заново на каждой.
+const BOSS_PW_KEY='sagiHR_ropPass';
+let BOSS_PW=localStorage.getItem(BOSS_PW_KEY)||'';
+let editMode=false;
+let ORIGINAL={};   // id -> pristine {title,desc,content,quiz} из lessons.js, до наложения правок
+let OVERRIDDEN=new Set(); // id, у которых есть сохранённая правка (для бейджа «изменено»)
+
+async function apiL(payload){
+  const r=await fetch('/api/lessons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json();
+  if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status));
+  return d;
+}
+
+function applyOverrides(overrides){
+  OVERRIDDEN=new Set(Object.keys(overrides||{}));
+  for(const [id,ov] of Object.entries(overrides||{})){
+    const m=byId(id); if(!m) continue;
+    if(ov.title) m.title=ov.title;
+    if(ov.desc!=null) m.desc=ov.desc;
+    if(ov.content!=null) m.content=ov.content;
+    if(Array.isArray(ov.quiz)&&ov.quiz.length) m.quiz=ov.quiz;
+  }
+}
+
+function byId(id){
+  const L=window.LESSONS||{};
+  return (L.basic||[]).concat(L.adv||[]).find(m=>m.id===id);
+}
+
 function renderQuiz(quiz){
   if(!quiz||!quiz.length) return '<div class="empty" style="padding:10px">Вопросов пока нет.</div>';
   return quiz.map((q,i)=>{
@@ -157,17 +234,85 @@ function renderQuiz(quiz){
   }).join('');
 }
 
-function moduleCard(m, idx){
-  const div=document.createElement('div');
-  div.className='modcard'; div.id=m.id;
-  div.innerHTML=
+function viewCardHtml(m, idx){
+  const edited = OVERRIDDEN.has(m.id) ? '<span class="editedTag">изменено</span>' : '';
+  const editBtn = editMode ? '<button class="editBtn" data-edit="'+esc(m.id)+'">✏️ Править</button>' : '';
+  return (
     '<div class="mchead">'+
       '<div class="midx">'+(idx+1)+'</div>'+
-      '<div class="mctitle"><h3>'+esc(m.title)+'</h3><div class="mdesc">'+esc(m.desc||'')+'</div></div>'+
-      '<button class="permalink" data-copy="'+esc(m.id)+'">🔗 Ссылка</button>'+
+      '<div class="mctitle"><h3>'+esc(m.title)+edited+'</h3><div class="mdesc">'+esc(m.desc||'')+'</div></div>'+
+      '<div class="headbtns">'+editBtn+'<button class="permalink" data-copy="'+esc(m.id)+'">🔗 Ссылка</button></div>'+
     '</div>'+
     '<details><summary>Содержание модуля</summary><div class="mcontent">'+m.content+'</div></details>'+
-    '<details><summary>Тест ('+((m.quiz||[]).length)+' вопр.)</summary><div class="quizlist">'+renderQuiz(m.quiz)+'</div></details>';
+    '<details><summary>Тест ('+((m.quiz||[]).length)+' вопр.)</summary><div class="quizlist">'+renderQuiz(m.quiz)+'</div></details>'
+  );
+}
+
+function eqBlockHtml(q, qi){
+  const opts=(q.options||[]).map((o,oi)=>
+    '<div class="eqopt">'+
+      '<input type="radio" name="correct-'+qi+'" value="'+oi+'" '+(oi===q.correct?'checked':'')+'>'+
+      '<input type="text" class="opttext" value="'+esc(o)+'" placeholder="Вариант ответа">'+
+      '<button type="button" class="rmopt" data-rmopt="'+qi+':'+oi+'" title="Удалить вариант">×</button>'+
+    '</div>'
+  ).join('');
+  return (
+    '<div class="eqblk" data-qi="'+qi+'">'+
+      '<div class="qtop"><b style="color:var(--faint);font-size:12px">'+(qi+1)+'.</b><input type="text" class="qtext" value="'+esc(q.q)+'" placeholder="Текст вопроса">'+
+      '<button type="button" class="rmq" data-rmq="'+qi+'" title="Удалить вопрос">×</button></div>'+
+      opts+
+      '<button type="button" class="addbtn" data-addopt="'+qi+'">+ вариант ответа</button>'+
+    '</div>'
+  );
+}
+
+function editCardHtml(m, idx){
+  const quiz=(m.quiz&&m.quiz.length)?m.quiz:[];
+  return (
+    '<div class="mchead">'+
+      '<div class="midx">'+(idx+1)+'</div>'+
+      '<div class="mctitle"><h3>Редактирование модуля</h3></div>'+
+      '<div class="headbtns"><button class="permalink" data-copy="'+esc(m.id)+'">🔗 Ссылка</button></div>'+
+    '</div>'+
+    '<div class="edform">'+
+      '<div class="edrow"><label>Заголовок</label><input type="text" class="ed-title" value="'+esc(m.title)+'"></div>'+
+      '<div class="edrow"><label>Краткое описание (подзаголовок в списке)</label><input type="text" class="ed-desc" value="'+esc(m.desc||'')+'"></div>'+
+      '<div class="edrow"><label>Содержание</label>'+
+        '<div class="toolbar">'+
+          '<button type="button" data-cmd="bold" title="Жирный"><b>Ж</b></button>'+
+          '<button type="button" data-cmd="italic" title="Курсив"><i>К</i></button>'+
+          '<button type="button" data-cmd="h3" title="Заголовок раздела">H3</button>'+
+          '<button type="button" data-cmd="p" title="Обычный текст">¶</button>'+
+          '<button type="button" data-cmd="ul" title="Маркированный список">• Список</button>'+
+        '</div>'+
+        '<div class="edcontent mcontent" contenteditable="true">'+m.content+'</div>'+
+        '<div class="edhint">Форматирование как в Word: выделите текст и нажмите кнопку. Готовые блоки (карточки, скрипты и т.п.) можно оставить как есть и просто поправить текст внутри них.</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="edquiz">'+
+      '<label style="display:block;font-size:11.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px">Тест</label>'+
+      '<div class="eqlist">'+quiz.map(eqBlockHtml).join('')+'</div>'+
+      '<button type="button" class="addbtn" data-addq="1">+ вопрос</button>'+
+    '</div>'+
+    '<div class="editbar">'+
+      '<button class="savebtn" data-save="'+esc(m.id)+'">💾 Сохранить</button>'+
+      '<button class="cancelbtn" data-cancel="'+esc(m.id)+'">Отмена</button>'+
+      (OVERRIDDEN.has(m.id)?'<button class="revertbtn" data-revert="'+esc(m.id)+'">↺ Вернуть оригинал</button>':'')+
+      '<span class="savemsg" data-msg="'+esc(m.id)+'"></span>'+
+    '</div>'
+  );
+}
+
+const editingIds=new Set();
+
+function renderCard(container, m, idx){
+  container.innerHTML = editingIds.has(m.id) ? editCardHtml(m, idx) : viewCardHtml(m, idx);
+}
+
+function moduleCard(m, idx){
+  const div=document.createElement('div');
+  div.className='modcard'; div.id=m.id; div.dataset.idx=idx;
+  renderCard(div, m, idx);
   return div;
 }
 
@@ -180,23 +325,189 @@ function stageBlock(titleHtml, subText, modules){
   return wrap;
 }
 
-function init(){
-  const L = window.LESSONS;
-  if(!L || !L.basic || !L.adv){ $('#empty').style.display='block'; return; }
-  const stages=$('#stages');
+function renderAll(){
+  const L=window.LESSONS;
+  const stages=$('#stages'); stages.innerHTML='';
   stages.appendChild(stageBlock('1. Обучение (базовые модули)', 'Проходят все при найме, до звонка с командой — сейчас доступно менеджерам по продажам, дедлайн 3 часа с регистрации', L.basic));
   stages.appendChild(stageBlock('2. Стажировка (продвинутые модули)', 'Открывается вручную после созвона с кандидатом — сейчас видно только менеджерам', L.adv));
+}
 
-  document.addEventListener('click', e=>{
-    const btn=e.target.closest('.permalink');
-    if(!btn) return;
-    const id=btn.dataset.copy;
+function setEditMode(on){
+  editMode=on;
+  document.body.classList.toggle('editmode', on);
+  const btn=$('#bossBtn');
+  btn.textContent = on ? '🔓 Руководитель · Выйти' : '🔒 Войти как руководитель';
+  btn.classList.toggle('on', on);
+  if(!on) editingIds.clear();
+  renderAll();
+}
+
+async function tryLogin(pw){
+  const d=await apiL({action:'list', password:pw});
+  applyOverrides(d.overrides);
+  BOSS_PW=pw; localStorage.setItem(BOSS_PW_KEY,pw);
+  setEditMode(true);
+}
+
+$('#bossBtn').addEventListener('click', async ()=>{
+  if(editMode){ localStorage.removeItem(BOSS_PW_KEY); BOSS_PW=''; setEditMode(false); return; }
+  const pw=prompt('Пароль руководителя:'); if(!pw) return;
+  try{ await tryLogin(pw); }
+  catch(e){ alert('Неверный пароль'); }
+});
+
+function gatherQuizFromCard(card){
+  const blocks=[...card.querySelectorAll('.eqblk')];
+  return blocks.map(b=>{
+    const q=b.querySelector('.qtext').value.trim();
+    const opts=[...b.querySelectorAll('.eqopt')];
+    const checked=b.querySelector('input[type=radio]:checked');
+    const correctIdx = checked ? opts.findIndex(o=>o.querySelector('input[type=radio]')===checked) : 0;
+    const options=opts.map(o=>o.querySelector('.opttext').value.trim()).filter(Boolean);
+    return {q, options, correct: Math.max(0,Math.min(correctIdx, options.length-1))};
+  }).filter(q=>q.q && q.options.length>=2);
+}
+
+document.addEventListener('click', async e=>{
+  // копировать ссылку
+  const copyBtn=e.target.closest('.permalink');
+  if(copyBtn){
+    const id=copyBtn.dataset.copy;
     const url=location.origin+location.pathname+'#'+id;
-    const done=()=>{ btn.textContent='✓ Скопировано'; btn.classList.add('copied'); setTimeout(()=>{ btn.textContent='🔗 Ссылка'; btn.classList.remove('copied'); },1600); };
+    const done=()=>{ copyBtn.textContent='✓ Скопировано'; copyBtn.classList.add('copied'); setTimeout(()=>{ copyBtn.textContent='🔗 Ссылка'; copyBtn.classList.remove('copied'); },1600); };
     if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done).catch(()=>{ history.replaceState(null,'','#'+id); done(); }); }
     else { history.replaceState(null,'','#'+id); done(); }
     history.replaceState(null,'','#'+id);
-  });
+    return;
+  }
+  // войти в режим правки конкретного модуля
+  const editBtn=e.target.closest('.editBtn');
+  if(editBtn){
+    const id=editBtn.dataset.edit;
+    editingIds.add(id);
+    const card=document.getElementById(id);
+    renderCard(card, byId(id), +card.dataset.idx);
+    return;
+  }
+  // отмена правки
+  const cancelBtn=e.target.closest('.cancelbtn');
+  if(cancelBtn){
+    const id=cancelBtn.dataset.cancel;
+    editingIds.delete(id);
+    const card=document.getElementById(id);
+    renderCard(card, byId(id), +card.dataset.idx);
+    return;
+  }
+  // тулбар форматирования
+  const cmdBtn=e.target.closest('.toolbar button');
+  if(cmdBtn){
+    const cmd=cmdBtn.dataset.cmd;
+    const box=cmdBtn.closest('.edrow').querySelector('.edcontent');
+    box.focus();
+    if(cmd==='h3') document.execCommand('formatBlock','false','H3');
+    else if(cmd==='p') document.execCommand('formatBlock','false','P');
+    else if(cmd==='ul') document.execCommand('insertUnorderedList');
+    else document.execCommand(cmd);
+    return;
+  }
+  // вопрос: добавить/удалить
+  const addQ=e.target.closest('[data-addq]');
+  if(addQ){
+    const card=addQ.closest('.modcard');
+    const list=card.querySelector('.eqlist');
+    const qi=list.children.length;
+    list.insertAdjacentHTML('beforeend', eqBlockHtml({q:'',options:['','' ],correct:0}, qi));
+    return;
+  }
+  const rmQ=e.target.closest('[data-rmq]');
+  if(rmQ){
+    rmQ.closest('.eqblk').remove();
+    return;
+  }
+  const addOpt=e.target.closest('[data-addopt]');
+  if(addOpt){
+    const blk=addOpt.closest('.eqblk');
+    const qi=blk.dataset.qi;
+    const optCount=blk.querySelectorAll('.eqopt').length;
+    addOpt.insertAdjacentHTML('beforebegin',
+      '<div class="eqopt"><input type="radio" name="correct-'+qi+'" value="'+optCount+'">'+
+      '<input type="text" class="opttext" placeholder="Вариант ответа">'+
+      '<button type="button" class="rmopt" data-rmopt="'+qi+':'+optCount+'" title="Удалить вариант">×</button></div>');
+    return;
+  }
+  const rmOpt=e.target.closest('[data-rmopt]');
+  if(rmOpt){
+    rmOpt.closest('.eqopt').remove();
+    return;
+  }
+  // сохранить
+  const saveBtn=e.target.closest('.savebtn');
+  if(saveBtn){
+    const id=saveBtn.dataset.save;
+    const card=document.getElementById(id);
+    const msg=card.querySelector('[data-msg]');
+    saveBtn.disabled=true; msg.textContent=''; msg.className='savemsg';
+    try{
+      const title=card.querySelector('.ed-title').value.trim();
+      const desc=card.querySelector('.ed-desc').value.trim();
+      const content=card.querySelector('.edcontent').innerHTML;
+      const quiz=gatherQuizFromCard(card);
+      if(!title) throw new Error('Нужен заголовок');
+      const d=await apiL({action:'save', password:BOSS_PW, id, title, desc, content, quiz});
+      const m=byId(id);
+      m.title=d.item.title; m.desc=d.item.desc; m.content=d.item.content; m.quiz=d.item.quiz;
+      OVERRIDDEN.add(id);
+      editingIds.delete(id);
+      renderCard(card, m, +card.dataset.idx);
+      const vmsg=card.querySelector('[data-msg]')||{};
+    }catch(err){
+      msg.textContent='Ошибка: '+err.message; msg.className='savemsg err';
+      saveBtn.disabled=false;
+    }
+    return;
+  }
+  // вернуть оригинал
+  const revertBtn=e.target.closest('.revertbtn');
+  if(revertBtn){
+    const id=revertBtn.dataset.revert;
+    if(!confirm('Вернуть модуль к исходному варианту из lessons.js? Правки будут удалены.')) return;
+    try{
+      await apiL({action:'reset', password:BOSS_PW, id});
+      const orig=ORIGINAL[id];
+      const m=byId(id);
+      m.title=orig.title; m.desc=orig.desc; m.content=orig.content; m.quiz=orig.quiz;
+      OVERRIDDEN.delete(id);
+      editingIds.delete(id);
+      const card=document.getElementById(id);
+      renderCard(card, m, +card.dataset.idx);
+    }catch(err){ alert('Ошибка: '+err.message); }
+    return;
+  }
+});
+
+async function init(){
+  const L = window.LESSONS;
+  if(!L || !L.basic || !L.adv){ $('#empty').style.display='block'; return; }
+  // сохраняем чистый оригинал ДО наложения правок — нужен для «Вернуть оригинал»
+  L.basic.concat(L.adv).forEach(m=>{ ORIGINAL[m.id]=JSON.parse(JSON.stringify({title:m.title,desc:m.desc,content:m.content,quiz:m.quiz})); });
+
+  try{
+    if(BOSS_PW){
+      const d=await apiL({action:'list', password:BOSS_PW});
+      applyOverrides(d.overrides);
+      editMode=true;
+    } else {
+      const d=await apiL({action:'public'});
+      applyOverrides(d.overrides);
+    }
+  }catch(e){ BOSS_PW=''; localStorage.removeItem(BOSS_PW_KEY); }
+
+  document.body.classList.toggle('editmode', editMode);
+  const btn=$('#bossBtn');
+  btn.textContent = editMode ? '🔓 Руководитель · Выйти' : '🔒 Войти как руководитель';
+  btn.classList.toggle('on', editMode);
+
+  renderAll();
 
   if(location.hash){
     const id=decodeURIComponent(location.hash.slice(1));
