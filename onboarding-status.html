@@ -167,7 +167,13 @@ const $=s=>document.querySelector(s);
   setInterval(postHeight, 1200);
 })();
 
-const PASS_KEY='sagiHR_onboardingPass';
+// 2026-08-24: раньше был отдельный ключ ('sagiHR_onboardingPass') — из-за этого при встраивании
+// в аккордеон панели руководителя (index.html, ?embed=1) страница показывала СВОЙ логин поверх
+// уже открытой панели, хотя Sagi уже вошёл как руководитель на главной. Внутри iframe это выглядело
+// как «слетает»: скрытый header + нулевая высота контента под фикс-оверлеем гейта схлопывали
+// высоту iframe. Теперь общий ключ со всеми остальными admin-страницами (pipeline/analytics/
+// training-preview/index.html) — один пароль руководителя открывает всё сразу.
+const PASS_KEY='sagiHR_ropPass';
 let PASS=localStorage.getItem(PASS_KEY)||'', DATA=[], ITEMS_BY_ROLE={}, ROLE_LABELS={};
 
 async function api(payload){
