@@ -58,15 +58,10 @@
   /* 2026-08-24, по указанию Sagi: было три карточки в один ряд (Стажёр / Действующий менеджер /
      Руководитель) — сбивало с толку («стыдно» возвращаться в «стажёр» после повышения) и ставило
      руководителя визуально на одну ступень с обычным сотрудником. Теперь один общий пункт
-     «Обучение» на всех сотрудников (внутри — обычные вход/регистрация, ничего не потеряно), а
-     руководитель — отдельная приподнятая ссылка над карточкой, не в общем ряду. */
-  .entryTop{display:flex;justify-content:flex-end;margin-top:22px}
-  .bossPill{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;
-    border:1px solid rgba(239,159,39,.35);background:rgba(239,159,39,.08);color:var(--text);
-    font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:.16s}
-  .bossPill:hover{background:rgba(239,159,39,.16);border-color:rgba(239,159,39,.55);transform:translateY(-1px)}
-  .bossPill .ic{font-size:15px}
-  @media(max-width:560px){.entryTop{justify-content:center}}
+     «Обучение» на всех сотрудников (внутри — обычные вход/регистрация, ничего не потеряно).
+     2026-08-24, позже в тот же день: вход руководителя убрали со страницы совсем (см. BOSS_ENTRY
+     в основном скрипте ниже) — сотрудники больше не видят даже намёка на админ-вход, у Sagi
+     отдельная приватная ссылка ?boss=1. */
   .roles.roles-single{grid-template-columns:1fr;max-width:480px;margin-left:auto;margin-right:auto;margin-top:14px}
 
   /* cards / forms */
@@ -227,14 +222,8 @@
     <div class="hero">
       <div class="eyebrow">Платформа отдела продаж</div>
       <h1>Добро пожаловать в Sagi HR</h1>
-      <p class="lead">Единый кабинет для обучения и развития команды продаж. Выберите, кто вы — покажем нужный раздел.</p>
+      <p class="lead">Единый кабинет для обучения и развития команды продаж.</p>
     </div>
-    <div class="entryTop">
-      <button class="bossPill" data-role="boss">
-        <span class="ic">🎯</span> Я руководитель — панель управления →
-      </button>
-    </div>
-
     <div class="roles roles-single">
       <button class="role blue" data-role="trainee">
         <div class="ic">🎓</div>
@@ -500,6 +489,11 @@ let BOSS_PW=localStorage.getItem(BOSS_PW_KEY)||null;
 // id переписки на hh.kz из ссылки-приглашения (?hh=123456) — привязываем при регистрации,
 // чтобы напоминания об обучении и уведомление о наставнике могли прийти в тот же чат.
 const REF_HH = new URLSearchParams(location.search).get('hh') || '';
+// 2026-08-24, по указанию Sagi: раньше на входе была видна кнопка «Я руководитель» — обычный
+// сотрудник видел, что где-то рядом есть админ-вход, и это соблазн (подбирать пароль и т.п.).
+// Теперь на общей странице входа этой кнопки нет вообще — руководитель заходит по отдельной
+// приватной ссылке hr.sagibonus.com/?boss=1 (см. enterBoss()/restore session ниже).
+const BOSS_ENTRY = new URLSearchParams(location.search).get('boss') === '1';
 
 /* ---- Программа обучения (контент + тесты в lessons.js) ---- */
 const BASIC = (window.LESSONS && window.LESSONS.basic) || [];
@@ -531,26 +525,29 @@ let authMode='login';   // 'login' | 'register'
 
 /* ---- ENTRY ----
    2026-08-24: единая кнопка «Обучение» на входе (раньше были отдельные «Стажёр»/«Действующий
-   менеджер» — см. .bossPill/.roles-single выше). Роль при регистрации всегда 'trainee' —
-   до менеджера сотрудника повышает руководитель из панели (#profPromote), самостоятельная
-   регистрация сразу менеджером никогда и не была задумана как отдельный путь.
+   менеджер»). Роль при регистрации всегда 'trainee' — до менеджера сотрудника повышает
+   руководитель из панели (#profPromote), самостоятельная регистрация сразу менеджером никогда
+   и не была задумана как отдельный путь.
    По умолчанию открываем форму входа (это единая точка и для новых, и для старых сотрудников),
    но если человек пришёл по ссылке-приглашению с hh.kz (?hh=...), это почти всегда новый
    стажёр — для него сразу открываем регистрацию. */
-document.querySelectorAll('.role, .bossPill').forEach(b=>b.addEventListener('click',async()=>{
-  const r=b.dataset.role;
-  if(r==='boss'){
-    if(BOSS_PW){
-      const res=await api({action:'list', password:BOSS_PW});
-      if(res.ok){ renderBoss(res.users); return; }
-      BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY);
-    }
-    $('#bossErr').style.display='none'; $('#f-boss').value=''; show('screen-boss-login'); $('#f-boss').focus(); return;
-  }
+document.querySelectorAll('.role').forEach(b=>b.addEventListener('click',()=>{
   authMode = REF_HH ? 'register' : 'login';
   renderAuth();
   show('screen-auth');
 }));
+
+// 2026-08-24, по указанию Sagi: вход руководителя больше не показывается на общей странице —
+// никакой кнопки/подсказки для обычных сотрудников. Доступ только по приватной ссылке
+// hr.sagibonus.com/?boss=1 (см. BOSS_ENTRY выше и вызов enterBoss() в restore session ниже).
+async function enterBoss(){
+  if(BOSS_PW){
+    const res=await api({action:'list', password:BOSS_PW});
+    if(res.ok){ renderBoss(res.users); return; }
+    BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY);
+  }
+  $('#bossErr').style.display='none'; $('#f-boss').value=''; show('screen-boss-login'); $('#f-boss').focus();
+}
 
 function renderAuth(){
   const reg = authMode==='register';
@@ -984,6 +981,7 @@ $('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $
 /* ---- restore session ---- */
 (async function(){
   await applyLessonOverrides();
+  if(BOSS_ENTRY){ await enterBoss(); return; }
   const s=getSession();
   if(s && s.login && s.token){
     const res=await api({action:'me', login:s.login, token:s.token});
