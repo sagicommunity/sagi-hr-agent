@@ -193,6 +193,19 @@
   .rfBtn:hover{color:var(--text)}
   .rfBtn.active{background:var(--panel);border-color:rgba(25,227,154,.5);color:var(--text)}
 
+  /* 2026-08-24: таблица сотрудников (12 колонок) на узких окнах шире, чем .bossContent. Без этого
+     overflow-x на самой обёртке, «лишняя» ширина раздвигала всю страницу вбок — при прокрутке
+     вправо, чтобы увидеть скрытые колонки, вместе с таблицей уезжал и левый сайдбар с разделами
+     (жалоба Sagi «тяжело в плане навигации»). Теперь скроллится только сама таблица, сайдбар
+     остаётся на месте. Плюс свой скроллбар — на Mac системный скроллбар прячется и было незаметно,
+     что там вообще есть что прокручивать. */
+  #bossTableWrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px}
+  #bossTableWrap::-webkit-scrollbar{height:8px}
+  #bossTableWrap::-webkit-scrollbar-track{background:transparent}
+  #bossTableWrap::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
+  #bossTableWrap::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+  #bossTableWrap table{margin:14px 0 4px}
+
   /* 2026-08-24: раньше был один длинный аккордеон — все 7 разделов стопкой, можно было открыть
      сразу несколько, страница разрасталась и было неудобно ориентироваться (жалоба Sagi). Теперь
      слева список разделов (как вкладки), справа — только выбранный, один открыт за раз. Разделы
