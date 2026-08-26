@@ -193,6 +193,25 @@
   .rfBtn:hover{color:var(--text)}
   .rfBtn.active{background:var(--panel);border-color:rgba(25,227,154,.5);color:var(--text)}
 
+  /* 2026-08-26, по указанию Sagi: рейтинг стажёров по баллам (как лидерборд на фитнес-занятиях) —
+     отдельные классы .lbBtn (не .rfBtn!), т.к. на .rfBtn уже висит глобальный обработчик фильтра
+     таблицы руководителя (querySelectorAll('.rfBtn')) — общий класс задел бы и эти новые кнопки. */
+  .lbBtn{padding:8px 14px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel-2);
+    color:var(--muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s}
+  .lbBtn:hover{color:var(--text)}
+  .lbBtn.active{background:var(--panel);border-color:rgba(25,227,154,.5);color:var(--text)}
+  .lbCard{cursor:pointer;transition:.15s}
+  .lbCard:hover{border-color:rgba(25,227,154,.45)}
+  .lbRow{display:flex;align-items:center;gap:14px;padding:12px 6px;border-bottom:1px solid var(--line)}
+  .lbRow:last-child{border-bottom:none}
+  .lbRow.me{background:rgba(25,227,154,.08);border-radius:12px;padding:12px 10px;margin:0 -4px}
+  .lbRank{width:30px;flex:none;text-align:center;font-family:var(--display);font-weight:800;font-size:16px;color:var(--muted)}
+  .lbRank.top1{font-size:20px}
+  .lbRank.top2{font-size:19px}
+  .lbRank.top3{font-size:19px}
+  .lbName{flex:1;font-weight:700}
+  .lbPts{font-family:var(--display);font-weight:800;color:var(--brand);white-space:nowrap}
+
   /* 2026-08-24: таблица сотрудников (12 колонок) на узких окнах шире, чем .bossContent. Без этого
      overflow-x на самой обёртке, «лишняя» ширина раздвигала всю страницу вбок — при прокрутке
      вправо, чтобы увидеть скрытые колонки, вместе с таблицей уезжал и левый сайдбар с разделами
@@ -317,6 +336,15 @@
         <div class="stat"><div class="big" id="stDone">0</div><div class="lbl">модулей пройдено</div></div>
         <div class="stat"><div class="big" id="stPts">0</div><div class="lbl">баллов набрано</div></div>
       </div>
+    </div>
+
+    <!-- 2026-08-26, по указанию Sagi: рейтинг стажёров по баллам за модули — публичный, все видят
+         друг друга по именам (решение Sagi, по аналогии с лидербордом на фитнес-занятиях). -->
+    <div class="card lbCard" id="lbTeaserCard" style="margin-bottom:6px" onclick="openLeaderboard()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>🏆 Рейтинг</b><span style="color:var(--brand);font-weight:700">Открыть →</span>
+      </div>
+      <div class="sub" id="lbTeaser" style="margin-top:6px">Загружаю…</div>
     </div>
 
     <!-- 2026-08-19, по указанию Sagi: жёсткий срок 3 часа с момента регистрации на прохождение
@@ -498,6 +526,18 @@
     </div>
   </section>
 
+  <!-- LEADERBOARD — 2026-08-26, по указанию Sagi -->
+  <section id="screen-leaderboard" class="hidden">
+    <button class="btn sec small" id="lbBack" style="margin:18px 0 14px">← В кабинет</button>
+    <div class="sectitle" style="margin-top:0">🏆 Рейтинг</div>
+    <div class="sub" style="margin:-6px 0 14px">Баллы за пройденные модули — 10 баллов за каждый.</div>
+    <div class="roleFilter" id="lbRoleFilter">
+      <button class="lbBtn" data-role="trainee">📘 Обучение</button>
+      <button class="lbBtn" data-role="manager">🎓 Стажировка</button>
+    </div>
+    <div class="card" id="lbListWrap"><div id="lbList"></div></div>
+  </section>
+
 </div>
 
 <script src="lessons.js"></script>
@@ -597,7 +637,7 @@ async function applyLessonOverrides(){
 
 /* ---- helpers ---- */
 const $=s=>document.querySelector(s);
-const show=id=>{ ['screen-entry','screen-auth','screen-boss-login','screen-cabinet','screen-boss','screen-profile','screen-lesson']
+const show=id=>{ ['screen-entry','screen-auth','screen-boss-login','screen-cabinet','screen-boss','screen-profile','screen-lesson','screen-leaderboard']
   .forEach(s=>$('#'+s).classList.toggle('hidden', s!==id)); window.scrollTo(0,0); };
 let authMode='login';   // 'login' | 'register'
 
@@ -749,6 +789,7 @@ function renderCabinet(u){
   const trainerUrl='/agent.html?login='+encodeURIComponent(u.login)+'&name='+encodeURIComponent(u.name);
   document.querySelectorAll('.trainerTiles a.tile').forEach(a=>a.href=trainerUrl);
   loadTrainerStats(u.login);
+  loadLeaderboardTeaser();
 
   show('screen-cabinet');
 }
@@ -765,6 +806,53 @@ async function loadTrainerStats(login){
     }
   }catch(e){ el.textContent=''; }
 }
+
+/* ---- РЕЙТИНГ (2026-08-26, по указанию Sagi) ----
+   Публичный лидерборд по баллам за модули, отдельно для «Обучение» (role trainee) и «Стажировка»
+   (role manager) — сравнивать их напрямую нечестно, у стажировки больше модулей и потолок баллов
+   выше. LB_BOARD кэшируется на время открытого кабинета, обновляется при каждом заходе в кабинет
+   и при открытии самого экрана рейтинга. */
+let LB_BOARD=[];
+async function fetchLeaderboard(){
+  const s=getSession(); if(!s) return [];
+  const res=await api({action:'leaderboard', login:s.login, token:s.token});
+  return res.ok ? (res.board||[]) : [];
+}
+async function loadLeaderboardTeaser(){
+  const el=$('#lbTeaser'); if(!el) return;
+  LB_BOARD=await fetchLeaderboard();
+  const group=LB_BOARD.filter(x=>x.role===(CUR&&CUR.role));
+  const idx=group.findIndex(x=>CUR&&x.login===CUR.login);
+  if(!group.length || idx<0){ el.textContent='Пройдите первый модуль, чтобы попасть в рейтинг.'; return; }
+  el.textContent='Твоё место: #'+(idx+1)+' из '+group.length+' · '+(group[idx].points||0)+' баллов';
+}
+function renderLeaderboardList(role){
+  document.querySelectorAll('#lbRoleFilter .lbBtn').forEach(b=>b.classList.toggle('active', b.dataset.role===role));
+  const group=LB_BOARD.filter(x=>x.role===role).sort((a,b)=>b.points-a.points);
+  const wrap=$('#lbList');
+  if(!group.length){ wrap.innerHTML='<div class="sub" style="padding:14px 6px">Пока никого нет в этой группе.</div>'; return; }
+  wrap.innerHTML=group.map((x,i)=>{
+    const rank=i+1;
+    const rankClass=rank===1?'top1':rank===2?'top2':rank===3?'top3':'';
+    const medal=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
+    const isMe=CUR&&x.login===CUR.login;
+    return '<div class="lbRow'+(isMe?' me':'')+'">'
+      +'<div class="lbRank '+rankClass+'">'+medal+'</div>'
+      +'<div class="lbName">'+(isMe?'Вы':x.name)+'</div>'
+      +'<div class="lbPts">'+x.points+'</div>'
+      +'</div>';
+  }).join('');
+}
+async function openLeaderboard(){
+  show('screen-leaderboard');
+  $('#lbList').innerHTML='<div class="sub" style="padding:14px 6px">Загружаю…</div>';
+  LB_BOARD=await fetchLeaderboard();
+  renderLeaderboardList((CUR&&CUR.role)||'trainee');
+}
+document.querySelectorAll('#lbRoleFilter .lbBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>renderLeaderboardList(btn.dataset.role));
+});
+$('#lbBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabinet'); };
 
 /* ---- LESSON READER ---- */
 let curLesson=null;
