@@ -284,10 +284,16 @@ const refSrc = qs.get('src') || '';
 let refId = '';
 if (refSrc === 'hh' && qs.get('neg')) refId = 'hh_' + qs.get('neg');
 else if (refSrc === 'tg' && qs.get('chat')) refId = 'tg_' + qs.get('chat');
-// 2026-08-26, по указанию Sagi: ?src=wa — кандидаты, которые написали ему лично на телефон/WhatsApp.
-// Для них НЕТ refId — нет предыдущей записи hh_/tg_, с которой сливать, так что форма просто
-// создаёт новую запись кандидата и помечает источник, чтобы он не терялся в пайплайне без источника.
-const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram', wa: 'Написал(а) Sagi лично' };
+// Для hh.kz/Telegram source-чип предзаполняется — там канал ответа и есть настоящий источник вакансии.
+const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram' };
+// 2026-08-26, по указанию Sagi: ?src=wa — кандидаты, которым он лично переслал ссылку (написали ему
+// на телефон/WhatsApp). ВАЖНО: это НЕ подменяет ответ на вопрос "откуда узнали о вакансии" — кандидат
+// мог узнать о вакансии где угодно (hh.kz, Instagram, от друга и т.п.), а Sagi просто переслал ему
+// готовую ссылку вместо того, чтобы отвечать в переписке. Поэтому source-чип для wa НЕ трогаем —
+// кандидат отвечает честно, а "переслано лично Sagi" уходит отдельным флагом (viaPersonalLink) для
+// статистики самого Sagi (сколько дошло до анкеты из его личной переписки), не смешиваясь с реальной
+// статистикой источников трафика. Тоже без refId — нет предыдущей записи hh_/tg_, с которой сливать.
+const viaPersonalLink = refSrc === 'wa';
 
 // 2026-08-23, по указанию Sagi: одна ссылка теперь ведёт на ДВЕ вакансии — кандидат выбирает
 // сам (переключатель ниже), по умолчанию открывается «Менеджер по продажам» (все старые ссылки
@@ -428,21 +434,10 @@ document.querySelectorAll('.chips').forEach(group => {
       }
     });
   });
-  // Предзаполнение источника, если пришли по ссылке из hh.kz/Telegram/личного номера Sagi — кандидат может поменять.
+  // Предзаполнение источника, если пришли по ссылке из hh.kz/Telegram — кандидат может поменять.
   if (field === 'source' && SRC_LABEL[refSrc]) {
-    const label = SRC_LABEL[refSrc];
-    const preset = group.querySelector(`.chip[data-value="${label}"]`);
-    if (preset) {
-      preset.classList.add('active'); chipState.source = label;
-    } else {
-      // Нет готового чипа с таким текстом (например, wa) — используем чип "Другое" и вписываем метку.
-      const otherChip = group.querySelector('.chip[data-value="__other"]');
-      if (otherChip) {
-        otherChip.classList.add('active');
-        chipState.source = label;
-        if (otherInput) { otherInput.style.display = 'block'; otherInput.value = label; }
-      }
-    }
+    const preset = group.querySelector(`.chip[data-value="${SRC_LABEL[refSrc]}"]`);
+    if (preset) { preset.classList.add('active'); chipState.source = SRC_LABEL[refSrc]; }
   }
 });
 function chipValue(field) {
@@ -487,6 +482,7 @@ form.addEventListener('submit', async e => {
     referrerPhone: $('#referrerPhone').value.trim(),
     vacancy: currentVac,
     refId: refId,
+    viaPersonalLink: viaPersonalLink,
   };
   if (!payload.name || !payload.contact || !payload.city || !payload.source || !payload.expSales || !payload.techReady || !payload.noCombine || !payload.startWhen || (needAiComfort && !payload.aiComfort) || (needKazakh && !payload.kazakh) || (needSupportExtra && (!payload.cashIntegration || !payload.bitrix24 || !payload.productManagement || !payload.workSchedule || !payload.literacy))) {
     err.textContent = 'Заполните, пожалуйста, все обязательные поля (отмечены *).';
