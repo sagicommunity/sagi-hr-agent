@@ -267,6 +267,7 @@
       <div class="big">✅</div>
       <h2>Спасибо, заявка принята!</h2>
       <p id="resultText">Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту. Удачи!</p>
+      <a class="submit" id="resultCta" href="https://hr.sagibonus.com/?start=1" style="display:none;margin-top:18px;text-decoration:none;text-align:center">🎓 Перейти на обучение</a>
     </div>
   </div>
 </div>
@@ -274,6 +275,19 @@
 <script>
 const $=s=>document.querySelector(s);
 const form=$('#applyForm'), btn=$('#submitBtn'), err=$('#err');
+
+// 2026-08-26, по указанию Sagi: сообщение-ответ (d.message из api/apply.js) раньше выводилось через
+// textContent — ссылки внутри (hr.sagibonus.com/...) были обычным нечитаемым текстом, не кликались.
+// escHtml + linkify: экранируем весь текст (в т.ч. имя кандидата, которое сервер подставляет в
+// message — иначе это была бы XSS-дыра через собственное поле "Имя" в форме), и только потом
+// оборачиваем URL-подобные куски в <a>. Порядок важен: escHtml ДО linkify.
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function linkify(escapedText){
+  return escapedText.replace(/(https?:\/\/[^\s<]+|(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s<]*)?)/gi, m=>{
+    const href = /^https?:\/\//i.test(m) ? m : 'https://'+m;
+    return '<a href="'+href+'" target="_blank" rel="noopener">'+m+'</a>';
+  });
+}
 
 // 2026-08-19: ссылку на эту форму шлют hh.kz-бот и Telegram-бот вместо того, чтобы задавать
 // вопросы в самой переписке (см. api/hh_poll.js, api/tg.js). ?src=hh&neg=<negId> или
@@ -497,7 +511,9 @@ form.addEventListener('submit', async e => {
     if (!r.ok || d.error) throw new Error(d.error || ('Ошибка ' + r.status));
     $('#formView').style.display = 'none';
     $('#resultView').style.display = 'block';
-    $('#resultText').textContent = d.message || 'Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
+    const msgText = d.message || 'Мы рассмотрим ваш отклик и свяжемся с вами по указанному контакту в ближайшее время. Спасибо за интерес к Sagi!';
+    $('#resultText').innerHTML = linkify(escHtml(msgText));
+    $('#resultCta').style.display = d.trainingCta ? 'block' : 'none';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (ex) {
     err.textContent = '⚠️ ' + (ex.message || 'Не удалось отправить. Попробуйте ещё раз.');

@@ -558,6 +558,11 @@ let BOSS_PW=localStorage.getItem(BOSS_PW_KEY)||null;
 // id переписки на hh.kz из ссылки-приглашения (?hh=123456) — привязываем при регистрации,
 // чтобы напоминания об обучении и уведомление о наставнике могли прийти в тот же чат.
 const REF_HH = new URLSearchParams(location.search).get('hh') || '';
+// 2026-08-26, по указанию Sagi: кнопка «🎓 Перейти на обучение» и ссылка в тексте письма-приглашения
+// (apply.html/api/apply.js, ветка продаж) ведут на hr.sagibonus.com/?start=1 — открываем сразу
+// регистрацию, а не общий стартовый экран, чтобы кандидату не пришлось ещё раз искать кнопку
+// «Обучение» и кликать по ней самому (см. init/restore session ниже).
+const START_TRAINING = new URLSearchParams(location.search).get('start') === '1';
 // 2026-08-24, по указанию Sagi: раньше на входе была видна кнопка «Я руководитель» — обычный
 // сотрудник видел, что где-то рядом есть админ-вход, и это соблазн (подбирать пароль и т.п.).
 // Теперь на общей странице входа этой кнопки нет вообще — руководитель заходит по отдельной
@@ -1111,6 +1116,7 @@ $('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $
     if(res.ok){ CUR=res.user; renderCabinet(CUR); return; }
     clearSession();
   }
+  if(START_TRAINING){ authMode='register'; renderAuth(); show('screen-auth'); return; }
   show('screen-entry');
 })();
 </script>
