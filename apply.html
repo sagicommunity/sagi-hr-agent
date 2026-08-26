@@ -284,7 +284,10 @@ const refSrc = qs.get('src') || '';
 let refId = '';
 if (refSrc === 'hh' && qs.get('neg')) refId = 'hh_' + qs.get('neg');
 else if (refSrc === 'tg' && qs.get('chat')) refId = 'tg_' + qs.get('chat');
-const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram' };
+// 2026-08-26, по указанию Sagi: ?src=wa — кандидаты, которые написали ему лично на телефон/WhatsApp.
+// Для них НЕТ refId — нет предыдущей записи hh_/tg_, с которой сливать, так что форма просто
+// создаёт новую запись кандидата и помечает источник, чтобы он не терялся в пайплайне без источника.
+const SRC_LABEL = { hh: 'HH.kz', tg: 'Telegram', wa: 'Написал(а) Sagi лично' };
 
 // 2026-08-23, по указанию Sagi: одна ссылка теперь ведёт на ДВЕ вакансии — кандидат выбирает
 // сам (переключатель ниже), по умолчанию открывается «Менеджер по продажам» (все старые ссылки
@@ -425,10 +428,21 @@ document.querySelectorAll('.chips').forEach(group => {
       }
     });
   });
-  // Предзаполнение источника, если пришли по ссылке из hh.kz/Telegram — кандидат может поменять.
+  // Предзаполнение источника, если пришли по ссылке из hh.kz/Telegram/личного номера Sagi — кандидат может поменять.
   if (field === 'source' && SRC_LABEL[refSrc]) {
-    const preset = group.querySelector(`.chip[data-value="${SRC_LABEL[refSrc]}"]`);
-    if (preset) { preset.classList.add('active'); chipState.source = SRC_LABEL[refSrc]; }
+    const label = SRC_LABEL[refSrc];
+    const preset = group.querySelector(`.chip[data-value="${label}"]`);
+    if (preset) {
+      preset.classList.add('active'); chipState.source = label;
+    } else {
+      // Нет готового чипа с таким текстом (например, wa) — используем чип "Другое" и вписываем метку.
+      const otherChip = group.querySelector('.chip[data-value="__other"]');
+      if (otherChip) {
+        otherChip.classList.add('active');
+        chipState.source = label;
+        if (otherInput) { otherInput.style.display = 'block'; otherInput.value = label; }
+      }
+    }
   }
 });
 function chipValue(field) {
