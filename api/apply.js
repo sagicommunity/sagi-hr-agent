@@ -156,6 +156,7 @@ async function notifyTelegram(rec) {
   if (!token || !chat) return;
   const strong = rec.verdict === 'Брать на интервью' || (typeof rec.score === 'number' && rec.score >= 7);
   const refLine = rec.referrerPhone ? `\n🎁 По рекомендации: ${rec.referrerName || '—'}, ${rec.referrerPhone}` : '';
+  const personalLine = rec.viaPersonalLink ? `\n🔗 Переслано лично Sagi` : '';
   // matchPercent есть только у success_remote (гейт от Асемгуль) — показываем, если известен, чтобы
   // было видно, почему кандидат попал в «Интервью»/«Отказ»/«Квалификация» (см. api/apply.js handler).
   const matchLine = (typeof rec.matchPercent === 'number') ? `\n🎯 Соответствие требованиям: ${rec.matchPercent}%` : '';
@@ -165,7 +166,7 @@ async function notifyTelegram(rec) {
     `👤 ${rec.name}\n` +
     `⭐ ${rec.score != null ? rec.score + '/10' : '—'} · ${rec.verdict}${matchLine}\n` +
     `📞 ${rec.contact}\n` +
-    `📍 Источник: ${rec.source}${refLine}\n\n` +
+    `📍 Источник: ${rec.source}${personalLine}${refLine}\n\n` +
     `${rec.summary || ''}\n\n` +
     `Открыть пайплайн: https://hr.sagibonus.com/pipeline.html`;
   try {
@@ -232,6 +233,11 @@ export default async function handler(req, res) {
     const literacy = (body?.literacy || '').toString().slice(0, 200).trim();
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
+    // 2026-08-26, по указанию Sagi: флаг «пришёл по ссылке, которую Sagi переслал лично» (?src=wa
+    // в apply.html). НЕ путать с полем source — source остаётся честным ответом кандидата на вопрос
+    // «откуда узнали о вакансии» (hh.kz/Instagram/Рекомендация/и т.п.), а этот флаг — отдельная
+    // метка для статистики самого Sagi (сколько людей из его личной переписки дошли до анкеты).
+    const viaPersonalLink = body?.viaPersonalLink === true;
     const needAiComfort = isSuccess || isSupport;
     const needSupportExtra = isSupport;
     if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement || !workSchedule || !literacy))) {
@@ -342,6 +348,9 @@ export default async function handler(req, res) {
       saleInFirstMonth: false,
       referralBonusStatus: referrerPhone ? 'ожидает' : null,
       referralPaidAt: null,
+      // 2026-08-26: отдельно от source (честный ответ «откуда узнали о вакансии») — метка того, что
+      // ссылку на анкету кандидату переслал лично Sagi (?src=wa). Для статистики Sagi, не для стат. каналов.
+      viaPersonalLink,
     };
     // Если пришли по ссылке из hh.kz/Telegram (refId = hh_<negId> / tg_<chatId>) — обновляем уже
     // существующую запись, созданную при интейке, вместо того чтобы плодить дубликат (см. комментарий
