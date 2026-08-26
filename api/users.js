@@ -5,6 +5,8 @@
 //   login    { login, password }                  -> { ok, user, token }
 //   me       { login, token }                      -> { ok, user }
 //   progress { login, token, moduleId, done }      -> { ok, user }
+//   leaderboard { login, token }                    -> { ok, board:[{login,name,role,points}] }
+//            — публичный (для залогиненных) рейтинг по баллам, обе группы trainee/manager вместе
 //   list     { password }  (password = DASHBOARD_PASSWORD руководителя) -> { ok, users:[...] }
 //   setRole  { password, login, role }  role: 'manager'|'trainee' -> { ok, user } — перевод стажёра
 //            в менеджеры (или обратно), тот же аккаунт/логин/прогресс, ничего не создаётся заново
@@ -237,6 +239,34 @@ export default async function handler(req, res) {
       u.lastSeen = Date.now();
       await putUser(u);
       res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── РЕЙТИНГ (публичный лидерборд стажёров/стажировки, 2026-08-26 по указанию Sagi —
+    //    «может рейтинг сделаем», по аналогии с лидербордом на фитнес-занятиях) ──
+    // Требует валидной сессии (login+token), как 'me'/'progress' — не полностью публичный
+    // роут, чтобы имена и баллы нельзя было утащить без входа в кабинет. Возвращает ОБЕ группы
+    // (role: 'trainee'/'manager') одним списком — фронтенд сам фильтрует по вкладке, т.к. группы
+    // маленькие (десятки записей), лишний туда-обратно запрос не нужен.
+    if (action === 'leaderboard') {
+      const login = norm(body.login);
+      const me = await getUser(login);
+      if (!me || me.token !== body.token) { res.status(401).json({ error: 'Сессия истекла' }); return; }
+      const logins = await redis(['SMEMBERS', 'hr:users']);
+      const arr = Array.isArray(logins) ? logins : [];
+      const board = [];
+      for (const lg of arr) {
+        const u = await getUser(lg);
+        if (!u) continue;
+        // Выбывших/отказников/уволенных в рейтинге не показываем — как и в остальной системе,
+        // это hireStatus, а не role (см. safe() выше).
+        if ((u.hireStatus || 'Активен') !== 'Активен') continue;
+        // Тестовые аккаунты — та же конвенция, что и везде в системе (api/data.js, pipeline.html).
+        if (/тест|test|проверка/i.test(u.name || '')) continue;
+        board.push({ login: u.login, name: u.name, role: u.role, points: u.points || 0 });
+      }
+      board.sort((a, b) => b.points - a.points);
+      res.status(200).json({ ok: true, board });
       return;
     }
 
