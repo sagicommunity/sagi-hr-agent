@@ -534,19 +534,38 @@ $('#copyBtn').addEventListener('click', async ()=>{
 });
 
 // Автозагрузка по ?id= из ссылки — если запись уже есть, сразу показываем чек-лист.
+// 2026-08-27, по указанию Sagi: чек-лист адаптации теперь обязательный финальный шаг обучения
+// продавцов — кабинет (index.html) ведёт сюда ссылкой ?id=<login>&name=...&role=sales&auto=1,
+// чтобы не заставлять человека второй раз вводить своё имя/роль (он их уже вводил при
+// регистрации). Если записи ещё нет и в ссылке явно пришли name+role — создаём её сразу и
+// показываем чек-лист, минуя стартовый экран. Для success/support (без логина на сайте) ссылка
+// по-прежнему без этих параметров — у них всё как раньше, вручную.
 (async ()=>{
   const id = getIdFromUrl();
   if(!id){ return; }
   ID=id;
+  const params = new URLSearchParams(location.search);
+  const autoName = (params.get('name')||'').trim();
+  const autoRole = (params.get('role')||'').trim();
+  const isAuto = params.get('auto')==='1' && autoName && ['sales','success','support'].includes(autoRole);
+  if(isAuto){ $('#startScreen').style.display='none'; }
   try{
     const d = await api({action:'get', id});
     if(d.item){
       RECORD=d.item;
       showChecklist();
+      return;
     }
-    // Если записи ещё нет (например, ссылку скопировали до первого сохранения) — остаёмся
-    // на стартовом экране, при этом id из ссылки сохраняется и будет использован при "Начать".
+    if(isAuto){
+      const d2 = await api({action:'save', id, name:autoName, role:autoRole, checked:{}});
+      RECORD=d2.item;
+      showChecklist();
+      return;
+    }
+    // Если записи ещё нет и это не авто-переход из кабинета — остаёмся на стартовом экране,
+    // id из ссылки сохраняется и будет использован при "Начать".
   }catch(e){
+    if(isAuto) $('#startScreen').style.display='block';
     $('#loadErr').textContent = 'Не удалось загрузить чек-лист: '+e.message;
     $('#loadErr').style.display='block';
   }

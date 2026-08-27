@@ -341,14 +341,19 @@
     <!-- 2026-08-27, по указанию Sagi: раньше ссылка на чек-лист адаптации (onboarding.html — доступы,
          WhatsApp, видео-примеры встреч) была только в тексте письма-приглашения, которое читают один
          раз и теряют в переписке. Теперь она ещё и здесь, в кабинете, где стажёр/менеджер бывает
-         каждый день — постоянно на виду, а не разово. Открывается в новой вкладке — onboarding.html
-         работает по своему id в ссылке, отдельно от логина на этом сайте, поэтому просто новая вкладка,
-         без переноса текущей сессии кабинета. -->
-    <a class="card lbCard" href="/onboarding.html" target="_blank" rel="noopener" style="margin-bottom:6px;display:block;text-decoration:none;color:inherit">
+         каждый день — постоянно на виду, а не разово.
+         2026-08-27, вторая правка по указанию Sagi: чек-лист теперь ОБЯЗАТЕЛЬНЫЙ финальный шаг —
+         «прошли первые 10 модулей, прошли вторые 10, и в конце должны пройти вот этот» — поэтому
+         ссылка ведёт с ?id=<login> (тот же логин, что и в обучении — не случайный id как раньше),
+         имя и роль передаются готовыми, чтобы не заполнять их второй раз (см. onboarding.html,
+         авто-переход по auto=1). Готовность чек-листа теперь тоже часть общего % прогресса ниже
+         (см. renderCabinet/loadOnboardingStatus) — это и значит «увидеть как прогресс», как просил
+         Sagi, а не отдельно висящая ссылка в стороне. -->
+    <a class="card lbCard" id="obLink" href="/onboarding.html" target="_blank" rel="noopener" style="margin-bottom:6px;display:block;text-decoration:none;color:inherit">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <b>✅ Чек-лист адаптации</b><span style="color:var(--brand);font-weight:700">Открыть →</span>
       </div>
-      <div class="sub" style="margin-top:6px">Доступы, WhatsApp, видео-примеры реальных встреч — отмечайте по мере готовности.</div>
+      <div class="sub" style="margin-top:6px" id="obSub">Обязательный финальный шаг обучения — доступы, WhatsApp, видео-примеры реальных встреч. Загружаю статус…</div>
     </a>
 
     <!-- 2026-08-26, по указанию Sagi: рейтинг стажёров по баллам за модули — публичный, все видят
@@ -397,6 +402,14 @@
     <div id="modAdvWrap" style="margin-top:18px">
       <div class="sub" style="margin:-6px 0 10px">Продвинутый уровень</div>
       <div id="modAdv"></div>
+    </div>
+    <!-- 2026-08-27, по указанию Sagi: третий, обязательный шаг программы после базы и стажировки —
+         тот же чек-лист адаптации (см. #obLink выше), отрисован здесь как ещё один пункт программы
+         в том же визуальном стиле, что и модули (.mod), чтобы читалось как продолжение одной
+         последовательности «10 + 10 + чек-лист», а не отдельная несвязанная ссылка. -->
+    <div id="modFinalWrap" style="margin-top:18px">
+      <div class="sub" style="margin:-6px 0 10px">Финальный шаг — обязателен для готовности к работе</div>
+      <div id="modFinal"></div>
     </div>
   </section>
 
@@ -801,6 +814,14 @@ function renderCabinet(u){
   const ma=$('#modAdv'); ma.innerHTML='';
   ADV.forEach(m=>ma.appendChild(moduleRow(m, !!prog[m.id], !isMgr)));
 
+  const mf=$('#modFinal'); mf.innerHTML='';
+  const finalRow=document.createElement('div');
+  finalRow.className='mod'; finalRow.id='modFinalRow';
+  finalRow.innerHTML='<div class="num">•</div><div class="mt">Чек-лист адаптации<small>Загружаю статус…</small></div><span class="open-pill">Открыть →</span>';
+  finalRow.style.cursor='pointer';
+  finalRow.onclick=()=>{ const l=$('#obLink'); if(l) window.open(l.href,'_blank'); };
+  mf.appendChild(finalRow);
+
   // 2026-08-18: раньше плитки тренажёра вели на голый /agent.html, где стажёр должен был сам
   // ввести имя — прогресс никак не был привязан к реальному аккаунту. Теперь передаём login и
   // имя из уже открытой сессии, чтобы agent.html сразу знал, кто пришёл.
@@ -808,8 +829,47 @@ function renderCabinet(u){
   document.querySelectorAll('.trainerTiles a.tile').forEach(a=>a.href=trainerUrl);
   loadTrainerStats(u.login);
   loadLeaderboardTeaser();
+  loadOnboardingStatus(u, doneCount, all.length);
 
   show('screen-cabinet');
+}
+
+// 2026-08-27, по указанию Sagi: чек-лист адаптации (onboarding.html) теперь ОБЯЗАТЕЛЬНЫЙ финальный
+// шаг обучения — «прошли первые 10 модулей, прошли вторые 10, и в конце должны пройти вот этот» —
+// и его готовность тоже часть ОДНОГО общего % прогресса, а не спрятана отдельной ссылкой в стороне
+// (буквально его слова: «мы должны увидеть это как прогресс»). Считаем его ещё одним обязательным
+// пунктом (+1 к общему количеству модулей) поверх уже отрисованного module-only процента —
+// перерисовываем прогресс-бар/счётчик, когда статус чек-листа подгрузится. Ссылка на чек-лист
+// теперь несёт готовые имя/роль(=sales) и ?id=<login> — тот же логин, что и в обучении, а не
+// случайный id как раньше (см. onboarding.html, авто-переход по auto=1).
+async function loadOnboardingStatus(u, modDone, modTotal){
+  const link=$('#obLink');
+  if(link) link.href='/onboarding.html?id='+encodeURIComponent(u.login)+'&auto=1&name='+encodeURIComponent(u.name)+'&role=sales';
+  let ob=null;
+  try{
+    const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'get', id:u.login})});
+    const d=await r.json();
+    if(d.ok) ob=d.item;
+  }catch(e){}
+  const obDone = !!(ob && ob.percent>=100);
+  const totalUnits = modTotal+1;
+  const doneUnits = modDone+(obDone?1:0);
+  const pct = Math.round(doneUnits/totalUnits*100);
+  $('#progPct').textContent=pct+'%'; $('#progFill').style.width=pct+'%';
+  $('#stDone').textContent=doneUnits+' / '+totalUnits;
+  const sub=$('#obSub');
+  if(sub){
+    if(obDone){ sub.textContent='✅ Готово — все пункты закрыты.'; }
+    else if(ob){ sub.textContent=ob.done+'/'+ob.total+' пунктов ('+ob.percent+'%) · обязательный финальный шаг — доступы, WhatsApp, видео-примеры реальных встреч.'; }
+    else{ sub.textContent='Обязательный финальный шаг обучения — доступы, WhatsApp, видео-примеры реальных встреч. Пока не начат.'; }
+  }
+  const fr=$('#modFinalRow');
+  if(fr){
+    fr.className='mod'+(obDone?' done':'');
+    fr.querySelector('.num').textContent=obDone?'✓':'•';
+    const descTxt = obDone ? 'Все пункты закрыты' : (ob ? ob.done+'/'+ob.total+' пунктов ('+ob.percent+'%)' : 'Доступы, WhatsApp, видео-примеры встреч — ещё не начат');
+    fr.querySelector('.mt').innerHTML='Чек-лист адаптации<small>'+descTxt+'</small>';
+  }
 }
 async function loadTrainerStats(login){
   const el=$('#trainerStats'); if(!el) return;
@@ -954,6 +1014,22 @@ async function loadTrainerStatsAll(){
     }
   }catch(e){}
 }
+// 2026-08-27, по указанию Sagi: чек-лист адаптации теперь обязательный финальный шаг обучения
+// продавцов, и Sagi должен видеть его готовность прямо в общей таблице «Сотрудники и прогресс»,
+// не открывая отдельную вкладку «Адаптация новичков». id записи в hr:onboarding для этой роли —
+// login сотрудника (см. loadOnboardingStatus в кабинете), поэтому просто мэтчим по login.
+let OB_STATUS_MAP={}; // login -> {done,total,percent}
+async function loadOnboardingStatusAll(){
+  try{
+    const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'list',password:BOSS_PW})});
+    const d=await r.json();
+    if(d.ok && Array.isArray(d.items)){
+      OB_STATUS_MAP={};
+      d.items.forEach(it=>{ if(it && it.id) OB_STATUS_MAP[it.id]=it; });
+      if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
+    }
+  }catch(e){}
+}
 function renderBoss(users, skipStatsFetch){
   users=users||[];
   LAST_BOSS_USERS=users;
@@ -968,10 +1044,12 @@ function renderBoss(users, skipStatsFetch){
   const pcts=users.map(u=>{
     const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
     const done=all.filter(m=>(u.progress||{})[m.id]).length;
-    return Math.round(done/all.length*100);
+    const ob=OB_STATUS_MAP[u.login];
+    const obDone=!!(ob && ob.percent>=100);
+    return Math.round((done+(obDone?1:0))/(all.length+1)*100);
   });
   $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
-  if(!skipStatsFetch) loadTrainerStatsAll(); // не блокируем первую отрисовку — догружаем и перерисовываем
+  if(!skipStatsFetch){ loadTrainerStatsAll(); loadOnboardingStatusAll(); } // не блокируем первую отрисовку — догружаем и перерисовываем
 
   const wrap=$('#bossTableWrap');
   const filteredUsers = bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter);
@@ -980,7 +1058,12 @@ function renderBoss(users, skipStatsFetch){
     let rows=filteredUsers.sort((a,b)=>b.lastSeen-a.lastSeen).map((u,i)=>{
       const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
       const done=all.filter(m=>(u.progress||{})[m.id]).length;
-      const pct=Math.round(done/all.length*100);
+      const ob=OB_STATUS_MAP[u.login];
+      const obDone=!!(ob && ob.percent>=100);
+      const pct=Math.round((done+(obDone?1:0))/(all.length+1)*100);
+      // 2026-08-27, по указанию Sagi: чек-лист адаптации — обязательный финальный шаг, отдельная
+      // колонка с его статусом, чтобы Sagi видел это прямо в общей таблице.
+      const obCell = ob ? (obDone?'<span class="tag mg">✅ готов</span>':ob.done+'/'+ob.total+' ('+ob.percent+'%)') : '<span style="color:var(--muted)">не начат</span>';
       const when=new Date(u.lastSeen).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
       const loginAttr=String(u.login).replace(/"/g,'&quot;');
       const ts=TRAINER_STATS_MAP[u.login];
@@ -1001,6 +1084,7 @@ function renderBoss(users, skipStatsFetch){
         '<td>'+statusCell+'</td>'+
         '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
         '<td>'+done+' / '+all.length+'</td>'+
+        '<td>'+obCell+'</td>'+
         '<td style="color:var(--muted)">'+quizCell+'</td>'+
         '<td style="color:var(--muted)">'+trainerCell+'</td>'+
         '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
@@ -1008,7 +1092,7 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Контакт</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Контакт</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn')) return;
