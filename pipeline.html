@@ -522,6 +522,27 @@ $('#gatePass').focus();
   if(window.ResizeObserver) new ResizeObserver(postHeight).observe(document.body);
   setInterval(postHeight, 1200);
 })();
+
+// 2026-08-27: iframe растянут под полную высоту контента (см. postHeight выше), поэтому
+// .gate/.modal с position:fixed;inset:0 центрируются по ВСЕЙ этой высоте, а не по видимой сейчас
+// части окна руководителя — попап «плавал» где-то не там, где реально смотрит Sagi. Родитель
+// (index.html) шлёт, какой вертикальный диапазон нашей высоты сейчас виден — подставляем его.
+let VP_SLICE=null;
+function applyViewportSlice(){
+  if(!VP_SLICE || !document.documentElement.classList.contains('embedded')) return;
+  [$('#gate'), $('#modal')].forEach(el=>{
+    if(!el) return;
+    el.style.top=VP_SLICE.top+'px';
+    el.style.height=VP_SLICE.height+'px';
+    el.style.bottom='auto';
+  });
+}
+window.addEventListener('message', e=>{
+  const d=e.data;
+  if(!d || d.type!=='sagiViewportSlice' || d.id!=='pipeline') return;
+  VP_SLICE={top:d.top, height:d.height};
+  applyViewportSlice();
+});
 </script>
 </body>
 </html>

@@ -1057,11 +1057,42 @@ function selectBossTab(tab){
   document.querySelectorAll('.bossPane').forEach(p=>p.classList.toggle('active', p.dataset.pane===tab));
   const pane=document.querySelector('.bossPane[data-pane="'+tab+'"]');
   const frame=pane && pane.querySelector('.accFrame');
-  if(frame && !frame.getAttribute('src')) frame.setAttribute('src', frame.dataset.src);
+  if(frame && !frame.getAttribute('src')){
+    frame.setAttribute('src', frame.dataset.src);
+    frame.addEventListener('load', scheduleViewportSlice, {once:true});
+  }
+  scheduleViewportSlice();
 }
 document.querySelectorAll('.bnItem').forEach(btn=>{
   btn.addEventListener('click', ()=>selectBossTab(btn.dataset.tab));
 });
+// 2026-08-27, жалоба Sagi: попап (карточка сотрудника/кандидата) внутри встроенной страницы
+// «плавал» в случайном месте — потому что iframe растянут под ПОЛНУЮ высоту контента (см. приём
+// с sagiFrameHeight чуть ниже, без него был бы двойной скролл), а модалка внутри него верстается
+// как position:fixed;inset:0 — это центрирует её по всей высоте iframe, а не по видимой сейчас
+// части окна. Шлём каждой встроенной странице, какой именно вертикальный диапазон её собственной
+// высоты сейчас реально виден в окне — сама модалка подстраивается под это (см. приёмник
+// sagiViewportSlice в onboarding-status.html/pipeline.html/analytics.html).
+function broadcastViewportSlice(){
+  document.querySelectorAll('.accFrame').forEach(frame=>{
+    if(!frame.getAttribute('src') || !frame.id) return;
+    const rect=frame.getBoundingClientRect();
+    if(!rect.height) return;
+    const top=Math.max(0, -rect.top);
+    const bottom=Math.min(rect.height, window.innerHeight-rect.top);
+    const height=Math.max(240, bottom-top);
+    const id=frame.id.replace('frame-','');
+    try{ frame.contentWindow.postMessage({type:'sagiViewportSlice', id, top, height}, '*'); }catch(e){}
+  });
+}
+let vpRaf=null;
+function scheduleViewportSlice(){
+  if(vpRaf) return;
+  vpRaf=requestAnimationFrame(()=>{ vpRaf=null; broadcastViewportSlice(); });
+}
+window.addEventListener('scroll', scheduleViewportSlice, {passive:true});
+window.addEventListener('resize', scheduleViewportSlice);
+setInterval(scheduleViewportSlice, 1000);
 // Встроенные страницы сами шлют свою высоту (postMessage), чтобы не было двойного скролла.
 window.addEventListener('message', e=>{
   const d=e.data;
