@@ -98,6 +98,17 @@ const FORM_WATCH_CURSOR_KEY = 'hh:form_watch_cursor'; // «карусель», �
 const FORM_WATCH_FOR_MS = 4 * 24 * 60 * 60 * 1000; // столько же, сколько WATCH_FOR_MS — не следим вечно
 const MAX_FORM_WATCH_PER_RUN = 8;
 
+// ---- Полный аудит истории hh.kz (2026-08-27, по прямому запросу Sagi «проверь сам все ответы
+// и отклики за всю историю, не пропусти ни одного») ----
+// В отличие от backfillFormWatch (который берёт только тех, кто уже попал в GATE_HANDLED_KEY),
+// этот аудит идёт от ПЕРВОИСТОЧНИКА — реального списка переговоров на hh.ru (все воронки
+// FUNNEL_COLLECTIONS, все активные вакансии), а не от наших Redis-множеств, которые теоретически
+// могли что-то не учесть из-за старых багов. Архивные (закрытые) вакансии сознательно не входят —
+// их десятки, и переписка там неактуальна для текущего найма.
+const AUDIT_NEGLIST_KEY = 'hh:audit_neglist'; // JSON-массив {negId, vacancyId, vacancyName} — полный список переговоров, строится один раз за проход (&auditReset=1)
+const AUDIT_IDX_KEY = 'hh:audit_idx'; // курсор — сколько записей из AUDIT_NEGLIST_KEY уже проверено
+const AUDIT_FINDINGS_KEY = 'hh:audit_findings'; // Redis-список JSON — найденные необработанные ответы кандидатов
+
 // ---- Гейт-вопрос перед анкетой (2026-08-18, по замечанию Sagi) ----
 // Раньше первое сообщение сразу содержало все 5 вопросов анкеты — часть кандидатов отвечала на
 // все 5, а потом внезапно писала, что не хочет холодные звонки или не готова к удалёнке. Теряли
@@ -1879,6 +1890,130 @@ export default async function handler(req, res) {
         }
       }
       res.status(200).json({ ok: true, dryRun, gateHandledTotal: gateHandledIds.length, added, alreadyWatched, skippedNotAwaiting });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
+  // Только прочитать накопленный результат аудита (см. fullHistoryAudit ниже), ничего не делает.
+  if (req.query?.auditReport) {
+    try {
+      const findings = (await redis(['LRANGE', AUDIT_FINDINGS_KEY, 0, 999])) || [];
+      const parsed = findings.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const neglistRaw = await redis(['GET', AUDIT_NEGLIST_KEY]);
+      const neglist = neglistRaw ? JSON.parse(neglistRaw) : [];
+      const idx = parseInt(await redis(['GET', AUDIT_IDX_KEY]), 10) || 0;
+      res.status(200).json({
+        ok: true,
+        totalInNegList: neglist.length,
+        checked: idx,
+        remaining: Math.max(0, neglist.length - idx),
+        done: neglist.length > 0 && idx >= neglist.length,
+        totalFound: parsed.length,
+        findings: parsed,
+      });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
+  // Полный аудит истории hh.kz порциями (карусель, как и остальные фазы) — чтобы не упереться
+  // в таймаут serverless-функции. Список переговоров и курсор хранятся в Redis между вызовами:
+  //   &fullHistoryAudit=1                — обычный шаг (продолжает с сохранённого курсора)
+  //   &fullHistoryAudit=1&auditReset=1   — начать заново (перестроить список переговоров с нуля,
+  //                                        стереть накопленные находки)
+  //   &fullHistoryAudit=1&auditBatch=40  — сколько переговоров проверить за этот вызов
+  //                                        (по умолчанию 40, максимум 80)
+  //   &fullHistoryAudit=1&dryrun=1       — только считать, не трогать FORM_WATCH_KEY и не двигать курсор
+  // Для каждой найденной переговоры, где после нашего последнего сообщения есть необработанный
+  // ответ кандидата (extractCandidateReply), кладём negId в FORM_WATCH_KEY — обычная ФАЗА C сама
+  // подхватит его на следующих прогонах (автоответ на частый вопрос или уведомление Sagi).
+  if (req.query?.fullHistoryAudit) {
+    try {
+      const token = await getEmployerToken();
+      const employerId = process.env.HH_EMPLOYER_ID || '';
+      const batchSize = Math.min(parseInt(req.query.auditBatch, 10) || 40, 80);
+      let neglist;
+      if (req.query.auditReset === '1') {
+        neglist = [];
+        const vacRes = await hhGet(`/employers/${employerId}/vacancies/active?per_page=50`, token);
+        if (!vacRes.ok) { res.status(200).json({ ok: false, step: 'vacancies', status: vacRes.status, data: vacRes.data }); return; }
+        const vacancies = vacRes.data.items || [];
+        const seenIds = new Set();
+        for (const v of vacancies) {
+          for (const coll of FUNNEL_COLLECTIONS) {
+            for (let page = 0; page < 4; page++) {
+              const neg = await hhGet(`/negotiations/${coll}?vacancy_id=${v.id}&per_page=50&page=${page}`, token);
+              if (!neg.ok) break;
+              const items = neg.data.items || [];
+              for (const it of items) {
+                if (!it.id || seenIds.has(it.id)) continue;
+                seenIds.add(it.id);
+                neglist.push({ negId: it.id, vacancyId: v.id, vacancyName: v.name });
+              }
+              if (items.length < 50) break;
+            }
+          }
+        }
+        await redis(['SET', AUDIT_NEGLIST_KEY, JSON.stringify(neglist)]);
+        await redis(['SET', AUDIT_IDX_KEY, '0']);
+        await redis(['DEL', AUDIT_FINDINGS_KEY]);
+      } else {
+        const raw = await redis(['GET', AUDIT_NEGLIST_KEY]);
+        neglist = raw ? JSON.parse(raw) : null;
+        if (!neglist) { res.status(200).json({ ok: false, error: 'Список переговоров ещё не построен — вызовите с &auditReset=1' }); return; }
+      }
+      const idx = parseInt(await redis(['GET', AUDIT_IDX_KEY]), 10) || 0;
+      const batch = neglist.slice(idx, idx + batchSize);
+      const candRawAu = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const candByIdAu = new Map();
+      for (const r of candRawAu) { try { const o = JSON.parse(r); if (o.id) candByIdAu.set(o.id, o); } catch (e) {} }
+
+      const foundThisBatch = [];
+      const auditErrors = [];
+      for (const item of batch) {
+        try {
+          const msgsRes = await hhGet(`/negotiations/${item.negId}/messages`, token);
+          if (!msgsRes.ok) { auditErrors.push({ negId: item.negId, step: 'audit_fetch_messages', status: msgsRes.status }); continue; }
+          const messages = msgsRes.data.items || msgsRes.data.messages || (Array.isArray(msgsRes.data) ? msgsRes.data : []);
+          const { replyText } = extractCandidateReply(messages);
+          if (!replyText) continue;
+          const rec = candByIdAu.get('hh_' + item.negId);
+          const finding = {
+            negId: item.negId,
+            vacancyId: item.vacancyId,
+            vacancyName: item.vacancyName,
+            name: rec?.name || null,
+            stage: rec?.stage || null,
+            replyPreview: replyText.slice(0, 200),
+          };
+          foundThisBatch.push(finding);
+          if (!dryRun) {
+            await redis(['RPUSH', AUDIT_FINDINGS_KEY, JSON.stringify(finding)]);
+            await redis(['SADD', FORM_WATCH_KEY, item.negId]);
+            await redis(['SET', 'hh:form_watch_ts:' + item.negId, String(Date.now()), 'NX']);
+          }
+        } catch (e) {
+          auditErrors.push({ negId: item.negId, step: 'audit_check', error: e.message });
+        }
+      }
+      const newIdx = idx + batch.length;
+      if (!dryRun) await redis(['SET', AUDIT_IDX_KEY, String(newIdx)]);
+      const totalFoundSoFar = (await redis(['LLEN', AUDIT_FINDINGS_KEY])) || 0;
+      res.status(200).json({
+        ok: true,
+        dryRun,
+        totalInNegList: neglist.length,
+        checkedThisBatch: batch.length,
+        checkedSoFar: dryRun ? idx : newIdx,
+        remaining: Math.max(0, neglist.length - (dryRun ? idx : newIdx)),
+        foundThisBatch,
+        totalFoundSoFar,
+        done: (dryRun ? idx : newIdx) >= neglist.length,
+        auditErrors: debug ? auditErrors : (auditErrors.length ? auditErrors.length : undefined),
+      });
     } catch (e) {
       res.status(200).json({ ok: false, error: e.message });
     }
