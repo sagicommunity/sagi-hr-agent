@@ -83,6 +83,21 @@ const INVITE_WATCH_KEY = 'hh:invite_watch'; // negId кандидатов, ко�
 const WATCH_FOR_MS = 4 * 24 * 60 * 60 * 1000; // сколько дней после приглашения ещё проверяем чат на новые сообщения (вопросы)
 const MAX_WATCH_PER_RUN = 8;
 
+// ---- ФАЗА C (следим за чатом hh.kz, пока форма apply.html ещё не заполнена) ----
+// Обнаружено 2026-08-27 (жалоба Sagi «почему не ответили на отклики и ответы в hh.kz», разобрано
+// на живом примере Шакарима Мустахимова, negId 5518655759): после того как гейт-вопрос убрали из
+// чата (2026-08-19/26) и все новые кандидаты сразу получают buildFormRedirectMessage со ссылкой
+// на форму, negId сразу попадает в GATE_HANDLED_KEY — а значит ФАЗА B1 его больше не проверяет. Но
+// если кандидат НЕ переходит на форму, а просто отвечает прямо в чате hh.kz («ещё актуально?»,
+// вопрос про оплату и т.п.) — до этой правки ничего не следило за такими сообщениями вообще,
+// кандидат зависал на стадии «Ожидает ответа» навсегда. Логика этой фазы — точная копия ФАЗЫ D
+// (наблюдение после приглашения на обучение), только запускается раньше — сразу после отправки
+// ссылки на форму, а не после приглашения.
+const FORM_WATCH_KEY = 'hh:form_watch'; // negId кандидатов, кому отправлена ссылка на форму — следим за чатом, пока форма не заполнена (стадия остаётся «Ожидает ответа»)
+const FORM_WATCH_CURSOR_KEY = 'hh:form_watch_cursor'; // «карусель», тот же принцип, что и REPLY_CURSOR_KEY/GATE_CURSOR_KEY — иначе при большом бэклоге проверялись бы всегда одни и те же первые N
+const FORM_WATCH_FOR_MS = 4 * 24 * 60 * 60 * 1000; // столько же, сколько WATCH_FOR_MS — не следим вечно
+const MAX_FORM_WATCH_PER_RUN = 8;
+
 // ---- Гейт-вопрос перед анкетой (2026-08-18, по замечанию Sagi) ----
 // Раньше первое сообщение сразу содержало все 5 вопросов анкеты — часть кандидатов отвечала на
 // все 5, а потом внезапно писала, что не хочет холодные звонки или не готова к удалёнке. Теряли
@@ -138,10 +153,11 @@ function looksUninterested(text) {
   const t = (text || '').toLowerCase().trim();
   return /(не\s+интересн|не\s+хочу|не\s+готов|не\s+буду|не\s+подходит|не\s+рассматрива|нет,?\s*спасибо|^нет\b)/.test(t);
 }
-async function notifyFollowUp(rec, questionText) {
+async function notifyFollowUp(rec, questionText, context) {
   const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
   if (!token || !chat) return;
-  const text = `❓ Вопрос от кандидата после приглашения на обучение (HH.kz) — Sagi\n\n👤 ${rec?.name || 'Кандидат'}\n📞 ${rec?.contact || '—'}\n\n🗣 Сообщение:\n${(questionText || '').slice(0, 800)}\n\nОтветить нужно вручную, в переписке на hh.kz (автоматика больше не отвечает за этого кандидата).\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
+  const label = context || 'после приглашения на обучение';
+  const text = `❓ Вопрос от кандидата ${label} (HH.kz) — Sagi\n\n👤 ${rec?.name || 'Кандидат'}\n📞 ${rec?.contact || '—'}\n\n🗣 Сообщение:\n${(questionText || '').slice(0, 800)}\n\nОтветить нужно вручную, в переписке на hh.kz (автоматика больше не отвечает за этого кандидата).\nПайплайн: https://hr.sagibonus.com/pipeline.html`;
   try { await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }); } catch (e) {}
 }
 // ---- ФАЗА D (авто-ответ на частые вопросы после приглашения) ----
@@ -196,8 +212,11 @@ const TRAINEE_DEADLINE_ENABLED_AT_KEY = 'hr:trainee_deadline_enabled_at';
 const MAX_TRAINEE_ACTIONS_PER_RUN = 8;
 const MENTOR_CURSOR_KEY = 'hr:mentor_cursor';
 // Наставники, которым по очереди (round-robin) отдают стажёров, прошедших базовую программу.
-// Сейчас один — Азамат (Sagi подтвердил 2026-08-17). Когда появятся ещё, просто добавь сюда.
-const MENTORS = [{ name: 'Азамат', phone: '+77025417933' }];
+// 2026-08-27, по прямому указанию Sagi: вместо Азамата наставником временно указан сам Sagi
+// (стажёры пишут ему напрямую на WhatsApp +7 707 700 0087) — предыдущая попытка этой правки
+// (2026-08-2x) была применена к устаревшей локальной копии файла и так и не попала в прод,
+// см. hh_integration.md. Когда появятся другие наставники, просто добавь сюда.
+const MENTORS = [{ name: 'Sagi', phone: '+77077000087' }];
 // 2026-08-20, по указанию Sagi: через сколько после назначения наставника слать напоминание
 // «напишите сами», если стажёр за это время не пометился как-то иначе. 2 часа — чтобы не дублировать
 // поздравление сразу же (его только что отправили), но и не заставлять ждать сутками.
@@ -1833,6 +1852,39 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Разовый бэкафилл (2026-08-27, разбор жалобы Sagi «почему не ответили на отклики и ответы в
+  // hh.kz» — см. ФАЗУ C выше): до этой правки negId, кому уже отправили ссылку на форму, никак не
+  // отслеживался дальше, если кандидат отвечал прямо в чате hh.kz, а не на форме. Все, кто попал в
+  // эту дыру ДО деплоя фикса, никогда не окажутся в FORM_WATCH_KEY естественным путём (SADD туда
+  // происходит только в момент отправки формы, а она уже отправлена в прошлом). Этот маршрут
+  // разово досматривает GATE_HANDLED_KEY, берёт тех, кто до сих пор в стадии «Ожидает ответа», и
+  // добавляет их в FORM_WATCH_KEY, чтобы ФАЗА C начала проверять их чат уже на следующем прогоне.
+  // ?dryrun=1 — только посчитать, ничего не менять. Безопасно дёргать повторно (SADD идемпотентен).
+  if (req.query?.backfillFormWatch) {
+    try {
+      const gateHandledIds = (await redis(['SMEMBERS', GATE_HANDLED_KEY])) || [];
+      const candRawFw = (await redis(['LRANGE', CAND_KEY, 0, 1999])) || [];
+      const candByIdFw = new Map();
+      for (const r of candRawFw) { try { const o = JSON.parse(r); if (o.id) candByIdFw.set(o.id, o); } catch (e) {} }
+      let added = 0, alreadyWatched = 0, skippedNotAwaiting = 0;
+      for (const negId of gateHandledIds) {
+        const rec = candByIdFw.get('hh_' + negId);
+        if (!rec || rec.stage !== 'Ожидает ответа') { skippedNotAwaiting++; continue; }
+        if (!dryRun) {
+          const wasNew = await redis(['SADD', FORM_WATCH_KEY, negId]);
+          if (wasNew === 1) added++; else alreadyWatched++;
+          await redis(['SET', 'hh:form_watch_ts:' + negId, String(Date.now()), 'NX']);
+        } else {
+          added++;
+        }
+      }
+      res.status(200).json({ ok: true, dryRun, gateHandledTotal: gateHandledIds.length, added, alreadyWatched, skippedNotAwaiting });
+    } catch (e) {
+      res.status(200).json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
   // Ручной пропуск гейт-вопроса (2026-08-18, по просьбе Sagi): кандидат по факту уже ответил,
   // например, написал Sagi лично в WhatsApp вместо чата hh.kz, поэтому ждать его ответа именно
   // в hh.kz чате не нужно — сразу отправляем анкету из 5 вопросов, как будто гейт пройден.
@@ -1851,6 +1903,8 @@ export default async function handler(req, res) {
       const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: buildFormRedirectMessage(vacKind, name, negId) });
       if (sent.ok) {
         await redis(['SADD', GATE_HANDLED_KEY, negId]);
+        await redis(['SADD', FORM_WATCH_KEY, negId]);
+        await redis(['SET', 'hh:form_watch_ts:' + negId, String(Date.now())]);
       }
       res.status(200).json({ ok: sent.ok, negId, name, status: sent.ok ? undefined : sent.status, data: sent.ok ? undefined : sent.data });
     } catch (e) {
@@ -1992,7 +2046,7 @@ export default async function handler(req, res) {
         const vacKind = pickVacancyKind(rec.vacancy || '');
         const msgText = buildFormRedirectMessage(vacKind, rec.name, negId);
         const sent = await hhPostForm('/negotiations/' + negId + '/messages', token, { message: msgText });
-        if (sent.ok) { await updateCandidateRecord(rec.id, { messageSent: true }); await redis(['SADD', GATE_HANDLED_KEY, negId]); await hhMoveState(negId, 'phone_interview', token); }
+        if (sent.ok) { await updateCandidateRecord(rec.id, { messageSent: true }); await redis(['SADD', GATE_HANDLED_KEY, negId]); await hhMoveState(negId, 'phone_interview', token); await redis(['SADD', FORM_WATCH_KEY, negId]); await redis(['SET', 'hh:form_watch_ts:' + negId, String(Date.now())]); }
         results.push({ negId, name: rec.name, ok: sent.ok, status: sent.status, data: sent.ok ? undefined : sent.data });
       }
       res.status(200).json({ ok: true, pendingTotal: pending.length, sent: toSend.length, results });
@@ -2088,6 +2142,9 @@ export default async function handler(req, res) {
             // Сразу двигаем отклик из «неразобранных» в «Первичный контакт» — мы уже написали
             // человеку, незачем висеть в интерфейсе hh.kz так, будто мы ещё не отвечали.
             await hhMoveState(negId, 'phone_interview', token);
+            // ФАЗА C: следим за чатом на случай, если ответит прямо здесь, а не на форме.
+            await redis(['SADD', FORM_WATCH_KEY, negId]);
+            await redis(['SET', 'hh:form_watch_ts:' + negId, String(Date.now())]);
           }
         }
       } catch (e) {
@@ -2177,6 +2234,9 @@ export default async function handler(req, res) {
           if (sent.ok) {
             await redis(['SADD', GATE_HANDLED_KEY, negId]);
             gatePassed++;
+            // ФАЗА C: следим за чатом на случай, если ответит прямо здесь, а не на форме.
+            await redis(['SADD', FORM_WATCH_KEY, negId]);
+            await redis(['SET', 'hh:form_watch_ts:' + negId, String(Date.now())]);
           } else {
             errors.push({ negId, step: 'send_form_redirect', status: sent.status, data: sent.data });
           }
@@ -2291,6 +2351,73 @@ export default async function handler(req, res) {
       const nextCursor = awaitingCount > 0 ? (reviewCursor + toCheck.length) % awaitingCount : 0;
       await redis(['SET', REPLY_CURSOR_KEY, String(nextCursor)]);
     }
+
+    // ==== ФАЗА C: следим за чатом hh.kz, пока форма apply.html ещё не заполнена ====
+    // См. подробное объяснение у объявления FORM_WATCH_KEY выше. Логика — точная копия ФАЗЫ D
+    // ниже (карусель по FORM_WATCH_CURSOR_KEY вместо простого slice(0,N) — иначе при большом
+    // бэклоге, как после бэкафилла, проверялись бы всегда одни и те же первые N кандидатов).
+    let formWatchChecked = 0, formQuestionsFound = 0, formAutoAnswered = 0;
+    try {
+      const formWatchIds = (await redis(['SMEMBERS', FORM_WATCH_KEY])) || [];
+      const formWatchCount = formWatchIds.length;
+      let formWatchCursor = parseInt(await redis(['GET', FORM_WATCH_CURSOR_KEY]), 10);
+      if (!Number.isFinite(formWatchCursor) || formWatchCursor < 0) formWatchCursor = 0;
+      const toFormWatch = [];
+      if (formWatchCount > 0) {
+        const n = Math.min(MAX_FORM_WATCH_PER_RUN, formWatchCount);
+        for (let i = 0; i < n; i++) toFormWatch.push(formWatchIds[(formWatchCursor + i) % formWatchCount]);
+      }
+      for (const negId of toFormWatch) {
+        formWatchChecked++;
+        try {
+          const rec = candById.get('hh_' + negId) || null;
+          // Кандидат уже сдвинулся дальше «Ожидает ответа» (заполнил форму, отказался и т.п.) —
+          // дальше следить не нужно, снимаем с наблюдения.
+          if (rec && rec.stage !== 'Ожидает ответа') {
+            if (!dryRun) { await redis(['SREM', FORM_WATCH_KEY, negId]); await redis(['DEL', 'hh:form_watch_ts:' + negId]); await redis(['DEL', 'hh:form_watch_lastmsg:' + negId]); }
+            continue;
+          }
+          const sentTsRaw = await redis(['GET', 'hh:form_watch_ts:' + negId]);
+          const sentTs = parseInt(sentTsRaw, 10) || 0;
+          if (!sentTs || (Date.now() - sentTs) > FORM_WATCH_FOR_MS) {
+            if (!dryRun) { await redis(['SREM', FORM_WATCH_KEY, negId]); await redis(['DEL', 'hh:form_watch_ts:' + negId]); await redis(['DEL', 'hh:form_watch_lastmsg:' + negId]); }
+            continue;
+          }
+          const lastSeenRaw = await redis(['GET', 'hh:form_watch_lastmsg:' + negId]);
+          const sinceTs = Math.max(sentTs, parseInt(lastSeenRaw, 10) || 0);
+          const msgsRes = await hhGet(`/negotiations/${negId}/messages`, token);
+          if (!msgsRes.ok) continue;
+          const messages = msgsRes.data.items || msgsRes.data.messages || (Array.isArray(msgsRes.data) ? msgsRes.data : []);
+          const withTime = (messages || []).map(m => ({ text: (m.text || m.message || '').trim(), author: m.author?.participant_type || m.author_type || '', ts: new Date(m.created_at || m.createdAt || 0).getTime() }));
+          const question = withTime.filter(m => /applicant|candidate|seeker/i.test(m.author) && m.text && m.ts > sinceTs).sort((a, b) => a.ts - b.ts)[0];
+          if (question) {
+            formQuestionsFound++;
+            const faqAnswer = answerHhFaq(question.text);
+            if (!dryRun) {
+              if (faqAnswer) {
+                const link = FORM_URL + '?src=hh&neg=' + encodeURIComponent(negId);
+                await hhReply(negId, token, faqAnswer + '\n\nИ ссылка на форму, если ещё не заполняли: ' + link);
+                await redis(['SET', 'hh:form_watch_lastmsg:' + negId, String(question.ts)]);
+                formAutoAnswered++;
+              } else {
+                await notifyFollowUp(rec, question.text, 'в чате hh.kz (форма ещё не заполнена)');
+                await redis(['SREM', FORM_WATCH_KEY, negId]);
+                await redis(['DEL', 'hh:form_watch_ts:' + negId]);
+                await redis(['DEL', 'hh:form_watch_lastmsg:' + negId]);
+              }
+            } else if (faqAnswer) {
+              formAutoAnswered++;
+            }
+          }
+        } catch (e) {
+          errors.push({ negId, step: 'form_watch', error: e.message });
+        }
+      }
+      if (!dryRun) {
+        const nextFormWatchCursor = formWatchCount > 0 ? (formWatchCursor + toFormWatch.length) % formWatchCount : 0;
+        await redis(['SET', FORM_WATCH_CURSOR_KEY, String(nextFormWatchCursor)]);
+      }
+    } catch (e) {}
 
     // ==== ФАЗА D: следим за вопросами после приглашения на обучение ====
     // Кандидат уже помечен REPLIED_KEY (фаза B его больше не трогает), но мог задать вопрос
@@ -2588,6 +2715,7 @@ export default async function handler(req, res) {
       intake: { totalResponses: items.length, newTotal: newItems.length, processed: intakeProcessed, remaining: remainingNew, preview: dryRun ? intakePreview : undefined },
       gate: { awaitingTotal: gateAwaitingIds.length, checked: gateChecked, remaining: remainingGateAwaiting, passed: gatePassed, declined: gateDeclined, remindersSent: gateRemindersSent, cursor: gateCursor, preview: dryRun ? gatePreview : undefined },
       replies: { awaitingTotal: awaitingIds.length, checked: repliesChecked, remaining: remainingAwaiting, found: repliesFound, remindersSent, cursor: reviewCursor, preview: dryRun ? replyPreview : undefined },
+      formWatch: { checked: formWatchChecked, questionsFound: formQuestionsFound, autoAnswered: formAutoAnswered },
       followUps: { checked: watchChecked, questionsFound, autoAnswered },
       regNudges: { checked: regNudgeChecked, sent: regNudgeSent },
       trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount, deadlineExpired, mentorNudgesSent },

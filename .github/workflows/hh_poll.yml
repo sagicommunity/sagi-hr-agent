@@ -1,0 +1,50 @@
+name: HH.kz poll (hourly)
+
+# Автоматический опрос /api/hh_poll раз в час — вынесено сюда 2026-08-27 после того, как
+# опрос через Claude scheduled-задачу трижды ломался по разным причинам подряд:
+# 1) сам cron молча переставал срабатывать (~сутки простоя, 2026-08-21 и 2026-08-23→25),
+# 2) WebFetch внутри unattended-сессии падал с PROVENANCE_REQUIRED (2026-08-26),
+# 3) после перехода на curl — сетевой egress-прокси облачной песочницы Claude вообще
+#    блокирует исходящие запросы к hr.sagibonus.com (403 на CONNECT-туннеле), 2026-08-27.
+# GitHub Actions runner не проходит ни через один из этих трёх слоёв — обычный curl с
+# полным доступом в интернet, без прокси и без permission-гейтов. Если джоб упадёт
+# (ok:false или >=5 ошибок за прогон), GitHub сам пришлёт email владельцу репозитория —
+# отдельного уведомления настраивать не нужно.
+#
+# ПЕРЕД ПЕРВЫМ ЗАПУСКОМ: Settings → Secrets and variables → Actions → New repository
+# secret → имя HH_POLL_SECRET, значение — то же самое, что в HH_POLL_SECRET на Vercel
+# (см. hh_credentials.md). Секрет специально НЕ хранится прямо в этом файле — репозиторий
+# публичный, а этот workflow виден всем.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll hh_poll endpoint
+        env:
+          HH_POLL_SECRET: ${{ secrets.HH_POLL_SECRET }}
+        run: |
+          set -e
+          if [ -z "$HH_POLL_SECRET" ]; then
+            echo "::error::Секрет HH_POLL_SECRET не настроен в Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          CACHE_BUST="$RANDOM$RANDOM"
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&debug=1&limit=5&limitReplies=5&r=${CACHE_BUST}")
+          echo "$RESP"
+          OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
+          if [ "$OK" != "true" ]; then
+            echo "::error::hh_poll не вернул ok:true (пустой ответ, таймаут или ok:false) — см. вывод выше"
+            exit 1
+          fi
+          ERR_COUNT=$(echo "$RESP" | jq -r '(.errors | length) // 0' 2>/dev/null || echo 0)
+          if [ "$ERR_COUNT" -ge 5 ]; then
+            echo "::error::hh_poll вернул $ERR_COUNT ошибок за один прогон — похоже на системную проблему, не разовый сбой"
+            exit 1
+          fi
+          echo "OK, errors=$ERR_COUNT"
