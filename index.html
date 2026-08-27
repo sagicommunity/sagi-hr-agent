@@ -338,6 +338,19 @@
       </div>
     </div>
 
+    <!-- 2026-08-27, по указанию Sagi: раньше ссылка на чек-лист адаптации (onboarding.html — доступы,
+         WhatsApp, видео-примеры встреч) была только в тексте письма-приглашения, которое читают один
+         раз и теряют в переписке. Теперь она ещё и здесь, в кабинете, где стажёр/менеджер бывает
+         каждый день — постоянно на виду, а не разово. Открывается в новой вкладке — onboarding.html
+         работает по своему id в ссылке, отдельно от логина на этом сайте, поэтому просто новая вкладка,
+         без переноса текущей сессии кабинета. -->
+    <a class="card lbCard" href="/onboarding.html" target="_blank" rel="noopener" style="margin-bottom:6px;display:block;text-decoration:none;color:inherit">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>✅ Чек-лист адаптации</b><span style="color:var(--brand);font-weight:700">Открыть →</span>
+      </div>
+      <div class="sub" style="margin-top:6px">Доступы, WhatsApp, видео-примеры реальных встреч — отмечайте по мере готовности.</div>
+    </a>
+
     <!-- 2026-08-26, по указанию Sagi: рейтинг стажёров по баллам за модули — публичный, все видят
          друг друга по именам (решение Sagi, по аналогии с лидербордом на фитнес-занятиях). -->
     <div class="card lbCard" id="lbTeaserCard" style="margin-bottom:6px" onclick="openLeaderboard()">
