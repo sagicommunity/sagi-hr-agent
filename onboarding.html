@@ -55,6 +55,10 @@
   .copyBtn{border:1px solid var(--line);background:var(--panel-solid);color:var(--text);font:inherit;font-size:12.5px;font-weight:700;padding:0 14px;border-radius:10px;cursor:pointer}
   .copyBtn:hover{border-color:var(--brand)}
 
+  .bossBtn{border:1px solid var(--line);background:var(--panel-solid);color:var(--muted);font:inherit;font-size:12px;font-weight:700;padding:8px 13px;border-radius:10px;cursor:pointer;white-space:nowrap}
+  .bossBtn:hover{border-color:var(--line-2);color:var(--text)}
+  .bossBtn.on{border-color:rgba(25,227,154,.5);background:rgba(25,227,154,.12);color:var(--brand)}
+
   .roleHead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:26px 0 4px;flex-wrap:wrap}
   .roleHead h2{font-family:var(--display);font-weight:700;font-size:19px;margin:0}
   .roleStatus{font-size:12.5px;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
@@ -89,6 +93,15 @@
   .resTag.first{color:var(--brand);background:rgba(25,227,154,.12);border:1px solid rgba(25,227,154,.35)}
   .resTag.next{color:var(--warn);background:rgba(255,207,102,.1);border:1px solid rgba(255,207,102,.3)}
   .resTag.opt{color:var(--muted);background:var(--panel);border:1px solid var(--line)}
+  .res.resEdit{border:1px dashed rgba(255,207,102,.4);border-radius:12px;padding:9px 11px;margin-top:6px}
+  .resItem .resDel{border:0;background:rgba(255,122,122,.12);color:#ff9b9b;width:20px;height:20px;border-radius:999px;cursor:pointer;font-size:13px;line-height:1;flex:none;padding:0}
+  .resItem .resDel:hover{background:rgba(255,122,122,.25)}
+  .resAddRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .resAddRow input{flex:1;min-width:120px;font-size:12.5px;padding:8px 10px}
+  .resAddRow select{width:auto;font-size:12.5px;padding:8px 10px}
+  .resAddBtn{font-size:12px;padding:8px 12px}
+  .resResetBtn{border:0;background:none;color:var(--faint);font:inherit;font-size:11.5px;cursor:pointer;text-decoration:underline;padding:8px 0 0;display:block}
+  .resResetBtn:hover{color:var(--muted)}
 
   .tipNote{display:flex;gap:10px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin:0 0 22px;font-size:13px;line-height:1.6;color:var(--muted)}
   .tipNote b{color:var(--text)}
@@ -111,6 +124,7 @@
     <div class="brand">Sagi<small>Чек-лист адаптации</small></div>
   </a>
   <div class="spacer"></div>
+  <button type="button" class="bossBtn" id="bossBtn">🔒 Редактировать видео</button>
 </header>
 
 <div class="wrap">
@@ -268,6 +282,130 @@ async function api(payload){
   const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
 }
 
+// 2026-08-27, по указанию Sagi: список видео-встреч (RESOURCES.sales6 и т.п.) редактирует
+// он сам через кнопку «Редактировать видео» в шапке — без моего участия и без деплоя. Правки
+// живут в Redis (api/resources.js), поверх RESOURCES из кода. TAG_LABEL — те же подписи, что
+// в api/resources.js (первый пункт с валидным tag определяет tagText на сервере).
+const BOSS_PW_KEY='sagi_boss_pw';
+let BOSS_PW = localStorage.getItem(BOSS_PW_KEY) || '';
+let editMode = false;
+let RESOURCES_OVERRIDES = {};
+const TAG_LABEL = { first:'сначала', next:'потом', opt:'по желанию' };
+
+async function apiR(payload){
+  const r=await fetch('/api/resources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+function resourcesFor(key){
+  return Object.prototype.hasOwnProperty.call(RESOURCES_OVERRIDES,key) ? RESOURCES_OVERRIDES[key] : (RESOURCES[key]||[]);
+}
+function updateBossBtn(){
+  const b=$('#bossBtn'); if(!b) return;
+  b.textContent = editMode ? '🔓 Руководитель · Выйти' : '🔒 Редактировать видео';
+  b.classList.toggle('on', editMode);
+}
+async function loadResourceOverrides(){
+  try{
+    const d = BOSS_PW ? await apiR({action:'list', password:BOSS_PW}) : await apiR({action:'public'});
+    RESOURCES_OVERRIDES = d.overrides || {};
+    if(BOSS_PW) editMode = true;
+  }catch(e){
+    if(BOSS_PW){ BOSS_PW=''; localStorage.removeItem(BOSS_PW_KEY); }
+    RESOURCES_OVERRIDES = {};
+  }
+  updateBossBtn();
+}
+let resourcesReady = loadResourceOverrides();
+
+$('#bossBtn').addEventListener('click', async ()=>{
+  if(editMode){
+    localStorage.removeItem(BOSS_PW_KEY); BOSS_PW=''; editMode=false;
+    await loadResourceOverrides();
+    if(RECORD) renderGroups();
+    return;
+  }
+  const pw = prompt('Пароль руководителя (для редактирования списка видео):'); if(!pw) return;
+  const prevPw=BOSS_PW; BOSS_PW=pw;
+  try{
+    const d = await apiR({action:'list', password:pw});
+    RESOURCES_OVERRIDES = d.overrides || {};
+    localStorage.setItem(BOSS_PW_KEY, pw);
+    editMode = true;
+    updateBossBtn();
+    if(RECORD) renderGroups();
+  }catch(e){
+    BOSS_PW = prevPw;
+    alert('Неверный пароль');
+  }
+});
+
+function renderResView(res){
+  return '<details class="res"><summary>Материалы ('+res.length+')</summary><ul class="resList">' +
+    res.map(r=>'<li class="resItem"><a href="'+esc(r.url)+'" target="_blank" rel="noopener">🎥 '+esc(r.label)+'</a><span class="resTag '+r.tag+'">'+esc(r.tagText)+'</span></li>').join('') +
+    '</ul></details>';
+}
+function renderResEditor(key, res){
+  const isOverridden = Object.prototype.hasOwnProperty.call(RESOURCES_OVERRIDES,key);
+  return '<details class="res resEdit" open><summary>Материалы ('+res.length+') ✏️</summary>' +
+    '<ul class="resList">' +
+    res.map((r,i)=>'<li class="resItem"><a href="'+esc(r.url)+'" target="_blank" rel="noopener">🎥 '+esc(r.label)+'</a>'+
+      '<span class="resTag '+r.tag+'">'+esc(r.tagText)+'</span>'+
+      '<button type="button" class="resDel" data-reskey="'+esc(key)+'" data-idx="'+i+'" title="Удалить">×</button></li>').join('') +
+    '</ul>' +
+    '<div class="resAddRow" data-reskey="'+esc(key)+'">' +
+      '<input type="text" class="resAddLabel" placeholder="Название видео" maxlength="200" />' +
+      '<input type="text" class="resAddUrl" placeholder="Ссылка (Google Drive / YouTube)" maxlength="1000" />' +
+      '<select class="resAddTag"><option value="next" selected>потом</option><option value="first">сначала</option><option value="opt">по желанию</option></select>' +
+      '<button type="button" class="btn sec resAddBtn" data-reskey="'+esc(key)+'">+ Добавить</button>' +
+    '</div>' +
+    (isOverridden ? '<button type="button" class="resResetBtn" data-reskey="'+esc(key)+'">↺ Сбросить к дефолту из кода</button>' : '') +
+    '</details>';
+}
+
+document.addEventListener('click', async e=>{
+  const delBtn = e.target.closest('.resDel');
+  if(delBtn){
+    const key = delBtn.dataset.reskey, idx = +delBtn.dataset.idx;
+    const items = resourcesFor(key).filter((_,i)=>i!==idx);
+    delBtn.disabled = true;
+    try{
+      const d = await apiR({action:'save', password:BOSS_PW, key, items});
+      RESOURCES_OVERRIDES[key] = d.items;
+      renderGroups();
+    }catch(err){ alert('Не удалось сохранить: '+err.message); delBtn.disabled=false; }
+    return;
+  }
+  const addBtn = e.target.closest('.resAddBtn');
+  if(addBtn){
+    const row = addBtn.closest('.resAddRow');
+    const key = addBtn.dataset.reskey;
+    const label = row.querySelector('.resAddLabel').value.trim();
+    const url = row.querySelector('.resAddUrl').value.trim();
+    const tag = row.querySelector('.resAddTag').value;
+    if(!label || !url){ alert('Нужны название и ссылка'); return; }
+    const items = resourcesFor(key).concat([{ label, url, tag, tagText: TAG_LABEL[tag] }]);
+    addBtn.disabled = true;
+    try{
+      const d = await apiR({action:'save', password:BOSS_PW, key, items});
+      RESOURCES_OVERRIDES[key] = d.items;
+      renderGroups();
+    }catch(err){ alert('Не удалось сохранить: '+err.message); addBtn.disabled=false; }
+    return;
+  }
+  const resetBtn = e.target.closest('.resResetBtn');
+  if(resetBtn){
+    const key = resetBtn.dataset.reskey;
+    if(!confirm('Убрать все правки и вернуть список из кода для этого пункта?')) return;
+    resetBtn.disabled = true;
+    try{
+      await apiR({action:'reset', password:BOSS_PW, key});
+      delete RESOURCES_OVERRIDES[key];
+      renderGroups();
+    }catch(err){ alert('Не удалось сбросить: '+err.message); resetBtn.disabled=false; }
+    return;
+  }
+});
+
 function newId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 function getIdFromUrl(){
@@ -307,13 +445,14 @@ $('#startBtn').addEventListener('click', async ()=>{
   }
 });
 
-function showChecklist(){
+async function showChecklist(){
   $('#startScreen').style.display='none';
   $('#checklistScreen').style.display='block';
   $('#myLink').value = location.href;
   $('#clTitle').textContent = 'Здравствуйте, '+(RECORD.name||'')+'!';
   $('#clLead').textContent = 'Отмечайте пункты по мере готовности — прогресс сохраняется автоматически, а Sagi увидит, когда всё будет закрыто.';
   $('#roleHeading').textContent = ROLE_LABEL[RECORD.role] || RECORD.role;
+  await resourcesReady;
   renderGroups();
   renderProgress();
 }
@@ -330,12 +469,12 @@ function renderGroups(){
       const checked = !!(RECORD.checked && RECORD.checked[key]);
       const row=document.createElement('div');
       row.className='item'+(checked?' checked':'');
-      const res = RESOURCES[key];
+      const res = resourcesFor(key);
       let resHtml = '';
-      if(res && res.length){
-        resHtml = '<details class="res"><summary>Материалы ('+res.length+')</summary><ul class="resList">' +
-          res.map(r=>'<li class="resItem"><a href="'+esc(r.url)+'" target="_blank" rel="noopener">🎥 '+esc(r.label)+'</a><span class="resTag '+r.tag+'">'+esc(r.tagText)+'</span></li>').join('') +
-          '</ul></details>';
+      if(editMode){
+        resHtml = renderResEditor(key, res);
+      } else if(res && res.length){
+        resHtml = renderResView(res);
       }
       row.innerHTML = '<input type="checkbox" id="it_'+key+'" '+(checked?'checked':'')+' /><div class="itemBody"><label for="it_'+key+'">'+esc(text)+'</label>'+resHtml+'</div>';
       wrap.appendChild(row);
