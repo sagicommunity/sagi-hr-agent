@@ -441,6 +441,11 @@
 
         <div class="bossPane" data-pane="onboarding">
           <div class="paneHead"><h2>✅ Адаптация новичков</h2><p>Чек-лист адаптации: кто что получил, кто на 100% готов к работе</p></div>
+          <!-- 2026-08-27, по указанию Sagi: сам чек-лист (onboarding.html — пункты, видео-материалы,
+               кнопка «Редактировать видео») это отдельная страница со своим флоу (имя+роль), её нельзя
+               просто встроить в iframe как read-only статистику ниже — поэтому прямая ссылка новой
+               вкладкой, а не ещё один фрейм. -->
+          <a class="btn sec small" href="/onboarding.html" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none;margin-bottom:14px">🎥 Открыть чек-лист и редактор видео →</a>
           <iframe class="accFrame" id="frame-onboarding" data-src="/onboarding-status.html?embed=1" title="Адаптация новичков"></iframe>
         </div>
 
