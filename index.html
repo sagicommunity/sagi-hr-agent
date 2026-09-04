@@ -438,11 +438,13 @@
       <div class="bossContent">
 
         <div class="bossPane active" data-pane="employees">
-          <div class="paneHead"><h2>👥 Сотрудники и прогресс</h2><p>Стажёры и менеджеры, статус обучения, наставник, откуда пришли</p></div>
+          <div class="paneHead"><h2>👥 Сотрудники и прогресс</h2><p>Стажёры, менеджеры и кандидаты в одном списке: статус обучения, наставник, откуда пришли</p></div>
+          <input id="peopleSearch" type="text" placeholder="🔍 Поиск по имени или телефону, сразу среди всех, включая тех, кто только откликнулся" style="max-width:520px;margin-bottom:12px" />
           <div class="roleFilter" id="roleFilter">
             <button class="rfBtn active" data-role="all">Все</button>
             <button class="rfBtn" data-role="trainee">📘 Обучение</button>
             <button class="rfBtn" data-role="manager">🎓 Стажировка</button>
+            <button class="rfBtn" data-role="candidate">🗂 Только кандидаты</button>
           </div>
           <div id="bossTableWrap"></div>
         </div>
@@ -992,6 +994,10 @@ $('#lesBack').onclick=()=>{ if(CUR) renderCabinet(CUR); else show('screen-cabine
 /* ---- BOSS PANEL ---- */
 let BOSS_USERS={}; // login -> user, кэш последнего списка от 'list' (для клика по строке / профиля)
 // 2026-08-24, по указанию Sagi: фильтр «Все / Обучение / Стажировка» над списком сотрудников.
+// 2026-09-04, по указанию Sagi (не мог найти в этой таблице кандидата, который только откликнулся,
+// но ещё не зарегистрировался) — добавлен пункт «Только кандидаты» + сквозной поиск peopleSearch
+// ниже, объединяющий сотрудников (api/users.js) и кандидатов из пайплайна (api/pipeline.js), см.
+// CANDIDATES/loadCandidatesAll и сборку списка в renderBoss.
 let bossRoleFilter='all';
 document.querySelectorAll('.rfBtn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -1000,6 +1006,15 @@ document.querySelectorAll('.rfBtn').forEach(btn=>{
     if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
   });
 });
+let peopleSearchQuery='';
+const peopleSearchEl=$('#peopleSearch');
+if(peopleSearchEl){
+  peopleSearchEl.addEventListener('input', e=>{
+    peopleSearchQuery=e.target.value||'';
+    if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
+  });
+}
+function digitsOnly(s){ return String(s||'').replace(/[^\d]/g,''); }
 
 let TRAINER_STATS_MAP={}; // login -> {events, overall} — с ИИ-тренажёра (agent.html), см. loadTrainerStatsAll
 let LAST_BOSS_USERS=[];
@@ -1030,6 +1045,27 @@ async function loadOnboardingStatusAll(){
     }
   }catch(e){}
 }
+// 2026-09-04, по указанию Sagi: единый список и поиск по ВСЕМ, включая тех, кто только откликнулся
+// и ещё не зарегистрировался на hr.sagibonus.com (то есть их ещё нет в api/users.js). Такие люди
+// живут только в пайплайне найма (api/pipeline.js, hr:candidates) — подгружаем их тем же паролем
+// РОПа и объединяем со списком сотрудников прямо в renderBoss (см. ниже, buildPeopleRows).
+let CANDIDATES=[];
+async function loadCandidatesAll(){
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'list',password:BOSS_PW})});
+    const d=await r.json();
+    if(d.ok && Array.isArray(d.items)){
+      CANDIDATES=d.items;
+      if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
+    }
+  }catch(e){}
+}
+const CAND_STAGE_TAG={
+  'Новый':['—',''], 'Ожидает ответа':['📨 Ждём ответа',''], 'Ответил':['💬 Ответил',''], 'Приглашён':['✉️ Приглашён',''],
+  'Обучение':['📘 Обучение','tr'], 'Стажировка':['🎓 Стажировка','mg'], 'Трудоустроен':['✅ Трудоустроен','mg'],
+  'На связи':['💬 На связи',''], 'Квалификация':['🔎 Квалификация',''], 'Интервью':['🗣 Интервью',''], 'Оффер':['📄 Оффер','mg'],
+  'Не подходит':['❌ Не подходит','warn'], 'Отказ':['🚫 Отказ','warn'], 'Ушёл':['👋 Ушёл','warn'],
+};
 function renderBoss(users, skipStatsFetch){
   users=users||[];
   LAST_BOSS_USERS=users;
@@ -1049,56 +1085,121 @@ function renderBoss(users, skipStatsFetch){
     return Math.round((done+(obDone?1:0))/(all.length+1)*100);
   });
   $('#bsAvg').textContent=(pcts.length?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0)+'%';
-  if(!skipStatsFetch){ loadTrainerStatsAll(); loadOnboardingStatusAll(); } // не блокируем первую отрисовку — догружаем и перерисовываем
+  if(!skipStatsFetch){ loadTrainerStatsAll(); loadOnboardingStatusAll(); loadCandidatesAll(); } // не блокируем первую отрисовку — догружаем и перерисовываем
 
   const wrap=$('#bossTableWrap');
-  const filteredUsers = bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter);
-  if(!filteredUsers.length){ wrap.innerHTML='<div class="empty">'+(users.length?'Никого нет в этом фильтре.':'Пока нет зарегистрированных сотрудников.<br>Они появятся здесь после входа на платформу.')+'</div>'; }
+
+  // 2026-09-04, по указанию Sagi («не могу найти Акмарал, она только откликнулась»): единый список
+  // и поиск по сотрудникам (api/users.js) И кандидатам, которые ещё не зарегистрировались на
+  // hr.sagibonus.com (api/pipeline.js, hr:candidates). Кандидат, который уже стал сотрудником,
+  // узнаём по candId (проставляется при регистрации по персональной ссылке) или по совпавшему
+  // телефону — и не показываем его отдельной строкой в пайплайне, чтобы не дублировать одного и
+  // того же человека.
+  const registeredCandIds=new Set(users.map(u=>u.candId).filter(Boolean));
+  const registeredPhones=new Set(users.map(u=>digitsOnly(u.phone)).filter(Boolean));
+  const openCandidates=(CANDIDATES||[]).filter(c=>{
+    if(c.id && registeredCandIds.has(c.id)) return false;
+    const cp=digitsOnly(c.phone);
+    if(cp && registeredPhones.has(cp)) return false;
+    return true;
+  });
+
+  const q=(peopleSearchQuery||'').trim().toLowerCase();
+  const qDigits=digitsOnly(peopleSearchQuery);
+  function matchesSearch(hayText, hayPhone){
+    if(!q && !qDigits) return true;
+    const hitText = q && String(hayText||'').toLowerCase().includes(q);
+    const hitPhone = qDigits.length>=3 && digitsOnly(hayPhone).includes(qDigits);
+    return !!(hitText || hitPhone);
+  }
+
+  let peopleUsers = bossRoleFilter==='candidate' ? [] : (bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter));
+  peopleUsers = peopleUsers.filter(u=>matchesSearch(u.name+' '+u.login+' '+(u.howFound||''), u.phone));
+  let peopleCandidates = (bossRoleFilter==='trainee' || bossRoleFilter==='manager') ? [] : openCandidates;
+  peopleCandidates = peopleCandidates.filter(c=>matchesSearch(c.name+' '+(c.contact||'')+' '+(c.source||''), c.phone));
+
+  const combined=[
+    ...peopleUsers.map(u=>({kind:'user', ts:u.lastSeen||0, data:u})),
+    ...peopleCandidates.map(c=>({kind:'candidate', ts:c.ts||0, data:c})),
+  ].sort((a,b)=>b.ts-a.ts);
+
+  if(!combined.length){
+    const nothingAtAll = !users.length && !openCandidates.length;
+    wrap.innerHTML='<div class="empty">'+((q||qDigits) ? 'Никого не найдено по этому запросу.' : (nothingAtAll ? 'Пока никого нет: ни кандидатов, ни зарегистрированных сотрудников.' : 'Никого нет в этом фильтре.'))+'</div>';
+  }
   else{
-    let rows=filteredUsers.sort((a,b)=>b.lastSeen-a.lastSeen).map((u,i)=>{
-      const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
-      const done=all.filter(m=>(u.progress||{})[m.id]).length;
-      const ob=OB_STATUS_MAP[u.login];
-      const obDone=!!(ob && ob.percent>=100);
-      const pct=Math.round((done+(obDone?1:0))/(all.length+1)*100);
-      // 2026-08-27, по указанию Sagi: чек-лист адаптации — обязательный финальный шаг, отдельная
-      // колонка с его статусом, чтобы Sagi видел это прямо в общей таблице.
-      const obCell = ob ? (obDone?'<span class="tag mg">✅ готов</span>':ob.done+'/'+ob.total+' ('+ob.percent+'%)') : '<span style="color:var(--muted)">не начат</span>';
-      const when=new Date(u.lastSeen).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
-      const loginAttr=String(u.login).replace(/"/g,'&quot;');
-      const ts=TRAINER_STATS_MAP[u.login];
-      const trainerCell=ts&&ts.events ? ts.events+' · '+(ts.overall!=null?ts.overall+'/10':'—') : '—';
-      // Средний % по лучшим попыткам тестов модулей (2026-08-18, задача Sagi «чтобы обучение
-      // было качественно») — видно, кто проходит модули формально, а кто реально усваивает.
-      const qb=u.quizBest||{}; const qKeys=Object.keys(qb);
-      const quizCell=qKeys.length ? Math.round(qKeys.reduce((s,k)=>s+(qb[k].score/qb[k].total),0)/qKeys.length*100)+'% ('+qKeys.length+')' : '—';
-      const hs=u.hireStatus||'Активен';
-      const statusCell=hs==='Активен' ? '—' : '<span class="tag '+(HIRE_STATUS_CLASS[hs]||'')+'" title="'+(u.statusComment||'').replace(/"/g,'&quot;')+'">'+hs+'</span>';
-      const howFoundCell=u.howFound ? u.howFound : '—';
-      // 2026-08-18, по запросу Sagi: помечаем возраст вне 20-35 лет — НЕ авто-отказ, просто
-      // видимая пометка для ручного решения (юридически рискованно жёстко отклонять по возрасту).
-      const ageBadge=u.ageOutOfRange ? ' <span class="tag warn" title="Вне диапазона 20-35 лет — не автоотказ, решение за тобой">'+(u.age!=null?u.age+' лет':'возраст')+' ⚠️</span>' : '';
-      return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b>'+ageBadge+'<br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
-        '<td>'+contactBtnsHtml(u.phone)+'</td>'+
-        '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'" title="'+(u.role==='manager'?'Роль в базе: manager':'Роль в базе: trainee')+'">'+(u.role==='manager'?'🎓 Стажировка':'📘 Обучение')+'</span></td>'+
-        '<td>'+statusCell+'</td>'+
-        '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
-        '<td>'+done+' / '+all.length+'</td>'+
-        '<td>'+obCell+'</td>'+
-        '<td style="color:var(--muted)">'+quizCell+'</td>'+
-        '<td style="color:var(--muted)">'+trainerCell+'</td>'+
-        '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
-        '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
+    let rows=combined.map(({kind,data})=>{
+      if(kind==='user'){
+        const u=data;
+        const all=u.role==='manager'?BASIC.concat(ADV):BASIC;
+        const done=all.filter(m=>(u.progress||{})[m.id]).length;
+        const ob=OB_STATUS_MAP[u.login];
+        const obDone=!!(ob && ob.percent>=100);
+        const pct=Math.round((done+(obDone?1:0))/(all.length+1)*100);
+        // 2026-08-27, по указанию Sagi: чек-лист адаптации — обязательный финальный шаг, отдельная
+        // колонка с его статусом, чтобы Sagi видел это прямо в общей таблице.
+        const obCell = ob ? (obDone?'<span class="tag mg">✅ готов</span>':ob.done+'/'+ob.total+' ('+ob.percent+'%)') : '<span style="color:var(--muted)">не начат</span>';
+        const when=new Date(u.lastSeen).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
+        const loginAttr=String(u.login).replace(/"/g,'&quot;');
+        const ts=TRAINER_STATS_MAP[u.login];
+        const trainerCell=ts&&ts.events ? ts.events+' · '+(ts.overall!=null?ts.overall+'/10':'—') : '—';
+        // Средний % по лучшим попыткам тестов модулей (2026-08-18, задача Sagi «чтобы обучение
+        // было качественно») — видно, кто проходит модули формально, а кто реально усваивает.
+        const qb=u.quizBest||{}; const qKeys=Object.keys(qb);
+        const quizCell=qKeys.length ? Math.round(qKeys.reduce((s,k)=>s+(qb[k].score/qb[k].total),0)/qKeys.length*100)+'% ('+qKeys.length+')' : '—';
+        const hs=u.hireStatus||'Активен';
+        const statusCell=hs==='Активен' ? '—' : '<span class="tag '+(HIRE_STATUS_CLASS[hs]||'')+'" title="'+(u.statusComment||'').replace(/"/g,'&quot;')+'">'+hs+'</span>';
+        const howFoundCell=u.howFound ? u.howFound : '—';
+        // 2026-08-18, по запросу Sagi: помечаем возраст вне 20-35 лет — НЕ авто-отказ, просто
+        // видимая пометка для ручного решения (юридически рискованно жёстко отклонять по возрасту).
+        const ageBadge=u.ageOutOfRange ? ' <span class="tag warn" title="Вне диапазона 20-35 лет — не автоотказ, решение за тобой">'+(u.age!=null?u.age+' лет':'возраст')+' ⚠️</span>' : '';
+        return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b>'+ageBadge+'<br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
+          '<td>'+contactBtnsHtml(u.phone)+'</td>'+
+          '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'" title="'+(u.role==='manager'?'Роль в базе: manager':'Роль в базе: trainee')+'">'+(u.role==='manager'?'🎓 Стажировка':'📘 Обучение')+'</span></td>'+
+          '<td>'+statusCell+'</td>'+
+          '<td><div class="pbar mini"><div class="pfill" style="width:'+pct+'%"></div></div> '+pct+'%</td>'+
+          '<td>'+done+' / '+all.length+'</td>'+
+          '<td>'+obCell+'</td>'+
+          '<td style="color:var(--muted)">'+quizCell+'</td>'+
+          '<td style="color:var(--muted)">'+trainerCell+'</td>'+
+          '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
+          '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
+          '<td style="color:var(--muted)">'+when+'</td>'+
+          '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
+      }
+      // Кандидат из пайплайна найма, ещё не зарегистрирован на hr.sagibonus.com — колонки обучения
+      // ему не подходят (прочерк), вместо роли показываем реальную стадию воронки, вместо кнопки
+      // удаления — переход в «Пайплайн найма», где кандидатами управляют (смена стадии и т.п.).
+      const c=data;
+      const stageInfo=CAND_STAGE_TAG[c.stage]||[c.stage,''];
+      const stageLabel=stageInfo[0], stageCls=stageInfo[1];
+      const when=c.ts?new Date(c.ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}):'—';
+      const candIdAttr=String(c.id||'').replace(/"/g,'&quot;');
+      return '<tr class="bossRow candRow" data-candid="'+candIdAttr+'" style="cursor:pointer"><td><b>'+(c.name||'—')+'</b><br><span style="color:var(--muted);font-size:12px">🗂 кандидат, не зарегистрирован</span></td>'+
+        '<td>'+contactBtnsHtml(c.phone)+'</td>'+
+        '<td>'+(stageCls?'<span class="tag '+stageCls+'">'+stageLabel+'</span>':'<span style="color:var(--muted)">'+stageLabel+'</span>')+'</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">—</td>'+
+        '<td style="color:var(--muted)">'+(c.source||'—')+'</td>'+
         '<td style="color:var(--muted)">'+when+'</td>'+
-        '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
+        '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть в пайплайне найма">🗂 →</button></td></tr>';
     }).join('');
     wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Контакт</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
-        if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn')) return;
+        if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn')) return;
+        if(tr.classList.contains('candRow')){ selectBossTab('pipeline'); return; }
         const u=BOSS_USERS[tr.dataset.login];
         if(u) renderProfile(u);
       });
+    });
+    wrap.querySelectorAll('.candGotoBtn').forEach(btn=>{
+      btn.addEventListener('click', e=>{ e.stopPropagation(); selectBossTab('pipeline'); });
     });
     wrap.querySelectorAll('.bossDelBtn').forEach(btn=>{
       btn.addEventListener('click', async e=>{
