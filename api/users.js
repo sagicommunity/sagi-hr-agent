@@ -12,6 +12,10 @@
 //            в менеджеры (или обратно), тот же аккаунт/логин/прогресс, ничего не создаётся заново
 //   setStatus { password, login, status, comment } status: см. HIRE_STATUSES ниже -> { ok, user }
 //            — статус найма/работы (не путать с role), с комментарием-причиной
+//   setLogin    { password, login, newLogin }     -> { ok, user } — смена логина (см. ниже про
+//            перенос чек-листа адаптации и истории ИИ-тренажёра)
+//   setPassword { password, login, newPassword }  -> { ok, user } — смена пароля без знания старого
+//            (это же экран РОПа, а не самого стажёра) — например, если стажёр забыл пароль
 
 import crypto from 'crypto';
 
@@ -353,6 +357,79 @@ export default async function handler(req, res) {
       u.hireStatus = status;
       u.statusComment = (body.comment || '').toString().trim().slice(0, 1000);
       u.statusUpdatedAt = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── СМЕНА ЛОГИНА (только руководитель, 2026-09-04, по указанию Sagi: «некоторые теряют,
+    // забывают», нужно уметь поменять прямо из панели, не пересоздавая аккаунт). Логин — это и
+    // есть ключ записи (hr:user:<login>, set hr:users), плюс на него завязаны ещё два места ВНЕ
+    // этого файла: чек-лист адаптации (api/onboarding.js, hr:onboarding, id записи = login — см.
+    // index.html, ссылка /onboarding.html?id=login) и история практики с ИИ-тренажёром
+    // (api/chat.js, список hr:events, у каждого события есть своё поле login). При переименовании
+    // переносим оба, иначе прогресс по чек-листу и вся история тренировок «потеряются» под старым
+    // логином, хотя по факту никуда не делись.
+    if (action === 'setLogin') {
+      if (!checkBoss(body, res)) return;
+      const oldLogin = norm(body.login);
+      const newLogin = norm(body.newLogin).slice(0, 60);
+      if (!oldLogin || !newLogin) { res.status(400).json({ error: 'login и newLogin обязательны' }); return; }
+      const u = await getUser(oldLogin);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      if (newLogin !== oldLogin) {
+        if (await getUser(newLogin)) { res.status(409).json({ error: 'Такой логин уже занят' }); return; }
+        u.login = newLogin;
+        // Новый токен — старая сессия на устройстве стажёра всё равно ссылалась на прежний login
+        // (localStorage хранит login+token вместе), при следующем открытии кабинета она перестанет
+        // проходить и просто попросит войти заново под новым логином — это ожидаемо и безопасно.
+        u.token = newToken();
+        await putUser(u);
+        await redis(['DEL', uKey(oldLogin)]);
+        await redis(['SREM', 'hr:users', oldLogin]);
+        try {
+          const obRaw = await redis(['HGET', 'hr:onboarding', oldLogin]);
+          if (obRaw) {
+            let ob; try { ob = JSON.parse(obRaw); } catch (e) { ob = null; }
+            if (ob) {
+              ob.id = newLogin;
+              await redis(['HSET', 'hr:onboarding', newLogin, JSON.stringify(ob)]);
+              await redis(['HDEL', 'hr:onboarding', oldLogin]);
+            }
+          }
+        } catch (e) {}
+        try {
+          const events = await redis(['LRANGE', 'hr:events', 0, 999]);
+          if (Array.isArray(events)) {
+            for (let i = 0; i < events.length; i++) {
+              let ev; try { ev = JSON.parse(events[i]); } catch (e) { continue; }
+              if (ev && ev.login === oldLogin) {
+                ev.login = newLogin;
+                await redis(['LSET', 'hr:events', i, JSON.stringify(ev)]);
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── СМЕНА ПАРОЛЯ (только руководитель, 2026-09-04, по указанию Sagi) — не требует знания
+    // старого пароля, потому что вызывается из панели РОПа, а не самим стажёром. Токен тоже
+    // обнуляем, чтобы уже открытая сессия на телефоне стажёра сразу потребовала новый пароль,
+    // а не продолжала молча работать по старому.
+    if (action === 'setPassword') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const newPassword = (body.newPassword || '').toString();
+      if (newPassword.length < 4) { res.status(400).json({ error: 'Пароль слишком короткий (мин. 4 символа)' }); return; }
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      const salt = crypto.randomBytes(8).toString('hex');
+      u.passHash = hashPass(newPassword, salt);
+      u.salt = salt;
+      u.token = newToken();
       await putUser(u);
       res.status(200).json({ ok: true, user: safe(u) });
       return;
