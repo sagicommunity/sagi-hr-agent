@@ -524,6 +524,24 @@
           <div class="contactBtns" id="profContactBtns"></div>
         </div>
       </div>
+      <!-- 2026-09-04, по указанию Sagi: некоторые стажёры теряют/забывают логин или пароль —
+           даём руководителю поменять оба прямо здесь, без обращения в поддержку. -->
+      <div style="margin-top:16px">
+        <label>Логин</label>
+        <div style="display:flex;gap:8px">
+          <input id="profLogin" maxlength="60" />
+          <button class="btn sec small" id="profLoginSave">Сохранить</button>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <label>Пароль</label>
+        <div style="display:flex;gap:8px">
+          <input id="profNewPassword" placeholder="Новый пароль, минимум 4 символа" maxlength="60" />
+          <button class="btn sec small" id="profGenPassword" title="Сгенерировать случайный пароль">🎲</button>
+          <button class="btn sec small" id="profPasswordSave">Сохранить</button>
+        </div>
+      </div>
+      <div class="sub" id="profCredsNote" style="margin-top:8px;display:none"></div>
       <div style="margin-top:16px">
         <label>Статус</label>
         <div style="display:flex;gap:8px">
@@ -613,6 +631,21 @@ function stazhirovkaNotifyText(u){
   const deadline=new Date((u.promotedAt||Date.now())+MANAGER_DEADLINE_MS).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   return 'Привет, '+first+'! 🎉 Вам открылся блок стажировки — продвинутые модули, тренажёр возражений, разбор звонков. Пожалуйста, пройдите до '+deadline+' (даётся 2 дня). Вход: https://hr.sagibonus.com/';
 }
+// 2026-09-04, по указанию Sagi: некоторые стажёры теряют/забывают логин или пароль — руководитель
+// меняет их прямо в профиле (см. renderProfile/profLoginSave/profPasswordSave), а готовый текст с
+// новыми данными для входа отправляется тем же способом, что и уведомление о стажировке выше:
+// открываем wa.me с текстом в своём WhatsApp, руководитель сам жмёт «Отправить».
+function credentialsText(u, newLogin, newPassword){
+  const first=(u.name||'').split(' ')[0]||u.name||'';
+  let t='Привет, '+first+'! Обновили данные для входа в кабинет обучения.\n';
+  if(newLogin) t+='Логин: '+newLogin+'\n';
+  if(newPassword) t+='Пароль: '+newPassword+'\n';
+  t+='Вход: https://hr.sagibonus.com/';
+  return t;
+}
+// Случайный пароль из цифр — стажёры чаще всего заходят с телефона, цифровую клавиатуру проще
+// набрать и продиктовать по телефону, чем случайную строку с буквами разного регистра.
+function genPassword(){ return String(Math.floor(100000+Math.random()*900000)); }
 function contactBtnsHtml(phone){
   if(!phone) return '<span style="color:var(--muted)">—</span>';
   return '<div class="contactBtns">'+
@@ -1321,6 +1354,9 @@ function renderProfile(u){
   $('#profPct').textContent=pct+'%';
   $('#profPhone').value=u.phone||'';
   $('#profContactBtns').innerHTML=u.phone ? ('<a class="contactBtn" href="'+telLink(u.phone)+'" title="Позвонить">📞</a>'+'<a class="contactBtn" href="'+waLink(u.phone)+'" target="_blank" rel="noopener" title="Написать в WhatsApp">💬</a>') : '';
+  $('#profLogin').value=u.login;
+  $('#profNewPassword').value='';
+  $('#profCredsNote').style.display='none'; $('#profCredsNote').innerHTML='';
   $('#profStatus').innerHTML=HIRE_STATUSES.map(s=>'<option value="'+s+'"'+(s===(u.hireStatus||'Активен')?' selected':'')+'>'+s+'</option>').join('');
   $('#profStatusComment').value=u.statusComment||'';
 
@@ -1401,6 +1437,55 @@ function renderProfile(u){
     if(!res.ok){ alert(res.error||'Не удалось сохранить'); return; }
     u.phone=$('#profPhone').value; BOSS_USERS[u.login]=u;
     $('#profContactBtns').innerHTML=u.phone ? ('<a class="contactBtn" href="'+telLink(u.phone)+'" title="Позвонить">📞</a>'+'<a class="contactBtn" href="'+waLink(u.phone)+'" target="_blank" rel="noopener" title="Написать в WhatsApp">💬</a>') : '';
+  };
+  // 2026-09-04, по указанию Sagi: смена логина/пароля прямо из панели — некоторые стажёры
+  // теряют/забывают их и не могут сами восстановить (пароль восстановить нельзя, он хранится
+  // хэшем — только новый). После успешной смены показываем готовый текст с новыми данными и
+  // кнопку отправки в WhatsApp тем же способом, что и уведомление о стажировке выше.
+  function showCredsNote(u, newLogin, newPassword){
+    const note=$('#profCredsNote');
+    const text=credentialsText(u, newLogin, newPassword);
+    let html='✅ Сохранено. '+(u.phone ? 'Можно сразу отправить новые данные:' : 'Телефон не указан, отправьте данные вручную:')+'<br><pre style="white-space:pre-wrap;background:rgba(0,0,0,.25);border-radius:8px;padding:8px 10px;margin:6px 0">'+text+'</pre>';
+    note.innerHTML=html;
+    note.style.display='block';
+    if(u.phone){
+      const link=document.createElement('a');
+      link.className='btn sec small'; link.target='_blank'; link.rel='noopener';
+      link.href=waLink(u.phone, text); link.textContent='💬 Отправить в WhatsApp';
+      note.appendChild(document.createElement('br'));
+      note.appendChild(link);
+    }
+  }
+  $('#profLoginSave').onclick=async()=>{
+    const newLogin=$('#profLogin').value.trim();
+    if(!newLogin){ alert('Логин не может быть пустым'); return; }
+    if(newLogin===u.login){ return; }
+    if(!confirm('Сменить логин у '+u.name+' с «'+u.login+'» на «'+newLogin+'»? Если стажёр уже открывал кабинет на своём телефоне, эта сессия слетит, придётся войти заново под новым логином.')) return;
+    const btn=$('#profLoginSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';
+    const res=await api({action:'setLogin', password:BOSS_PW, login:u.login, newLogin});
+    btn.disabled=false; btn.textContent=old;
+    if(!res.ok){ alert(res.error||'Не удалось сменить логин'); return; }
+    const oldLogin=u.login;
+    delete BOSS_USERS[oldLogin];
+    BOSS_USERS[res.user.login]=res.user;
+    const idx=LAST_BOSS_USERS.findIndex(x=>x.login===oldLogin);
+    if(idx>=0) LAST_BOSS_USERS[idx]=res.user;
+    showCredsNote(res.user, res.user.login, null);
+    $('#profLogin').value=res.user.login;
+    u.login=res.user.login;
+  };
+  $('#profGenPassword').onclick=()=>{ $('#profNewPassword').value=genPassword(); };
+  $('#profPasswordSave').onclick=async()=>{
+    const newPassword=$('#profNewPassword').value;
+    if(newPassword.length<4){ alert('Пароль слишком короткий (минимум 4 символа)'); return; }
+    if(!confirm('Установить новый пароль для '+u.name+'? При следующем входе понадобится именно он.')) return;
+    const btn=$('#profPasswordSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';
+    const res=await api({action:'setPassword', password:BOSS_PW, login:u.login, newPassword});
+    btn.disabled=false; btn.textContent=old;
+    if(!res.ok){ alert(res.error||'Не удалось сменить пароль'); return; }
+    BOSS_USERS[u.login]=res.user;
+    showCredsNote(res.user, null, newPassword);
+    $('#profNewPassword').value='';
   };
   $('#profStatusSave').onclick=async()=>{
     const btn=$('#profStatusSave'), old=btn.textContent; btn.disabled=true; btn.textContent='…';
