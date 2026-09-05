@@ -427,6 +427,31 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── Удаление тестовых/ошибочных профилей (Sagi, 2026-09-05) ─────────────────
+    // Раньше удалить запись из чек-листа было нечем, и тестовые профили копились в
+    // списке. Подпись — тот же общий секрет (сервер-сервер), плюс явный список id:
+    // случайно «почистить всё» нельзя, удаляется ровно то, что передали.
+    if (action === 'purge') {
+      if (!SSO_SECRET) { res.status(503).json({ error: 'Мост не настроен' }); return; }
+      const ts = Number(body?.ts) || 0;
+      const ids = Array.isArray(body?.ids) ? body.ids.map((x) => String(x).trim()).filter(Boolean).slice(0, 50) : [];
+      const sig = (req.headers['x-sso-sign'] || '').toString();
+      if (!ids.length) { res.status(400).json({ error: 'Нет ids' }); return; }
+      const expect = ssoHmac('purge|' + ts + '|' + ids.join(','));
+      if (!ts || Math.abs(Date.now() - ts) > 300000 || sig !== expect) {
+        res.status(401).json({ error: 'Подпись не совпала' }); return;
+      }
+      const deleted = [];
+      for (const id of ids) {
+        const had = await loadRecord(id);
+        await redis(['HDEL', HKEY, id]);
+        await redis(['HDEL', CONTRACT_HKEY, id]);
+        deleted.push({ id, name: (had && had.name) || '', existed: !!had });
+      }
+      res.status(200).json({ ok: true, deleted });
+      return;
+    }
+
     // Единый вход: выдаём URL перехода стажёра в CRM тем же ID (login = id).
     // Разрешаем только после подписания договора — так в CRM попадают реальные,
     // оформленные стажёры (в CRM учётка создаётся сама при первом переходе, active=0).
