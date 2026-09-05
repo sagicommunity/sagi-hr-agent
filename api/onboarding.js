@@ -395,6 +395,38 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── Реестр стажёров для CRM (стыковка HR ↔ CRM), Sagi 2026-09-05 ─────────────
+    // Кто уже есть в HR и подписан ли у него договор. Нужен админке CRM, чтобы связать
+    // уже заведённые вручную учётки (manager1 = Иван и т.п.) с их профилем в HR.
+    // Авторизация — тот же общий секрет SSO_SHARED_SECRET (не пароль руководителя),
+    // потому что запрос идёт сервер-сервер из CRM, а не из браузера.
+    if (action === 'roster') {
+      if (!SSO_SECRET) { res.status(503).json({ error: 'Мост не настроен (нет SSO_SHARED_SECRET)' }); return; }
+      const ts = Number(body?.ts) || 0;
+      const sig = (req.headers['x-sso-sign'] || '').toString();
+      const expect = ssoHmac('roster|' + ts);
+      if (!ts || Math.abs(Date.now() - ts) > 300000 || sig !== expect) {
+        res.status(401).json({ error: 'Подпись не совпала' }); return;
+      }
+      const all = await loadAll();
+      const contracts = await loadAllContracts();
+      const byId = new Map(contracts.map((c) => [c.id, c]));
+      const items = all.map((r) => {
+        const c = byId.get(r.id);
+        const f = (c && c.fields) || {};
+        return {
+          login: r.id, name: r.name || '', role: r.role || '', phone: r.phone || '',
+          createdAt: r.createdAt || null, updatedAt: r.updatedAt || null,
+          signed: !!c, signedAt: (c && c.signedAt) || null,
+          fio: f.fio || '', iin: f.iin || '', contractPhone: f.phone || '', email: f.email || '',
+          startDate: f.startdate || '',
+        };
+      });
+      items.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      res.status(200).json({ ok: true, items });
+      return;
+    }
+
     // Единый вход: выдаём URL перехода стажёра в CRM тем же ID (login = id).
     // Разрешаем только после подписания договора — так в CRM попадают реальные,
     // оформленные стажёры (в CRM учётка создаётся сама при первом переходе, active=0).
