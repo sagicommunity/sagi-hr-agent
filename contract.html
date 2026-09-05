@@ -152,6 +152,7 @@
     </div>
     <p>4.2. Вознаграждение выплачивается ежемесячно, не позднее 10 (десятого) числа месяца, следующего за отчётным, на основании отчёта Исполнителя и данных CRM Заказчика (crm.sagibonus.com).</p>
     <p>4.3. Исполнитель самостоятельно несёт ответственность за декларирование дохода и уплату налогов, если иное не предусмотрено законодательством Республики Казахстан.</p>
+    <p>4.4. <b>Условие о полном отчётном месяце.</b> Вознаграждение (оклад, процент с продаж и KPI-бонусы) начисляется и выплачивается при условии, что Исполнитель оказывал услуги до конца соответствующего календарного месяца. Если Исполнитель по своей инициативе прекращает оказание услуг до окончания календарного месяца, услуги за этот неполный месяц считаются не завершёнными в согласованном объёме, и вознаграждение за него не начисляется и не выплачивается. Настоящее условие Исполнитель принимает осознанно при акцепте оферты.</p>
   </div>
 
   <div class="card" id="kpiCardSales" style="display:none">
@@ -182,6 +183,7 @@
     <p>7.1. Договор вступает в силу с даты его подписания Исполнителем (пункт 6 ниже) и действует до полного исполнения Сторонами своих обязательств либо до его расторжения.</p>
     <p>7.2. Любая из Сторон вправе расторгнуть Договор в одностороннем порядке, уведомив другую Сторону не менее чем за 3 (три) календарных дня, за исключением случаев существенного нарушения условий Договора (в т.ч. раздела 3), при которых Договор может быть расторгнут немедленно.</p>
     <p>7.3. Обязательства по конфиденциальности (раздел 3) сохраняют силу независимо от расторжения Договора.</p>
+    <p>7.4. <b>Завершение работы.</b> О намерении прекратить оказание услуг Исполнитель уведомляет Заказчика, нажав кнопку «Завершить работу» в CRM (crm.sagibonus.com) либо письменно. С этого момента доступ Исполнителя к системам Заказчика закрывается, а все закреплённые за ним сделки и клиенты возвращаются Заказчику (в общую базу) для дальнейшей работы или передачи другому менеджеру. Исполнитель не вправе продолжать самостоятельную работу с этими клиентами и обязан прекратить любые контакты с ними от имени Заказчика. Расчёт производится с учётом пункта 4.4.</p>
   </div>
 
   <div class="card">
@@ -217,7 +219,7 @@
     <div class="field"><label>Кем выдано</label><input type="text" id="f_docauth" placeholder="Наименование органа" /></div>
     <div class="grid2">
       <div class="field"><label>Телефон</label><input type="tel" id="f_phone" placeholder="+7 7__ ___ __ __" /></div>
-      <div class="field"><label>Email (если есть)</label><input type="email" id="f_email" placeholder="you@example.com" /></div>
+      <div class="field"><label>Email</label><input type="email" id="f_email" placeholder="you@example.com" /></div>
     </div>
 
     <div class="field" style="margin-top:6px">
@@ -259,13 +261,9 @@ function fillStatic(role, name){
   document.querySelectorAll('[data-fill="fio"]').forEach(el=>el.textContent = name || '(ФИО подставится после заполнения ниже)');
   const roleLabel = ROLE_LABEL[role] || '—';
   document.querySelectorAll('[data-fill="roleLabel"],[data-fill="roleLabel2"],[data-fill="roleLabel3"]').forEach(el=>el.textContent = roleLabel);
-  if(role==='sales'){
-    $('#paySales').style.display='block'; $('#payOther').style.display='none';
-    $('#kpiCardSales').style.display='block'; $('#kpiCardOther').style.display='none';
-  } else {
-    $('#paySales').style.display='none'; $('#payOther').style.display='block';
-    $('#kpiCardSales').style.display='none'; $('#kpiCardOther').style.display='block';
-  }
+  // Договор оформляется ТОЛЬКО для менеджеров по продажам (Sagi, 2026-09-05).
+  $('#paySales').style.display='block'; $('#payOther').style.display='none';
+  $('#kpiCardSales').style.display='block'; $('#kpiCardOther').style.display='none';
 }
 
 function showSigned(item){
@@ -335,6 +333,9 @@ $('#signBtn').addEventListener('click', async ()=>{
   }
   if(!fields.startdate){
     err.textContent='Укажите дату, с которой готовы приступить к полноценному рабочему дню.'; err.style.display='block'; return;
+  }
+  if(!fields.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fields.email)){
+    err.textContent='Укажите ваш email — на него будут приходить рабочие уведомления.'; err.style.display='block'; return;
   }
   if(!/^\d{12}$/.test(fields.iin)){
     err.textContent='ИИН должен состоять из 12 цифр.'; err.style.display='block'; return;

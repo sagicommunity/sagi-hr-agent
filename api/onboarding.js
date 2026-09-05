@@ -88,8 +88,12 @@ const ITEMS = {
 const ROLES = ['sales', 'success', 'support'];
 const ROLE_LABEL = { sales: 'Менеджер по продажам', success: 'Работа с текущими клиентами', support: 'Техподдержка' };
 
+// Договор ГПХ (common6) — ТОЛЬКО для менеджеров по продажам (Sagi, 2026-09-05:
+// «только менеджер по продажам указываем, остальным договор не нужен»). Для success/support
+// пункт из чек-листа убираем совсем, чтобы он не висел и не портил процент.
 function itemsForRole(role) {
-  return ITEMS.common.concat(ITEMS[role] || []);
+  const common = role === 'sales' ? ITEMS.common : ITEMS.common.filter(([k]) => k !== CONTRACT_ITEM_KEY);
+  return common.concat(ITEMS[role] || []);
 }
 
 // 2026-09-05, по указанию Sagi: пункт «Договор ГПХ» нельзя отмечать вручную галочкой —
@@ -346,6 +350,9 @@ export default async function handler(req, res) {
       }
       if (!fields.startdate || !/^\d{4}-\d{2}-\d{2}$/.test(fields.startdate)) {
         res.status(400).json({ error: 'Укажите дату первого рабочего дня' }); return;
+      }
+      if (!fields.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fields.email)) {
+        res.status(400).json({ error: 'Укажите корректный email' }); return;
       }
 
       // Доказательства акцепта (Sagi, 2026-09-05): логин/пароль создаёт компания, поэтому

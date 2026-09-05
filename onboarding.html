@@ -274,7 +274,11 @@ const RESOURCES = {
   ],
 };
 
-function itemsForRole(role){ return ITEMS.common.concat(ITEMS[role]||[]); }
+// Договор ГПХ (common6) — только для продаж (Sagi, 2026-09-05), остальным не нужен.
+function itemsForRole(role){
+  const common = role==='sales' ? ITEMS.common : ITEMS.common.filter(([k])=>k!=='common6');
+  return common.concat(ITEMS[role]||[]);
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
 async function api(payload){
@@ -475,7 +479,9 @@ function renderGroups(){
   const box=$('#groups'); box.innerHTML='';
   const groups = RECORD.role ? ['common', RECORD.role] : ['common'];
   for(const g of groups){
-    const items = ITEMS[g]||[];
+    let items = ITEMS[g]||[];
+    // Договор ГПХ — только для продаж (см. itemsForRole выше).
+    if(g==='common' && RECORD.role!=='sales') items = items.filter(([k])=>k!=='common6');
     if(!items.length) continue;
     const wrap=document.createElement('div'); wrap.className='group';
     wrap.innerHTML = '<div class="groupLabel">'+esc(GROUP_LABEL[g]||g)+'</div>';
