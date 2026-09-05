@@ -282,6 +282,20 @@ async function api(payload){
   const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
 }
 
+// Единый вход в CRM (Sagi, 2026-09-05, п.5): по клику берём у сервера подписанный
+// URL перехода и открываем CRM тем же ID стажёра. Доступно после подписания договора.
+async function goCrm(btn){
+  const old = btn ? btn.textContent : '';
+  try{
+    if(btn){ btn.disabled=true; btn.textContent='Открываю…'; }
+    const d = await api({action:'sso_crm', id:ID});
+    if(d && d.url){ window.open(d.url, '_blank', 'noopener'); }
+    else { alert('Не удалось открыть CRM'); }
+  }catch(e){ alert(e.message||'Не удалось открыть CRM'); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=old||'Войти в CRM →'; } }
+}
+window.goCrm = goCrm;
+
 // 2026-08-27, по указанию Sagi: список видео-встреч (RESOURCES.sales6 и т.п.) редактирует
 // он сам через кнопку «Редактировать видео» в шапке — без моего участия и без деплоя. Правки
 // живут в Redis (api/resources.js), поверх RESOURCES из кода. TAG_LABEL — те же подписи, что
@@ -473,10 +487,17 @@ function renderGroups(){
       // подписи в contract.html, чтобы нельзя было отметить не читая, как и с процентом).
       if(key==='common6'){
         const link='contract.html?id='+encodeURIComponent(ID)+'&name='+encodeURIComponent(RECORD.name||'')+'&role='+encodeURIComponent(RECORD.role||'');
-        row.innerHTML = '<div class="itemBody" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%">'+
+        // После подписания — кнопка единого входа в CRM тем же ID (Sagi, 2026-09-05, п.5).
+        const crmBtn = checked
+          ? '<button class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;flex-shrink:0;border:0;cursor:pointer" onclick="goCrm(this)">Войти в CRM →</button>'
+          : '';
+        row.innerHTML = '<div class="itemBody" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;flex-wrap:wrap">'+
           '<div><label style="font-weight:'+(checked?'400':'600')+'">'+esc(text)+'</label>'+
           '<div style="font-size:12.5px;margin-top:3px;color:'+(checked?'var(--brand)':'var(--muted)')+'">'+(checked?'✅ Подписан':'Ещё не подписан')+'</div></div>'+
-          '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none;flex-shrink:0" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>'+
+          '<div style="display:flex;gap:8px;flex-shrink:0">'+
+          '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>'+
+          crmBtn+
+          '</div>'+
           '</div>';
         wrap.appendChild(row);
         continue;

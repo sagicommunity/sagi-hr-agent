@@ -24,6 +24,8 @@
 //   contract_save  { id, fields }             -> { ok, item }  (подписание необратимо)
 //   contract_list  { password } (DASHBOARD_PASSWORD) -> { ok, items:[...] } — для Sagi
 
+import crypto from 'crypto';
+
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const HKEY = 'hr:onboarding';
@@ -116,6 +118,37 @@ async function loadAllContracts() {
     try { out.push(JSON.parse(flat[i + 1])); } catch (e) {}
   }
   return out;
+}
+
+// ── Мост в CRM (crm.sagibonus.com): единый вход + личное дело (Sagi, 2026-09-05, п.5) ──
+// Общий секрет SSO_SHARED_SECRET (тот же, что в CRM). Без него мост тихо выключен.
+const SSO_SECRET = (process.env.SSO_SHARED_SECRET || '').trim();
+const CRM_BASE = (process.env.CRM_BASE || 'https://crm.sagibonus.com').replace(/\/+$/, '');
+const b64u = (b) => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const ssoHmac = (data) => b64u(crypto.createHmac('sha256', SSO_SECRET).update(data).digest());
+// URL перехода стажёра в CRM тем же ID (login = id стажёра в hr:onboarding).
+function crmSsoUrl(login, name, role) {
+  const payload = { login, name: name || '', role: role || '', ts: Date.now() };
+  const p = b64u(JSON.stringify(payload));
+  return CRM_BASE + '/api/sso/hr?token=' + encodeURIComponent(p + '.' + ssoHmac(p));
+}
+// Отправить подписанный договор (личное дело) в CRM, чтобы Sagi видел его в crm.sagibonus.com.
+// Не блокирует подписание, если CRM недоступна.
+async function pushPersonalFileToCrm(item, name) {
+  if (!SSO_SECRET) return;
+  try {
+    const login = item.id;
+    const signedAtISO = new Date(item.signedAt || Date.now()).toISOString();
+    const body = {
+      login, name: name || (item.fields && item.fields.fio) || '', role: item.role || '',
+      signedAt: signedAtISO, contractVersion: item.contractVersion || '', fields: item.fields || {},
+    };
+    await fetch(CRM_BASE + '/api/personal-file/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-sso-sign': ssoHmac(login + '|' + signedAtISO) },
+      body: JSON.stringify(body),
+    });
+  } catch (e) { /* CRM недоступна — не мешаем подписанию */ }
 }
 
 // Уведомление в Telegram (2026-08-24, по указанию Sagi: «как с откликами», но НЕ по каждой
@@ -319,6 +352,9 @@ export default async function handler(req, res) {
       };
       await redis(['HSET', CONTRACT_HKEY, id, JSON.stringify(item)]);
 
+      // Личное дело → CRM (чтобы Sagi видел подписанный договор в crm.sagibonus.com).
+      await pushPersonalFileToCrm(item, onboarding.name || '');
+
       notifyTelegram(
         `📄 Договор ГПХ подписан — Sagi\n\n` +
         `👤 ${fields.fio}\n` +
@@ -337,6 +373,21 @@ export default async function handler(req, res) {
       const all = await loadAllContracts();
       all.sort((a, b) => (b.signedAt || 0) - (a.signedAt || 0));
       res.status(200).json({ ok: true, items: all, roleLabels: ROLE_LABEL });
+      return;
+    }
+
+    // Единый вход: выдаём URL перехода стажёра в CRM тем же ID (login = id).
+    // Разрешаем только после подписания договора — так в CRM попадают реальные,
+    // оформленные стажёры (в CRM учётка создаётся сама при первом переходе, active=0).
+    if (action === 'sso_crm') {
+      const id = (body?.id || '').toString().trim();
+      if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
+      if (!SSO_SECRET) { res.status(503).json({ error: 'Единый вход не настроен (нет SSO_SHARED_SECRET)' }); return; }
+      const rec = await loadRecord(id);
+      if (!rec) { res.status(400).json({ error: 'Не найден профиль стажёра' }); return; }
+      const signed = await isContractSigned(id);
+      if (!signed) { res.status(403).json({ error: 'Сначала изучите и подпишите договор ГПХ' }); return; }
+      res.status(200).json({ ok: true, url: crmSsoUrl(id, rec.name || '', rec.role || '') });
       return;
     }
 
