@@ -13,6 +13,16 @@
 //   get   { id }                                   -> { ok, item }  (item=null, если не начат)
 //   save  { id, name, role, checked }               -> { ok, item }  (создаёт при первом save)
 //   list  { password }  (password = DASHBOARD_PASSWORD) -> { ok, items:[...] } — для Sagi
+//
+// 2026-09-05, по указанию Sagi: договор ГПХ (изучить + подписать + хранить в личном деле,
+// см. contract.html) живёт actions'ами ниже, В ЭТОМ ЖЕ файле — не отдельным api/contract.js,
+// потому что на Hobby-плане Vercel лимит 12 serverless functions на деплой и api/ уже был
+// заполнен под завязку (см. errorCode exceeded_serverless_functions_per_deployment при
+// попытке добавить 13-й файл). Данные договора — отдельный Redis HASH hr:contract, ключ
+// (field) — тот же id стажёра, что в hr:onboarding.
+//   contract_get   { id }                     -> { ok, item }  (item.signed=false, если не подписан)
+//   contract_save  { id, fields }             -> { ok, item }  (подписание необратимо)
+//   contract_list  { password } (DASHBOARD_PASSWORD) -> { ok, items:[...] } — для Sagi
 
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
@@ -82,13 +92,30 @@ function itemsForRole(role) {
 
 // 2026-09-05, по указанию Sagi: пункт «Договор ГПХ» нельзя отмечать вручную галочкой —
 // как и с процентом в целом, статус должен считаться на сервере (есть подписанный
-// договор в hr:contract или нет), а не приходить из чек-бокса в браузере. api/contract.js
-// пишет запись в отдельный Redis HASH hr:contract при подписании.
+// договор в hr:contract или нет), а не приходить из чек-бокса в браузере. Actions
+// contract_get/contract_save/contract_list (ниже) пишут и читают этот же HASH.
 const CONTRACT_ITEM_KEY = 'common6';
 const CONTRACT_HKEY = 'hr:contract';
+const CONTRACT_VERSION = '2026-09-05';
+// Явно НЕ принимаем никаких банковских полей, даже если клиент их пришлёт.
+const CONTRACT_ALLOWED_FIELDS = ['fio', 'dob', 'iin', 'addr', 'docnum', 'docdate', 'docauth', 'phone', 'email'];
 async function isContractSigned(id) {
   const raw = await redis(['HGET', CONTRACT_HKEY, id]);
   return !!raw;
+}
+async function loadContract(id) {
+  const raw = await redis(['HGET', CONTRACT_HKEY, id]);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+async function loadAllContracts() {
+  const flat = await redis(['HGETALL', CONTRACT_HKEY]);
+  if (!Array.isArray(flat)) return [];
+  const out = [];
+  for (let i = 0; i < flat.length; i += 2) {
+    try { out.push(JSON.parse(flat[i + 1])); } catch (e) {}
+  }
+  return out;
 }
 
 // Уведомление в Telegram (2026-08-24, по указанию Sagi: «как с откликами», но НЕ по каждой
@@ -241,6 +268,75 @@ export default async function handler(req, res) {
       const itemsByRole = {};
       for (const r of ROLES) itemsByRole[r] = itemsForRole(r);
       res.status(200).json({ ok: true, items: all, itemsByRole, roleLabels: ROLE_LABEL });
+      return;
+    }
+
+    // --- Договор ГПХ (contract.html) — см. комментарий в шапке файла ---
+
+    if (action === 'contract_get') {
+      const id = (body?.id || '').toString().trim();
+      if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
+      const existing = await loadContract(id);
+      if (existing) { res.status(200).json({ ok: true, item: { ...existing, signed: true } }); return; }
+      const onboarding = await loadRecord(id);
+      res.status(200).json({
+        ok: true,
+        item: { id, signed: false, role: onboarding?.role || '', name: onboarding?.name || '' },
+      });
+      return;
+    }
+
+    if (action === 'contract_save') {
+      const id = (body?.id || '').toString().trim();
+      if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
+
+      // Подписание необратимо: если уже подписан — просто возвращаем существующую запись.
+      const already = await loadContract(id);
+      if (already) { res.status(200).json({ ok: true, item: { ...already, signed: true } }); return; }
+
+      const onboarding = await loadRecord(id);
+      if (!onboarding) { res.status(400).json({ error: 'Не найден чек-лист адаптации для этого id — сначала начните его на onboarding.html' }); return; }
+
+      const fieldsIn = (body?.fields && typeof body.fields === 'object') ? body.fields : {};
+      const fields = {};
+      for (const k of CONTRACT_ALLOWED_FIELDS) {
+        const v = (fieldsIn[k] || '').toString().slice(0, 300).trim();
+        if (v) fields[k] = v;
+      }
+      if (!fields.fio || !fields.iin || !fields.addr || !fields.phone) {
+        res.status(400).json({ error: 'Заполните хотя бы ФИО, ИИН, адрес и телефон' }); return;
+      }
+      if (!/^\d{12}$/.test(fields.iin)) {
+        res.status(400).json({ error: 'ИИН должен состоять из 12 цифр' }); return;
+      }
+
+      const item = {
+        id,
+        role: onboarding.role || '',
+        fields,
+        contractVersion: CONTRACT_VERSION,
+        signedAt: Date.now(),
+      };
+      await redis(['HSET', CONTRACT_HKEY, id, JSON.stringify(item)]);
+
+      notifyTelegram(
+        `📄 Договор ГПХ подписан — Sagi\n\n` +
+        `👤 ${fields.fio}\n` +
+        `🧩 Роль: ${ROLE_LABEL[item.role] || item.role || '—'}\n` +
+        `📞 ${fields.phone}\n\n` +
+        `Статус: https://hr.sagibonus.com/onboarding-status.html`
+      );
+
+      res.status(200).json({ ok: true, item: { ...item, signed: true } });
+      return;
+    }
+
+    if (action === 'contract_list') {
+      const PASS = process.env.DASHBOARD_PASSWORD || '';
+      if (!PASS || (body?.password || '') !== PASS) { res.status(403).json({ error: 'Неверный пароль' }); return; }
+      const all = await loadAllContracts();
+      all.sort((a, b) => (b.signedAt || 0) - (a.signedAt || 0));
+      res.status(200).json({ ok: true, items: all, roleLabels: ROLE_LABEL });
       return;
     }
 
