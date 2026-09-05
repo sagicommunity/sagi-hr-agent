@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sagi: договор ГПХ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0c10;--panel:rgba(255,255,255,.035);--panel-solid:#11151c;
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);--text:#eef2f6;--muted:#8a97a8;--faint:#5b6675;
+    --brand:#19e39a;--brand-2:#0fb57e;--brand-ink:#042319;--brand-glow:rgba(25,227,154,.35);--warn:#ffcf66;--bad:#ff6b6b;
+    --font:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Unbounded','Manrope',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--text);font-family:var(--font);font-size:15.5px;min-height:100vh;line-height:1.6;
+    background:radial-gradient(1000px 640px at 86% -12%,rgba(25,227,154,.1),transparent 58%),var(--bg);-webkit-font-smoothing:antialiased}
+  a{color:var(--brand)}
+  header{display:flex;align-items:center;gap:11px;padding:16px 22px;border-bottom:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(14px);position:sticky;top:0;z-index:5}
+  .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand-2));display:grid;place-items:center;color:var(--brand-ink);font-family:var(--display);font-weight:800}
+  .brand{font-family:var(--display);font-weight:700;font-size:15px}
+  .wrap{max-width:780px;margin:0 auto;padding:28px 22px 80px}
+  h1{font-family:var(--display);font-size:23px;margin:6px 0 4px}
+  .lead{color:var(--muted);font-size:14.5px;margin-bottom:22px}
+  .card{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:22px;margin-bottom:16px}
+  .card h2{font-family:var(--display);font-size:16px;margin:0 0 10px}
+  .card h3{font-size:14.5px;margin:14px 0 6px}
+  .card p{margin:0 0 10px}
+  .card ol,.card ul{margin:0 0 10px;padding-left:20px}
+  .card li{margin-bottom:6px}
+  .muted{color:var(--muted)}
+  .faint{color:var(--faint);font-size:12.5px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0}
+  th,td{padding:8px 9px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase}
+  td.num{font-weight:700}
+  .badge{display:inline-block;background:rgba(25,227,154,.14);color:var(--brand);border:1px solid rgba(25,227,154,.35);border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:700;margin-bottom:10px}
+  .warnBox{background:rgba(255,207,102,.08);border:1px solid rgba(255,207,102,.35);border-radius:12px;padding:12px 14px;font-size:13.5px;color:#ffe2a0;margin-bottom:16px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-weight:600}
+  .field input{width:100%;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:10px;padding:11px 12px;color:var(--text);font:inherit}
+  .field input:focus{outline:none;border-color:var(--brand)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  @media (max-width:600px){.grid2{grid-template-columns:1fr}}
+  .noBank{background:rgba(255,255,255,.03);border:1px dashed var(--line-2);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--muted);margin-bottom:14px}
+  .checkRow{display:flex;gap:10px;align-items:flex-start;margin:18px 0;font-size:13.5px;color:var(--muted)}
+  .checkRow input{margin-top:3px}
+  .btn{border:0;border-radius:11px;background:linear-gradient(140deg,var(--brand),var(--brand-2));color:var(--brand-ink);font:inherit;font-weight:700;padding:13px 22px;cursor:pointer;box-shadow:0 6px 18px var(--brand-glow)}
+  .btn:disabled{opacity:.5;cursor:default;box-shadow:none}
+  .err{color:var(--bad);font-size:13.5px;margin-top:8px;display:none}
+  .signedBox{border:1px solid rgba(25,227,154,.35);background:rgba(25,227,154,.08);border-radius:14px;padding:18px;text-align:center;margin-bottom:16px}
+  .signedBox .big{font-family:var(--display);font-size:18px;color:var(--brand);margin-bottom:6px}
+  #loadingBox,#signedScreen{display:none}
+  .sigTable td{font-size:13.5px}
+  .sigTable td:first-child{color:var(--muted);width:46%}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit">
+    <div class="mark">S</div>
+    <div class="brand">Sagi</div>
+  </a>
+</header>
+<div class="wrap">
+  <span class="badge">Договор ГПХ</span>
+  <h1>Договор возмездного оказания услуг</h1>
+  <p class="lead">Изучите условия ниже. В конце — поля для заполнения и подпись (без банковских реквизитов, их вносить не нужно). Заполненный и подписанный экземпляр сохраняется в вашем личном деле.</p>
+
+  <div id="loadingBox" class="card"><p class="muted" style="margin:0">Загрузка…</p></div>
+
+  <div id="signedScreen">
+    <div class="signedBox">
+      <div class="big">✅ Договор подписан</div>
+      <div class="muted" id="signedWhen" style="font-size:13.5px"></div>
+    </div>
+    <div class="card">
+      <h2>Данные, указанные при подписании</h2>
+      <table class="sigTable" id="sigTable"></table>
+    </div>
+  </div>
+
+  <div id="contractBody">
+
+  <div class="warnBox">Это типовой шаблон договора гражданско-правового характера (ГПХ). Компания Sagi может уточнять формулировки; при необходимости стороны вправе оформить документ дополнительно у юриста.</div>
+
+  <div class="card">
+    <h2>Стороны договора</h2>
+    <p><b>Заказчик:</b> Sagi (платформа лояльности для бизнеса) <span class="faint">— наименование, БИН, адрес и лицо, действующее от имени Заказчика, указываются в реквизитах при оформлении в бумажном/электронном виде на стороне компании.</span></p>
+    <p><b>Исполнитель:</b> <span data-fill="fio">[ФИО будет подставлено ниже]</span>, физическое лицо, далее совместно именуемые «Стороны», а по отдельности — «Сторона», заключили настоящий Договор о нижеследующем.</p>
+  </div>
+
+  <div class="card">
+    <h2>1. Предмет договора</h2>
+    <p>1.1. Исполнитель обязуется по заданию Заказчика оказать услуги по направлению «<span data-fill="roleLabel">—</span>» (консультирование клиентов, работа с базой клиентов, продажи и/или сопровождение — в соответствии с фактически поручаемыми задачами), а Заказчик обязуется принять и оплатить эти услуги на условиях настоящего Договора.</p>
+    <p>1.2. Настоящий Договор является гражданско-правовым и не регулируется нормами трудового законодательства Республики Казахстан. Исполнитель самостоятельно организует процесс оказания услуг, не подчиняется правилам внутреннего трудового распорядка Заказчика и несёт самостоятельную ответственность за уплату причитающихся налогов и обязательных платежей со своего вознаграждения, если иное прямо не предусмотрено законодательством.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Права и обязанности сторон</h2>
+    <h3>Исполнитель обязуется:</h3>
+    <ul>
+      <li>оказывать услуги добросовестно, лично и с должной квалификацией;</li>
+      <li>соблюдать сроки и договорённости по задачам, поставленным Заказчиком;</li>
+      <li>использовать предоставленные Заказчиком доступы (CRM, тестовые аккаунты, мессенджеры, обучающие материалы) исключительно в целях исполнения настоящего Договора;</li>
+      <li>незамедлительно сообщать Заказчику о невозможности оказания услуг по уважительным причинам;</li>
+      <li>соблюдать условия конфиденциальности, изложенные в разделе 3.</li>
+    </ul>
+    <h3>Заказчик обязуется:</h3>
+    <ul>
+      <li>предоставить Исполнителю материалы, доступы и информацию, необходимые для оказания услуг;</li>
+      <li>своевременно выплачивать вознаграждение согласно разделу 4;</li>
+      <li>информировать Исполнителя об изменениях условий, влияющих на исполнение Договора.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>3. Конфиденциальность и защита данных</h2>
+    <p>3.1. Под «конфиденциальной информацией» понимаются любые сведения, ставшие известными Исполнителю в связи с оказанием услуг: клиентская база и контакты клиентов, условия сделок, цены и коммерческие условия, скрипты и методики продаж, внутренние инструкции, доступы к CRM/аккаунтам, персональные данные клиентов и сотрудников Заказчика, а также любая иная информация, прямо помеченная как конфиденциальная либо являющаяся таковой по своему характеру.</p>
+    <p>3.2. Исполнитель обязуется:</p>
+    <ul>
+      <li>не разглашать конфиденциальную информацию третьим лицам без предварительного письменного согласия Заказчика;</li>
+      <li>не использовать конфиденциальную информацию в собственных интересах или в интересах третьих лиц, включая интересы конкурирующих компаний;</li>
+      <li>не копировать, не выгружать и не пересылать клиентскую базу, контакты клиентов и иные данные Заказчика на личные устройства, аккаунты или носители, кроме случаев, необходимых для исполнения текущих задач по Договору;</li>
+      <li>по завершении сотрудничества (по любому основанию) вернуть или уничтожить все материалы, содержащие конфиденциальную информацию, и прекратить использование предоставленных доступов.</li>
+    </ul>
+    <p>3.3. Обязательства по конфиденциальности, предусмотренные настоящим разделом, действуют бессрочно и сохраняют силу после прекращения действия настоящего Договора, независимо от причины и инициатора прекращения.</p>
+    <p>3.4. Персональные данные, которые Исполнитель предоставляет Заказчику в рамках оформления (пункт 6), обрабатываются Заказчиком исключительно в целях исполнения настоящего Договора и хранятся в личном деле Исполнителя в его личном кабинете на hr.sagibonus.com.</p>
+    <p>3.5. Нарушение условий настоящего раздела является существенным нарушением Договора и может повлечь его немедленное расторжение по инициативе Заказчика, а также ответственность Исполнителя в соответствии с законодательством Республики Казахстан и разделом 7 настоящего Договора.</p>
+  </div>
+
+  <div class="card" id="paymentCard">
+    <h2>4. Порядок и условия оплаты</h2>
+    <div id="paySales" style="display:none">
+      <p>4.1. Вознаграждение Исполнителя по направлению «Продажи» рассчитывается по одному из двух вариантов, выбираемых по соглашению Сторон при оформлении:</p>
+      <h3>Вариант «С окладом»</h3>
+      <p class="muted" style="margin:0 0 8px;font-size:13.5px">Базовая часть 100 000 ₸ / месяц + процент с продаж + KPI-бонусы.</p>
+      <table>
+        <tr><th>Продажи за месяц</th><th>Ставка</th></tr>
+        <tr><td>до 2 500 000 ₸</td><td class="num">5%</td></tr>
+        <tr><td>от 2 500 000 ₸</td><td class="num">10%</td></tr>
+        <tr><td>от 3 500 000 ₸</td><td class="num">15%</td></tr>
+        <tr><td>от 5 000 000 ₸</td><td class="num">20%</td></tr>
+      </table>
+      <h3>Вариант «Без оклада»</h3>
+      <p class="muted" style="margin:0 0 8px;font-size:13.5px">Только процент с продаж (выше, чем в варианте с окладом) + те же KPI-бонусы.</p>
+      <table>
+        <tr><th>Продажи за месяц</th><th>Ставка</th></tr>
+        <tr><td>до 1 500 000 ₸</td><td class="num">5%</td></tr>
+        <tr><td>от 1 500 000 ₸</td><td class="num">10%</td></tr>
+        <tr><td>от 2 500 000 ₸</td><td class="num">15%</td></tr>
+        <tr><td>от 5 000 000 ₸</td><td class="num">20%</td></tr>
+      </table>
+      <p class="faint">Ставка применяется ко всей сумме продаж за месяц целиком. Конкретный вариант оплаты фиксируется дополнительно (приложением/перепиской) при оформлении.</p>
+    </div>
+    <div id="payOther" style="display:none">
+      <p>4.1. Размер и порядок выплаты вознаграждения Исполнителя по направлению «<span data-fill="roleLabel2">—</span>» определяется индивидуально по соглашению Сторон и фиксируется дополнительным приложением к настоящему Договору либо в переписке между Исполнителем и Заказчиком до начала оказания услуг.</p>
+    </div>
+    <p>4.2. Вознаграждение выплачивается ежемесячно, не позднее 10 (десятого) числа месяца, следующего за отчётным, на основании отчёта Исполнителя и данных CRM/Bitrix24 Заказчика.</p>
+    <p>4.3. Исполнитель самостоятельно несёт ответственность за декларирование дохода и уплату налогов, если иное не предусмотрено законодательством Республики Казахстан.</p>
+  </div>
+
+  <div class="card" id="kpiCardSales" style="display:none">
+    <h2>5. KPI и бонусы</h2>
+    <ul>
+      <li><b>60 000 ₸</b> — за 30 проведённых онлайн-встреч в месяц (от 30 минут, с записью);</li>
+      <li><b>60 000 ₸</b> — за 400 звонков в месяц (от 2 минут, через Bitrix24);</li>
+    </ul>
+    <p class="faint">Суммарно до 120 000 ₸/мес. При продажах свыше 3 500 000 ₸ в месяц оба KPI-бонуса засчитываются автоматически, даже если сами показатели по встречам/звонкам не выполнены.</p>
+  </div>
+  <div class="card" id="kpiCardOther" style="display:none">
+    <h2>5. KPI и бонусы</h2>
+    <p>Показатели эффективности (KPI) и порядок начисления бонусов по направлению «<span data-fill="roleLabel3">—</span>» устанавливаются Заказчиком отдельно и доводятся до сведения Исполнителя до начала оказания услуг.</p>
+  </div>
+
+  <div class="card">
+    <h2>6. Режим оказания услуг</h2>
+    <p>6.1. Исполнитель самостоятельно планирует своё время, однако с учётом специфики работы с клиентами (звонки, встречи, командные созвоны) согласовывает с Заказчиком ориентировочный график доступности — как правило, будние дни, в течение рабочего дня по времени Алматы, с участием в регулярных командных созвонах.</p>
+    <p>6.2. Конкретные часы и дни доступности согласовываются Сторонами дополнительно и могут уточняться по мере необходимости в интересах качественного оказания услуг клиентам Заказчика.</p>
+  </div>
+
+  <div class="card">
+    <h2>7. Срок действия, изменение и расторжение</h2>
+    <p>7.1. Договор вступает в силу с даты его подписания Исполнителем (пункт 6 ниже) и действует до полного исполнения Сторонами своих обязательств либо до его расторжения.</p>
+    <p>7.2. Любая из Сторон вправе расторгнуть Договор в одностороннем порядке, уведомив другую Сторону не менее чем за 3 (три) календарных дня, за исключением случаев существенного нарушения условий Договора (в т.ч. раздела 3), при которых Договор может быть расторгнут немедленно.</p>
+    <p>7.3. Обязательства по конфиденциальности (раздел 3) сохраняют силу независимо от расторжения Договора.</p>
+  </div>
+
+  <div class="card">
+    <h2>8. Ответственность сторон</h2>
+    <p>8.1. За неисполнение или ненадлежащее исполнение обязательств по настоящему Договору Стороны несут ответственность в соответствии с законодательством Республики Казахстан.</p>
+    <p>8.2. Исполнитель несёт полную ответственность за ущерб, причинённый Заказчику разглашением конфиденциальной информации или нецелевым использованием предоставленных доступов и клиентской базы.</p>
+  </div>
+
+  <div class="card">
+    <h2>9. Прочие условия</h2>
+    <p>9.1. Все споры и разногласия по настоящему Договору разрешаются путём переговоров, а при недостижении согласия — в порядке, установленном законодательством Республики Казахстан.</p>
+    <p>9.2. Договор составлен в электронной форме, заполняется и подписывается Исполнителем через личный кабинет на hr.sagibonus.com; экземпляр хранится в личном деле Исполнителя и доступен обеим Сторонам.</p>
+  </div>
+
+  <div class="card">
+    <h2>6*. Данные Исполнителя и подпись</h2>
+    <p class="muted" style="font-size:13.5px;margin-top:-4px">Заполните поля ниже своими данными для оформления. Это и есть подписание договора — после отправки изменить данные будет нельзя, при ошибке напишите в WhatsApp: <a href="https://wa.me/77077000087" target="_blank" rel="noopener">+7 707 700 0087</a>.</p>
+
+    <div class="noBank">🔒 Банковские реквизиты указывать не нужно — это отдельный процесс, к договору не относится.</div>
+
+    <div class="field"><label>ФИО (полностью)</label><input type="text" id="f_fio" placeholder="Иванов Иван Иванович" /></div>
+    <div class="grid2">
+      <div class="field"><label>Дата рождения</label><input type="date" id="f_dob" /></div>
+      <div class="field"><label>ИИН</label><input type="text" id="f_iin" placeholder="12 цифр" maxlength="12" inputmode="numeric" /></div>
+    </div>
+    <div class="field"><label>Адрес регистрации / проживания</label><input type="text" id="f_addr" placeholder="Город, улица, дом, кв." /></div>
+    <div class="grid2">
+      <div class="field"><label>Удостоверение личности — номер</label><input type="text" id="f_docnum" placeholder="Номер документа" /></div>
+      <div class="field"><label>Дата выдачи</label><input type="date" id="f_docdate" /></div>
+    </div>
+    <div class="field"><label>Кем выдано</label><input type="text" id="f_docauth" placeholder="Наименование органа" /></div>
+    <div class="grid2">
+      <div class="field"><label>Телефон</label><input type="tel" id="f_phone" placeholder="+7 7__ ___ __ __" /></div>
+      <div class="field"><label>Email (если есть)</label><input type="email" id="f_email" placeholder="you@example.com" /></div>
+    </div>
+
+    <label class="checkRow"><input type="checkbox" id="f_agree" /> <span>Я прочитал(а) и согласен(на) с условиями настоящего Договора, включая условия конфиденциальности (раздел 3), и подтверждаю, что указанные выше данные верны.</span></label>
+
+    <button class="btn" id="signBtn">Подписать договор</button>
+    <div class="err" id="signErr"></div>
+  </div>
+
+  </div><!-- /contractBody -->
+
+</div>
+<script>
+const $=s=>document.querySelector(s);
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+const ROLE_LABEL = { sales:'Менеджер по продажам', success:'Работа с текущими клиентами', support:'Техподдержка' };
+
+function getParams(){
+  const p=new URLSearchParams(location.search);
+  return { id:(p.get('id')||'').trim(), name:(p.get('name')||'').trim(), role:(p.get('role')||'').trim() };
+}
+async function api(payload){
+  const r=await fetch('/api/contract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
+}
+
+const P = getParams();
+let ID = P.id;
+
+function fillStatic(role, name){
+  document.querySelectorAll('[data-fill="fio"]').forEach(el=>el.textContent = name || '(ФИО подставится после заполнения ниже)');
+  const roleLabel = ROLE_LABEL[role] || '—';
+  document.querySelectorAll('[data-fill="roleLabel"],[data-fill="roleLabel2"],[data-fill="roleLabel3"]').forEach(el=>el.textContent = roleLabel);
+  if(role==='sales'){
+    $('#paySales').style.display='block'; $('#payOther').style.display='none';
+    $('#kpiCardSales').style.display='block'; $('#kpiCardOther').style.display='none';
+  } else {
+    $('#paySales').style.display='none'; $('#payOther').style.display='block';
+    $('#kpiCardSales').style.display='none'; $('#kpiCardOther').style.display='block';
+  }
+}
+
+function showSigned(item){
+  $('#contractBody').style.display='none';
+  $('#signedScreen').style.display='block';
+  const when = item.signedAt ? new Date(item.signedAt).toLocaleString('ru-RU') : '';
+  $('#signedWhen').textContent = when ? ('Подписан: '+when) : '';
+  const f = item.fields || {};
+  const rows = [
+    ['ФИО', f.fio], ['Роль', ROLE_LABEL[item.role]||item.role], ['Дата рождения', f.dob],
+    ['ИИН', f.iin], ['Адрес', f.addr], ['Документ №', f.docnum], ['Дата выдачи', f.docdate],
+    ['Кем выдан', f.docauth], ['Телефон', f.phone], ['Email', f.email],
+  ];
+  $('#sigTable').innerHTML = rows.map(([k,v])=>'<tr><td>'+esc(k)+'</td><td>'+esc(v||'—')+'</td></tr>').join('');
+}
+
+async function init(){
+  if(!ID){
+    document.body.innerHTML = '<div class="wrap" style="padding-top:60px;text-align:center" class="muted">Ссылка неполная — откройте договор из вашего чек-листа адаптации на hr.sagibonus.com/onboarding.html</div>';
+    return;
+  }
+  $('#loadingBox').style.display='block';
+  try{
+    const d = await api({action:'get', id:ID});
+    $('#loadingBox').style.display='none';
+    const role = (d.item && d.item.role) || P.role;
+    const name = (d.item && d.item.fields && d.item.fields.fio) || P.name;
+    if(d.item && d.item.signed){
+      showSigned(d.item);
+      return;
+    }
+    fillStatic(role, P.name);
+    if(P.name) $('#f_fio').value = P.name;
+  }catch(e){
+    $('#loadingBox').textContent = 'Не удалось загрузить: '+e.message;
+  }
+}
+init();
+
+$('#signBtn').addEventListener('click', async ()=>{
+  const err=$('#signErr'); err.style.display='none';
+  const fields = {
+    fio: $('#f_fio').value.trim(),
+    dob: $('#f_dob').value,
+    iin: $('#f_iin').value.trim(),
+    addr: $('#f_addr').value.trim(),
+    docnum: $('#f_docnum').value.trim(),
+    docdate: $('#f_docdate').value,
+    docauth: $('#f_docauth').value.trim(),
+    phone: $('#f_phone').value.trim(),
+    email: $('#f_email').value.trim(),
+  };
+  if(!fields.fio || !fields.iin || !fields.addr || !fields.phone){
+    err.textContent='Заполните хотя бы ФИО, ИИН, адрес и телефон.'; err.style.display='block'; return;
+  }
+  if(!/^\d{12}$/.test(fields.iin)){
+    err.textContent='ИИН должен состоять из 12 цифр.'; err.style.display='block'; return;
+  }
+  if(!$('#f_agree').checked){
+    err.textContent='Нужно подтвердить согласие с условиями договора.'; err.style.display='block'; return;
+  }
+  $('#signBtn').disabled=true;
+  try{
+    const d = await api({action:'save', id:ID, role:P.role, fields});
+    showSigned(d.item);
+  }catch(e){
+    err.textContent = e.message; err.style.display='block';
+  }finally{
+    $('#signBtn').disabled=false;
+  }
+});
+</script>
+</body>
+</html>

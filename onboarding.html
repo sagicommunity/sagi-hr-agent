@@ -204,6 +204,7 @@ const ITEMS = {
     ['common2','Документ с условиями оплаты и KPI (usloviya.html)'],
     ['common3','WhatsApp Business настроен и готов к работе'],
     ['common5','Доступ к внутреннему чату техподдержки (по своим вопросам, не клиентским)'],
+    ['common6','Договор ГПХ — конфиденциальность, оплата, KPI, график (изучить и подписать)'],
   ],
   sales: [
     ['sales1','Доступ к тестовому аккаунту Sagi'],
@@ -468,6 +469,18 @@ function renderGroups(){
       const checked = !!(RECORD.checked && RECORD.checked[key]);
       const row=document.createElement('div');
       row.className='item'+(checked?' checked':'');
+      // 2026-09-05: пункт с договором ГПХ — не чек-бокс (статус считает сервер по факту
+      // подписи в contract.html, чтобы нельзя было отметить не читая, как и с процентом).
+      if(key==='common6'){
+        const link='contract.html?id='+encodeURIComponent(ID)+'&name='+encodeURIComponent(RECORD.name||'')+'&role='+encodeURIComponent(RECORD.role||'');
+        row.innerHTML = '<div class="itemBody" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%">'+
+          '<div><label style="font-weight:'+(checked?'400':'600')+'">'+esc(text)+'</label>'+
+          '<div style="font-size:12.5px;margin-top:3px;color:'+(checked?'var(--brand)':'var(--muted)')+'">'+(checked?'✅ Подписан':'Ещё не подписан')+'</div></div>'+
+          '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none;flex-shrink:0" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>'+
+          '</div>';
+        wrap.appendChild(row);
+        continue;
+      }
       const res = resourcesFor(key);
       let resHtml = '';
       if(editMode){
@@ -520,6 +533,17 @@ async function doSave(){
     $('#saveNote').textContent='Не удалось сохранить: '+e.message;
   }
 }
+
+// 2026-09-05: статус договора ГПХ подписывается на отдельной вкладке (contract.html,
+// target=_blank) — когда пользователь возвращается на вкладку чек-листа, подтягиваем
+// свежую запись с сервера, чтобы «✅ Подписан» появилось без ручного обновления страницы.
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState!=='visible' || !ID || !RECORD) return;
+  try{
+    const d = await api({action:'get', id:ID});
+    if(d.item){ RECORD = d.item; renderGroups(); renderProgress(); }
+  }catch(e){}
+});
 
 $('#copyBtn').addEventListener('click', async ()=>{
   try{
