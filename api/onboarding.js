@@ -100,7 +100,9 @@ const CONTRACT_ITEM_KEY = 'common6';
 const CONTRACT_HKEY = 'hr:contract';
 const CONTRACT_VERSION = '2026-09-05';
 // Явно НЕ принимаем никаких банковских полей, даже если клиент их пришлёт.
-const CONTRACT_ALLOWED_FIELDS = ['fio', 'dob', 'iin', 'addr', 'docnum', 'docdate', 'docauth', 'phone', 'email'];
+// startdate — первый рабочий день, который стажёр выбирает САМ календарём при подписании
+// (Sagi, 2026-09-05): «есть сотрудники, которые говорят — начну в пятницу / в понедельник».
+const CONTRACT_ALLOWED_FIELDS = ['fio', 'dob', 'iin', 'addr', 'docnum', 'docdate', 'docauth', 'phone', 'email', 'startdate'];
 async function isContractSigned(id) {
   const raw = await redis(['HGET', CONTRACT_HKEY, id]);
   return !!raw;
@@ -342,6 +344,9 @@ export default async function handler(req, res) {
       if (!/^\d{12}$/.test(fields.iin)) {
         res.status(400).json({ error: 'ИИН должен состоять из 12 цифр' }); return;
       }
+      if (!fields.startdate || !/^\d{4}-\d{2}-\d{2}$/.test(fields.startdate)) {
+        res.status(400).json({ error: 'Укажите дату первого рабочего дня' }); return;
+      }
 
       // Доказательства акцепта (Sagi, 2026-09-05): логин/пароль создаёт компания, поэтому
       // фиксируем, КТО и ОТКУДА принял оферту — дата/время, IP и устройство/браузер.
@@ -365,8 +370,9 @@ export default async function handler(req, res) {
         `📄 Договор ГПХ подписан — Sagi\n\n` +
         `👤 ${fields.fio}\n` +
         `🧩 Роль: ${ROLE_LABEL[item.role] || item.role || '—'}\n` +
-        `📞 ${fields.phone}\n\n` +
-        `Статус: https://hr.sagibonus.com/onboarding-status.html`
+        `📞 ${fields.phone}\n` +
+        `🗓 Первый рабочий день: ${fields.startdate || '—'} (с 09:00)\n\n` +
+        `Подтвердить приём: https://crm.sagibonus.com/lichnoe-delo.html`
       );
 
       res.status(200).json({ ok: true, item: { ...item, signed: true } });
