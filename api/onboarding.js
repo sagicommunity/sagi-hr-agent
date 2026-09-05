@@ -38,7 +38,6 @@ const ITEMS = {
     ['common1', 'Личный кабинет в Sagi Business / Sagi Bonus'],
     ['common2', 'Документ с условиями оплаты и KPI (usloviya.html)'],
     ['common3', 'WhatsApp Business настроен и готов к работе'],
-    ['common4', 'Доступ к общему Telegram-чату команды'],
     ['common5', 'Доступ к внутреннему чату техподдержки (по своим вопросам, не клиентским)'],
   ],
   sales: [
