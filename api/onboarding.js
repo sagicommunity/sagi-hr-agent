@@ -343,12 +343,18 @@ export default async function handler(req, res) {
         res.status(400).json({ error: 'ИИН должен состоять из 12 цифр' }); return;
       }
 
+      // Доказательства акцепта (Sagi, 2026-09-05): логин/пароль создаёт компания, поэтому
+      // фиксируем, КТО и ОТКУДА принял оферту — дата/время, IP и устройство/браузер.
+      const ua = (body?.ua || req.headers['user-agent'] || '').toString().slice(0, 400);
+      const ip = ((req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim())
+        || (req.headers['x-real-ip'] || '').toString() || '';
       const item = {
         id,
         role: onboarding.role || '',
         fields,
         contractVersion: CONTRACT_VERSION,
         signedAt: Date.now(),
+        accept: { at: Date.now(), ip, ua },
       };
       await redis(['HSET', CONTRACT_HKEY, id, JSON.stringify(item)]);
 
