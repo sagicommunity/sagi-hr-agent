@@ -241,8 +241,11 @@ function getParams(){
   const p=new URLSearchParams(location.search);
   return { id:(p.get('id')||'').trim(), name:(p.get('name')||'').trim(), role:(p.get('role')||'').trim() };
 }
+// 2026-09-05: живёт в api/onboarding.js (actions contract_get/contract_save), не в
+// отдельном api/contract.js — на Hobby-плане Vercel лимит 12 serverless functions на
+// деплой, api/ уже был заполнен под завязку (см. комментарий в api/onboarding.js).
 async function api(payload){
-  const r=await fetch('/api/contract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status)); return d;
 }
 
@@ -283,7 +286,7 @@ async function init(){
   }
   $('#loadingBox').style.display='block';
   try{
-    const d = await api({action:'get', id:ID});
+    const d = await api({action:'contract_get', id:ID});
     $('#loadingBox').style.display='none';
     const role = (d.item && d.item.role) || P.role;
     const name = (d.item && d.item.fields && d.item.fields.fio) || P.name;
@@ -323,7 +326,7 @@ $('#signBtn').addEventListener('click', async ()=>{
   }
   $('#signBtn').disabled=true;
   try{
-    const d = await api({action:'save', id:ID, role:P.role, fields});
+    const d = await api({action:'contract_save', id:ID, role:P.role, fields});
     showSigned(d.item);
   }catch(e){
     err.textContent = e.message; err.style.display='block';
