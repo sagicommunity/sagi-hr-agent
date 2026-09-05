@@ -39,6 +39,7 @@ const ITEMS = {
     ['common2', 'Документ с условиями оплаты и KPI (usloviya.html)'],
     ['common3', 'WhatsApp Business настроен и готов к работе'],
     ['common5', 'Доступ к внутреннему чату техподдержки (по своим вопросам, не клиентским)'],
+    ['common6', 'Договор ГПХ — конфиденциальность, оплата, KPI, график (изучить и подписать)'],
   ],
   sales: [
     ['sales1', 'Доступ к тестовому аккаунту Sagi'],
@@ -77,6 +78,17 @@ const ROLE_LABEL = { sales: 'Менеджер по продажам', success: '
 
 function itemsForRole(role) {
   return ITEMS.common.concat(ITEMS[role] || []);
+}
+
+// 2026-09-05, по указанию Sagi: пункт «Договор ГПХ» нельзя отмечать вручную галочкой —
+// как и с процентом в целом, статус должен считаться на сервере (есть подписанный
+// договор в hr:contract или нет), а не приходить из чек-бокса в браузере. api/contract.js
+// пишет запись в отдельный Redis HASH hr:contract при подписании.
+const CONTRACT_ITEM_KEY = 'common6';
+const CONTRACT_HKEY = 'hr:contract';
+async function isContractSigned(id) {
+  const raw = await redis(['HGET', CONTRACT_HKEY, id]);
+  return !!raw;
 }
 
 // Уведомление в Telegram (2026-08-24, по указанию Sagi: «как с откликами», но НЕ по каждой
@@ -138,6 +150,10 @@ export default async function handler(req, res) {
       const id = (body?.id || '').toString().trim();
       if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
       const rec = await loadRecord(id);
+      if (rec) {
+        rec.checked = rec.checked || {};
+        rec.checked[CONTRACT_ITEM_KEY] = await isContractSigned(id);
+      }
       res.status(200).json({ ok: true, item: withProgress(rec) });
       return;
     }
@@ -155,8 +171,10 @@ export default async function handler(req, res) {
 
       const checkedIn = (body?.checked && typeof body.checked === 'object') ? body.checked : {};
       const validKeys = new Set(itemsForRole(role).map(x => x[0]));
+      validKeys.delete(CONTRACT_ITEM_KEY); // считается сервером, из чек-бокса игнорируем
       const checked = {};
       for (const k of Object.keys(checkedIn)) if (validKeys.has(k) && checkedIn[k] === true) checked[k] = true;
+      checked[CONTRACT_ITEM_KEY] = await isContractSigned(id);
 
       const now = Date.now();
       const prevDone = rec ? computeProgress(rec.role, rec.checked).done : 0;
@@ -209,7 +227,14 @@ export default async function handler(req, res) {
     if (action === 'list') {
       const PASS = process.env.DASHBOARD_PASSWORD || '';
       if (!PASS || (body?.password || '') !== PASS) { res.status(403).json({ error: 'Неверный пароль' }); return; }
-      const all = (await loadAll()).map(withProgress);
+      const loaded = await loadAll();
+      // Статус договора всегда свежий (из hr:contract), а не из последнего сохранённого
+      // чек-листа — стажёр мог подписать договор и не заходить в onboarding.html после этого.
+      await Promise.all(loaded.map(async (rec) => {
+        rec.checked = rec.checked || {};
+        rec.checked[CONTRACT_ITEM_KEY] = await isContractSigned(rec.id);
+      }));
+      const all = loaded.map(withProgress);
       all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       // Отдаём и сами группы пунктов (по ролям) — чтобы onboarding-status.html не дублировал
       // формулировки вручную и не разъезжался с api/onboarding.js при будущих правках списка.
