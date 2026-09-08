@@ -131,14 +131,15 @@ async function loadAllContracts() {
 // 10 базовых модулей, ни стажировку (10 продвинутых), и всё равно подписать договор. Это
 // расходится с фактическим положением дел (стажёр реально не обучен) — Sagi явно попросил
 // подписание блокировать, пока не пройдены: базовое обучение (10) → стажировка (10, ADV) →
-// пункт «видео-встречи» (sales6) в чек-листе. Работает только для роли sales — договор и так
-// только для неё (см. комментарий выше, 2026-09-05).
+// ВЕСЬ чек-лист адаптации целиком (2026-09-08, уточнение: «чек-лист полностью сделал, и
+// только тогда должна открыться вкладка Договор» — не только пункт про видео-встречи, а
+// вообще все пункты чек-листа, кроме самого договора). Работает только для роли sales —
+// договор и так только для неё (см. комментарий выше, 2026-09-05).
 // BASIC_IDS/ADV_IDS — ТЕ ЖЕ id, что в lessons.js (window.LESSONS.basic/adv) и в api/users.js
 // (BASIC_IDS там же) — дублируется умышленно, lessons.js не импортируется в serverless-функции.
 // При изменении состава курса поправить здесь, в api/users.js и в lessons.js одновременно.
 const BASIC_IDS = ['intro', 'problem', 'bonuses', 'communication', 'crm', 'app', 'call-script', 'meeting-script', 'cases', 'final'];
 const ADV_IDS = ['product-competitive', 'product-features', 'objections-hard', 'objections-followup', 'b2b-prospecting', 'b2b-pipeline', 'b2b-closing', 'cases-wins', 'cases-mistakes', 'emotional-triggers'];
-const VIDEO_MEETINGS_ITEM_KEY = 'sales6';
 const uKey = login => 'hr:user:' + login;
 async function loadTrainingUser(id) {
   const raw = await redis(['GET', uKey(id)]);
@@ -146,17 +147,21 @@ async function loadTrainingUser(id) {
   try { return JSON.parse(raw); } catch (e) { return null; }
 }
 // checked — уже свежий объект checked чек-листа (с учётом common6, см. вызовы ниже).
-function trainingGateStatus(user, checked) {
+// role нужна, чтобы посчитать «весь чек-лист» именно для этой роли (у sales/success/support
+// разный состав пунктов) — не считаем сам common6 (договор), это отдельное условие.
+function trainingGateStatus(user, checked, role) {
   const prog = (user && user.progress) || {};
   const basicDone = BASIC_IDS.every(mid => prog[mid] === true);
   const internshipOpen = !!(user && user.role === 'manager');
   const advDone = ADV_IDS.every(mid => prog[mid] === true);
-  const videoMeetingsDone = !!(checked && checked[VIDEO_MEETINGS_ITEM_KEY] === true);
+  const checklistItems = itemsForRole(role || 'sales').filter(([k]) => k !== CONTRACT_ITEM_KEY);
+  const checklistMissingItems = checklistItems.filter(([k]) => !(checked && checked[k] === true));
+  const checklistDone = checklistMissingItems.length === 0;
   const missing = [];
   if (!basicDone) missing.push('пройти базовое обучение (10 модулей)');
   if (basicDone && (!internshipOpen || !advDone)) missing.push('пройти стажировку (10 продвинутых модулей)');
-  if (!videoMeetingsDone) missing.push('отметить в чек-листе адаптации пункт «видео-встречи с клиентами» (обязательны живые видеозвонки)');
-  return { ok: basicDone && internshipOpen && advDone && videoMeetingsDone, basicDone, internshipOpen, advDone, videoMeetingsDone, missing };
+  if (!checklistDone) missing.push('полностью закончить чек-лист адаптации (отмечено ' + (checklistItems.length - checklistMissingItems.length) + ' из ' + checklistItems.length + ' пунктов)');
+  return { ok: basicDone && internshipOpen && advDone && checklistDone, basicDone, internshipOpen, advDone, checklistDone, missing };
 }
 
 // ── Мост в CRM (crm.sagibonus.com): единый вход + личное дело (Sagi, 2026-09-05, п.5) ──
@@ -256,7 +261,7 @@ export default async function handler(req, res) {
       const item = withProgress(rec);
       if (item && item.role === 'sales') {
         const trainingUser = await loadTrainingUser(id);
-        item.trainingGate = trainingGateStatus(trainingUser, item.checked);
+        item.trainingGate = trainingGateStatus(trainingUser, item.checked, item.role);
       }
       res.status(200).json({ ok: true, item });
       return;
@@ -327,7 +332,7 @@ export default async function handler(req, res) {
       const savedItem = withProgress(rec);
       if (savedItem && savedItem.role === 'sales') {
         const trainingUser = await loadTrainingUser(id);
-        savedItem.trainingGate = trainingGateStatus(trainingUser, savedItem.checked);
+        savedItem.trainingGate = trainingGateStatus(trainingUser, savedItem.checked, savedItem.role);
       }
       res.status(200).json({ ok: true, item: savedItem });
       return;
@@ -366,7 +371,7 @@ export default async function handler(req, res) {
         const checked = { ...(onboarding.checked || {}) };
         checked[CONTRACT_ITEM_KEY] = false; // ещё не подписан — мы как раз это и проверяем
         const trainingUser = await loadTrainingUser(id);
-        trainingGate = trainingGateStatus(trainingUser, checked);
+        trainingGate = trainingGateStatus(trainingUser, checked, onboarding.role);
       }
       res.status(200).json({
         ok: true,
@@ -387,12 +392,12 @@ export default async function handler(req, res) {
       if (!onboarding) { res.status(400).json({ error: 'Не найден чек-лист адаптации для этого id — сначала начните его на onboarding.html' }); return; }
 
       // 2026-09-08, по указанию Sagi: договор нельзя подписать, пока не пройдено базовое
-      // обучение, стажировка и не отмечены обязательные видео-встречи — см. trainingGateStatus.
+      // обучение, стажировка и не закончен ПОЛНОСТЬЮ чек-лист адаптации — см. trainingGateStatus.
       if (onboarding.role === 'sales') {
         const checked = { ...(onboarding.checked || {}) };
         checked[CONTRACT_ITEM_KEY] = false;
         const trainingUser = await loadTrainingUser(id);
-        const gate = trainingGateStatus(trainingUser, checked);
+        const gate = trainingGateStatus(trainingUser, checked, onboarding.role);
         if (!gate.ok) {
           res.status(403).json({ error: 'Договор пока нельзя подписать — сначала нужно: ' + gate.missing.join('; ') + '.', trainingGate: gate });
           return;

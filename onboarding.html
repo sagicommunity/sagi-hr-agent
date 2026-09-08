@@ -531,20 +531,27 @@ function renderGroups(){
         const crmBtn = checked
           ? '<button class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;flex-shrink:0;border:0;cursor:pointer" onclick="goCrm(this)">Войти в CRM →</button>'
           : '';
-        // 2026-09-08, по указанию Sagi: договор нельзя подписать раньше обучения+стажировки+
-        // видео-встреч — сервер (api/onboarding.js, trainingGateStatus) присылает это в
-        // RECORD.trainingGate. Показываем прямо тут, что именно ещё не готово, чтобы не
-        // отправлять человека зря переходить на contract.html и там упираться в отказ.
+        // 2026-09-08, по указанию Sagi (уточнение): вкладка «Договор» должна ОТКРЫВАТЬСЯ
+        // только после того, как пройдено обучение+стажировка и ПОЛНОСТЬЮ закрыт весь
+        // чек-лист адаптации — до этого момента ссылка вообще не кликабельна, это не просто
+        // предупреждение рядом с активной кнопкой. Сервер (api/onboarding.js,
+        // trainingGateStatus) присылает актуальный статус в RECORD.trainingGate; реальная
+        // защита всё равно на сервере (contract_get/contract_save) — это честное отражение
+        // того же самого в интерфейсе, чтобы человек не упирался в отказ на contract.html.
         const gate = RECORD.trainingGate;
-        const lockHint = (!checked && gate && !gate.ok)
-          ? '<div style="font-size:12.5px;margin-top:8px;color:var(--warn);background:rgba(255,207,102,.08);border:1px solid rgba(255,207,102,.3);border-radius:10px;padding:8px 10px">🔒 Пока недоступно. Сначала: '+esc(gate.missing.join('; '))+'.</div>'
+        const locked = !checked && gate && !gate.ok;
+        const lockHint = locked
+          ? '<div style="font-size:12.5px;margin-top:8px;color:var(--warn);background:rgba(255,207,102,.08);border:1px solid rgba(255,207,102,.3);border-radius:10px;padding:8px 10px">🔒 Вкладка «Договор» откроется, когда будет готово: '+esc(gate.missing.join('; '))+'.</div>'
           : '';
+        const signBtn = locked
+          ? '<span class="btn sec" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;opacity:.5;cursor:not-allowed" aria-disabled="true" title="Пока недоступно">🔒 Пока недоступно</span>'
+          : '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>';
         row.innerHTML = '<div class="itemBody" style="width:100%">'+
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
           '<div><label style="font-weight:'+(checked?'400':'600')+'">'+esc(text)+'</label>'+
           '<div style="font-size:12.5px;margin-top:3px;color:'+(checked?'var(--brand)':'var(--muted)')+'">'+(checked?'✅ Подписан':'Ещё не подписан')+'</div></div>'+
           '<div style="display:flex;gap:8px;flex-shrink:0">'+
-          '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>'+
+          signBtn+
           crmBtn+
           '</div>'+
           '</div>'+
