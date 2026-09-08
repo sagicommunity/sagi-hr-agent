@@ -212,7 +212,7 @@ const ITEMS = {
     ['sales3','Обучающие видео-материалы'],
     ['sales4','Список целевых клиентов для холодных звонков'],
     ['sales5','Скрипты звонков и работы с возражениями'],
-    ['sales6','Доступ и обучение по видеовстречам с клиентами (как назначать и проводить демо — Zoom / Google Meet)'],
+    ['sales6','Видео-встречи с клиентами — обязательно ЖИВЫЕ видеозвонки (не просто просмотр видео-примеров). Как назначать и проводить демо — Zoom / Google Meet'],
     ['sales7','СИП-телефония — доступ и настройка для исходящих звонков'],
     ['sales8','Список текущих клиентов по городам'],
     ['sales9','Доступ к Битрикс24 / CRM'],
@@ -475,13 +475,47 @@ async function showChecklist(){
   renderProgress();
 }
 
+// 2026-09-08, по указанию Sagi: некоторые стажёры спрашивали, обязательно ли смотреть видео —
+// нет, обязательны именно ЖИВЫЕ видео-встречи с клиентами (sales6), и этот пункт нужно поднять
+// в чек-листе в самую первую очередь, до «Общее для всех». Выносим его в отдельный блок наверх
+// страницы (а не просто в начало массива sales — группы «Общее для всех»/«Продажи» всё равно
+// рендерятся до него по фиксированному порядку groups ниже).
+function renderPriorityBlock(){
+  const old = document.getElementById('priorityBlock');
+  if(old) old.remove();
+  if(RECORD.role!=='sales') return;
+  const entry = ITEMS.sales.find(([k])=>k==='sales6');
+  if(!entry) return;
+  const [key,text] = entry;
+  const checked = !!(RECORD.checked && RECORD.checked[key]);
+  const wrap=document.createElement('div');
+  wrap.className='group';
+  wrap.id='priorityBlock';
+  wrap.style.cssText='border:1px solid rgba(255,207,102,.4);background:rgba(255,207,102,.06);border-radius:14px;padding:14px 16px;margin-bottom:22px';
+  wrap.innerHTML = '<div class="groupLabel" style="color:var(--warn)">⚡ Обязательно, в первую очередь</div>';
+  const row=document.createElement('div');
+  row.className='item'+(checked?' checked':'');
+  const res = resourcesFor(key);
+  let resHtml = '';
+  if(editMode) resHtml = renderResEditor(key, res);
+  else if(res && res.length) resHtml = renderResView(res);
+  row.innerHTML = '<input type="checkbox" id="it_'+key+'" '+(checked?'checked':'')+' /><div class="itemBody"><label for="it_'+key+'">'+esc(text)+'</label>'+resHtml+'</div>';
+  wrap.appendChild(row);
+  $('#groups').before(wrap);
+  wrap.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change', onToggle));
+}
+
 function renderGroups(){
+  renderPriorityBlock();
   const box=$('#groups'); box.innerHTML='';
   const groups = RECORD.role ? ['common', RECORD.role] : ['common'];
   for(const g of groups){
     let items = ITEMS[g]||[];
     // Договор ГПХ — только для продаж (см. itemsForRole выше).
     if(g==='common' && RECORD.role!=='sales') items = items.filter(([k])=>k!=='common6');
+    // sales6 (видео-встречи) уже показан отдельным приоритетным блоком наверху (renderPriorityBlock) —
+    // не дублируем его здесь.
+    if(g==='sales') items = items.filter(([k])=>k!=='sales6');
     if(!items.length) continue;
     const wrap=document.createElement('div'); wrap.className='group';
     wrap.innerHTML = '<div class="groupLabel">'+esc(GROUP_LABEL[g]||g)+'</div>';
@@ -497,13 +531,24 @@ function renderGroups(){
         const crmBtn = checked
           ? '<button class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;flex-shrink:0;border:0;cursor:pointer" onclick="goCrm(this)">Войти в CRM →</button>'
           : '';
-        row.innerHTML = '<div class="itemBody" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;flex-wrap:wrap">'+
+        // 2026-09-08, по указанию Sagi: договор нельзя подписать раньше обучения+стажировки+
+        // видео-встреч — сервер (api/onboarding.js, trainingGateStatus) присылает это в
+        // RECORD.trainingGate. Показываем прямо тут, что именно ещё не готово, чтобы не
+        // отправлять человека зря переходить на contract.html и там упираться в отказ.
+        const gate = RECORD.trainingGate;
+        const lockHint = (!checked && gate && !gate.ok)
+          ? '<div style="font-size:12.5px;margin-top:8px;color:var(--warn);background:rgba(255,207,102,.08);border:1px solid rgba(255,207,102,.3);border-radius:10px;padding:8px 10px">🔒 Пока недоступно. Сначала: '+esc(gate.missing.join('; '))+'.</div>'
+          : '';
+        row.innerHTML = '<div class="itemBody" style="width:100%">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
           '<div><label style="font-weight:'+(checked?'400':'600')+'">'+esc(text)+'</label>'+
           '<div style="font-size:12.5px;margin-top:3px;color:'+(checked?'var(--brand)':'var(--muted)')+'">'+(checked?'✅ Подписан':'Ещё не подписан')+'</div></div>'+
           '<div style="display:flex;gap:8px;flex-shrink:0">'+
           '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>'+
           crmBtn+
           '</div>'+
+          '</div>'+
+          lockHint+
           '</div>';
         wrap.appendChild(row);
         continue;
@@ -554,6 +599,9 @@ async function doSave(){
   try{
     const d = await api({action:'save', id:ID, name:RECORD.name, role:RECORD.role, checked:RECORD.checked});
     RECORD = { ...RECORD, ...d.item };
+    // Обновляем пункт «Договор ГПХ» (подсказку, чего не хватает) на случай, если только что
+    // отмеченная галочка (например, «видео-встречи») как раз и была последним условием.
+    if(RECORD.role==='sales') renderGroups();
     $('#saveNote').textContent='Сохранено ✓';
     setTimeout(()=>{ if($('#saveNote').textContent==='Сохранено ✓') $('#saveNote').textContent=''; }, 1500);
   }catch(e){

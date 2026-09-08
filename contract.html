@@ -53,7 +53,11 @@
   .err{color:var(--bad);font-size:13.5px;margin-top:8px;display:none}
   .signedBox{border:1px solid rgba(25,227,154,.35);background:rgba(25,227,154,.08);border-radius:14px;padding:18px;text-align:center;margin-bottom:16px}
   .signedBox .big{font-family:var(--display);font-size:18px;color:var(--brand);margin-bottom:6px}
-  #loadingBox,#signedScreen{display:none}
+  .lockedBox{border:1px solid rgba(255,207,102,.4);background:rgba(255,207,102,.08);border-radius:14px;padding:20px;margin-bottom:16px}
+  .lockedBox .big{font-family:var(--display);font-size:17px;color:var(--warn);margin-bottom:8px}
+  .lockedBox ul{margin:8px 0 0;padding-left:20px;color:#ffe2a0;font-size:14px}
+  .lockedBox li{margin-bottom:5px}
+  #loadingBox,#signedScreen,#lockedScreen{display:none}
   .sigTable td{font-size:13.5px}
   .sigTable td:first-child{color:var(--muted);width:46%}
 </style>
@@ -80,6 +84,19 @@
     <div class="card">
       <h2>Данные, указанные при подписании</h2>
       <table class="sigTable" id="sigTable"></table>
+    </div>
+  </div>
+
+  <!-- 2026-09-08, по указанию Sagi: договор нельзя подписать раньше базового обучения (10),
+       стажировки (10 продвинутых) и обязательных видео-встреч из чек-листа адаптации.
+       Реальная проверка — на сервере (api/onboarding.js, contract_save), это лишь честный
+       экран, чтобы человек не заполнял форму зря и понимал, чего конкретно не хватает. -->
+  <div id="lockedScreen">
+    <div class="lockedBox">
+      <div class="big">🔒 Пока рано подписывать договор</div>
+      <div style="color:#ffe2a0;font-size:14px">Сначала нужно закончить:</div>
+      <ul id="lockedList"></ul>
+      <div class="faint" style="margin-top:10px">Как только всё это будет готово, эта страница сама предложит подписать договор. Вопросы — в WhatsApp: <a href="https://wa.me/77077000087" target="_blank" rel="noopener">+7 707 700 0087</a>.</div>
     </div>
   </div>
 
@@ -298,6 +315,12 @@ async function init(){
     const name = (d.item && d.item.fields && d.item.fields.fio) || P.name;
     if(d.item && d.item.signed){
       showSigned(d.item);
+      return;
+    }
+    const gate = d.item && d.item.trainingGate;
+    if(gate && !gate.ok){
+      $('#lockedList').innerHTML = gate.missing.map(m=>'<li>'+esc(m)+'</li>').join('');
+      $('#lockedScreen').style.display='block';
       return;
     }
     fillStatic(role, P.name);

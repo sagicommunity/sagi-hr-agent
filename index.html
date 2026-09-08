@@ -322,6 +322,17 @@
 
   <!-- EMPLOYEE CABINET -->
   <section id="screen-cabinet" class="hidden">
+    <!-- 2026-09-08, по указанию Sagi: как только автоматически открывается стажировка (10
+         продвинутых модулей), стажёру нужно сразу и автоматически об этом написать — без
+         ручного клика руководителя. Делаем это прямо в кабинете (гарантированная, безопасная
+         доставка — без риска бана WhatsApp за автоматическую рассылку): banner показывается
+         один раз сразу после ответа api/users.js progress с полем internshipMessage.
+         См. markLesson() ниже. -->
+    <div id="internshipBanner" class="card hidden" style="border:1px solid rgba(255,207,102,.4);background:rgba(255,207,102,.1);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--warn)" id="internshipBannerText"></div>
+      <button type="button" class="btn sec small" onclick="document.getElementById('internshipBanner').classList.add('hidden')">Понятно ✓</button>
+    </div>
+
     <div class="sectitle" style="margin-top:18px;display:flex;align-items:center;gap:12px">
       <span id="cabHello">Кабинет</span>
       <span class="tag" id="cabRole"></span>
@@ -1001,7 +1012,18 @@ async function markLesson(done, quizInfo){
   if(quizInfo){ body.quizScore=quizInfo.score; body.quizTotal=quizInfo.total; body.quizMissed=quizInfo.missed; }
   const res=await api(body);
   btn.disabled=false;
-  if(res.ok){ CUR=res.user; renderCabinet(CUR); }
+  if(res.ok){
+    CUR=res.user; renderCabinet(CUR);
+    // 2026-09-08, по указанию Sagi: автоматическое сообщение о том, что открылась стажировка
+    // (см. api/users.js, action==='progress' — internshipMessage приходит только один раз,
+    // в момент когда закрыт последний из 10 базовых модулей).
+    if(res.internshipMessage){
+      const b=$('#internshipBanner');
+      $('#internshipBannerText').textContent='🎉 '+res.internshipMessage;
+      b.classList.remove('hidden');
+      try{ b.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+    }
+  }
   else if(res.status===401){ clearSession(); CUR=null; show('screen-entry'); }
   else { btn.textContent=old; }
 }

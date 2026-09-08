@@ -59,7 +59,7 @@ const ITEMS = {
     ['sales3', 'Обучающие видео-материалы'],
     ['sales4', 'Список целевых клиентов для холодных звонков'],
     ['sales5', 'Скрипты звонков и работы с возражениями'],
-    ['sales6', 'Доступ и обучение по видеовстречам с клиентами (как назначать и проводить демо — Zoom / Google Meet)'],
+    ['sales6', 'Видео-встречи с клиентами — обязательно ЖИВЫЕ видеозвонки (не просто просмотр видео-примеров). Как назначать и проводить демо — Zoom / Google Meet'],
     ['sales7', 'СИП-телефония — доступ и настройка для исходящих звонков'],
     ['sales8', 'Список текущих клиентов по городам'],
     ['sales9', 'Доступ к Битрикс24 / CRM'],
@@ -124,6 +124,39 @@ async function loadAllContracts() {
     try { out.push(JSON.parse(flat[i + 1])); } catch (e) {}
   }
   return out;
+}
+
+// 2026-09-08, по прямому указанию Sagi: раньше договор ГПХ можно было подписать сразу после
+// начала чек-листа адаптации, вообще не тронув обучение — стажёр мог не пройти ни одного из
+// 10 базовых модулей, ни стажировку (10 продвинутых), и всё равно подписать договор. Это
+// расходится с фактическим положением дел (стажёр реально не обучен) — Sagi явно попросил
+// подписание блокировать, пока не пройдены: базовое обучение (10) → стажировка (10, ADV) →
+// пункт «видео-встречи» (sales6) в чек-листе. Работает только для роли sales — договор и так
+// только для неё (см. комментарий выше, 2026-09-05).
+// BASIC_IDS/ADV_IDS — ТЕ ЖЕ id, что в lessons.js (window.LESSONS.basic/adv) и в api/users.js
+// (BASIC_IDS там же) — дублируется умышленно, lessons.js не импортируется в serverless-функции.
+// При изменении состава курса поправить здесь, в api/users.js и в lessons.js одновременно.
+const BASIC_IDS = ['intro', 'problem', 'bonuses', 'communication', 'crm', 'app', 'call-script', 'meeting-script', 'cases', 'final'];
+const ADV_IDS = ['product-competitive', 'product-features', 'objections-hard', 'objections-followup', 'b2b-prospecting', 'b2b-pipeline', 'b2b-closing', 'cases-wins', 'cases-mistakes', 'emotional-triggers'];
+const VIDEO_MEETINGS_ITEM_KEY = 'sales6';
+const uKey = login => 'hr:user:' + login;
+async function loadTrainingUser(id) {
+  const raw = await redis(['GET', uKey(id)]);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+// checked — уже свежий объект checked чек-листа (с учётом common6, см. вызовы ниже).
+function trainingGateStatus(user, checked) {
+  const prog = (user && user.progress) || {};
+  const basicDone = BASIC_IDS.every(mid => prog[mid] === true);
+  const internshipOpen = !!(user && user.role === 'manager');
+  const advDone = ADV_IDS.every(mid => prog[mid] === true);
+  const videoMeetingsDone = !!(checked && checked[VIDEO_MEETINGS_ITEM_KEY] === true);
+  const missing = [];
+  if (!basicDone) missing.push('пройти базовое обучение (10 модулей)');
+  if (basicDone && (!internshipOpen || !advDone)) missing.push('пройти стажировку (10 продвинутых модулей)');
+  if (!videoMeetingsDone) missing.push('отметить в чек-листе адаптации пункт «видео-встречи с клиентами» (обязательны живые видеозвонки)');
+  return { ok: basicDone && internshipOpen && advDone && videoMeetingsDone, basicDone, internshipOpen, advDone, videoMeetingsDone, missing };
 }
 
 // ── Мост в CRM (crm.sagibonus.com): единый вход + личное дело (Sagi, 2026-09-05, п.5) ──
@@ -220,7 +253,12 @@ export default async function handler(req, res) {
         rec.checked = rec.checked || {};
         rec.checked[CONTRACT_ITEM_KEY] = await isContractSigned(id);
       }
-      res.status(200).json({ ok: true, item: withProgress(rec) });
+      const item = withProgress(rec);
+      if (item && item.role === 'sales') {
+        const trainingUser = await loadTrainingUser(id);
+        item.trainingGate = trainingGateStatus(trainingUser, item.checked);
+      }
+      res.status(200).json({ ok: true, item });
       return;
     }
 
@@ -286,7 +324,12 @@ export default async function handler(req, res) {
         );
       }
 
-      res.status(200).json({ ok: true, item: withProgress(rec) });
+      const savedItem = withProgress(rec);
+      if (savedItem && savedItem.role === 'sales') {
+        const trainingUser = await loadTrainingUser(id);
+        savedItem.trainingGate = trainingGateStatus(trainingUser, savedItem.checked);
+      }
+      res.status(200).json({ ok: true, item: savedItem });
       return;
     }
 
@@ -318,9 +361,16 @@ export default async function handler(req, res) {
       const existing = await loadContract(id);
       if (existing) { res.status(200).json({ ok: true, item: { ...existing, signed: true } }); return; }
       const onboarding = await loadRecord(id);
+      let trainingGate = null;
+      if (onboarding && onboarding.role === 'sales') {
+        const checked = { ...(onboarding.checked || {}) };
+        checked[CONTRACT_ITEM_KEY] = false; // ещё не подписан — мы как раз это и проверяем
+        const trainingUser = await loadTrainingUser(id);
+        trainingGate = trainingGateStatus(trainingUser, checked);
+      }
       res.status(200).json({
         ok: true,
-        item: { id, signed: false, role: onboarding?.role || '', name: onboarding?.name || '' },
+        item: { id, signed: false, role: onboarding?.role || '', name: onboarding?.name || '', trainingGate },
       });
       return;
     }
@@ -335,6 +385,19 @@ export default async function handler(req, res) {
 
       const onboarding = await loadRecord(id);
       if (!onboarding) { res.status(400).json({ error: 'Не найден чек-лист адаптации для этого id — сначала начните его на onboarding.html' }); return; }
+
+      // 2026-09-08, по указанию Sagi: договор нельзя подписать, пока не пройдено базовое
+      // обучение, стажировка и не отмечены обязательные видео-встречи — см. trainingGateStatus.
+      if (onboarding.role === 'sales') {
+        const checked = { ...(onboarding.checked || {}) };
+        checked[CONTRACT_ITEM_KEY] = false;
+        const trainingUser = await loadTrainingUser(id);
+        const gate = trainingGateStatus(trainingUser, checked);
+        if (!gate.ok) {
+          res.status(403).json({ error: 'Договор пока нельзя подписать — сначала нужно: ' + gate.missing.join('; ') + '.', trainingGate: gate });
+          return;
+        }
+      }
 
       const fieldsIn = (body?.fields && typeof body.fields === 'object') ? body.fields : {};
       const fields = {};

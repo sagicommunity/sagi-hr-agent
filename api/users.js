@@ -38,6 +38,31 @@ async function redis(cmd) {
 const uKey = login => 'hr:user:' + login;
 const norm = s => (s || '').toString().trim().toLowerCase();
 
+// 2026-09-08, по прямому указанию Sagi: раньше «стажировка» (10 продвинутых модулей, ADV)
+// открывалась только вручную — руководитель сам жал «Открыть стажировку» в панели, посмотрев
+// на прогресс. Sagi явно попросил сделать это АВТОМАТИЧЕСКИ: как только стажёр закрывает все
+// 10 базовых модулей — сразу открывается стажировка и стажёру сразу показывается сообщение
+// (см. action==='progress' ниже). Список id ниже — ТЕ ЖЕ 10 id базовых модулей, что и в
+// lessons.js (window.LESSONS.basic) — дублируется здесь умышленно (как и ITEMS в api/onboarding.js),
+// потому что lessons.js — файл для браузера (window.*), а не Node-модуль, который можно
+// импортировать в serverless-функцию. При изменении состава базового курса в lessons.js
+// ОБЯЗАТЕЛЬНО поправить и этот список, иначе стажировка перестанет открываться автоматически.
+const BASIC_IDS = ['intro', 'problem', 'bonuses', 'communication', 'crm', 'app', 'call-script', 'meeting-script', 'cases', 'final'];
+const INTERNSHIP_MESSAGE = 'Спасибо, теперь у вас открылся модуль стажировки, 10';
+
+async function notifyTelegram(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN || '';
+  const chat = process.env.TELEGRAM_CHAT_ID || '';
+  if (!token || !chat) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }),
+    });
+  } catch (e) {}
+}
+
 function hashPass(password, salt) {
   return crypto.createHash('sha256').update(salt + ':' + password).digest('hex');
 }
@@ -241,8 +266,30 @@ export default async function handler(req, res) {
 
       u.points = Object.keys(u.progress).length * 10;
       u.lastSeen = Date.now();
+
+      // 2026-09-08, по указанию Sagi: как только закрыты ВСЕ 10 базовых модулей — стажировка
+      // (10 продвинутых модулей, ADV) открывается автоматически, без ручного клика руководителя
+      // (раньше — кнопка «Открыть стажировку» в панели). u.autoPromotedAt — разовый флаг, чтобы
+      // не сработать повторно, если стажёр потом снимет и опять поставит галочку модулю.
+      let internshipMessage = null;
+      if (u.role === 'trainee' && !u.autoPromotedAt) {
+        const basicDoneNow = BASIC_IDS.every(bid => u.progress[bid] === true);
+        if (basicDoneNow) {
+          u.role = 'manager';
+          u.promotedAt = u.promotedAt || Date.now();
+          u.autoPromotedAt = Date.now();
+          internshipMessage = INTERNSHIP_MESSAGE;
+          notifyTelegram(
+            `🎓 Стажировка открыта автоматически — Sagi\n\n` +
+            `👤 ${u.name || u.login}\n` +
+            `Закрыл(а) все 10 базовых модулей — открыты 10 продвинутых модулей стажировки.\n\n` +
+            `Профиль: https://hr.sagibonus.com/?boss=1`
+          );
+        }
+      }
+
       await putUser(u);
-      res.status(200).json({ ok: true, user: safe(u) });
+      res.status(200).json({ ok: true, user: safe(u), internshipMessage });
       return;
     }
 
