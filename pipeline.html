@@ -260,6 +260,15 @@ async function api(payload){
 }
 function scoreCls(s){ return s==null?'s-mid':(s>=8?'s-hi':(s>=6?'s-mid':'s-lo')); }
 function verdictCls(v){ return /брать/i.test(v)?'v-take':(/отказ/i.test(v)?'v-no':'v-res'); }
+// 2026-09-10, по указанию Sagi: кнопка WhatsApp у кандидата открывает готовый текст-приглашение
+// на обучение (без двоеточий и длинных тире — так Sagi быстрее отправляет их пачкой).
+// Для стадий отказа/ухода текста нет — остаётся прежнее поведение (waMessage из записи).
+function candWaText(name, stage){
+  const st=String(stage||'');
+  if(st==='Отказ'||st==='Не подходит'||st==='Ушёл') return '';
+  const f=String(name||'').trim().split(/\s+/)[0]||'';
+  return 'Здравствуйте'+(f?', '+f:'')+'! Спасибо, вашу анкету получили и посмотрели. Приглашаем вас пройти обучение. Зарегистрируйтесь по ссылке hr.sagibonus.com/?start=1 и проходите базовую программу, обычно это занимает около часа. Наставника и стажировку подключим после неё. Если появятся вопросы, просто напишите мне здесь.';
+}
 
 function render(){
   const grid=$('#grid'); grid.innerHTML='';
@@ -274,7 +283,7 @@ function render(){
   $('#empty').style.display=items.length?'none':'block';
   for(const c of items){
     const card=document.createElement('div'); card.className='card'; card.dataset.id=c.id;
-    const wa=c.phone?('https://wa.me/'+c.phone+'?text='+encodeURIComponent(c.waMessage||'')):'';
+    const wa=c.phone?('https://wa.me/'+c.phone+'?text='+encodeURIComponent(candWaText(c.name,c.stage)||c.waMessage||'')):'';
     const stageOpts=STAGES.map(s=>'<option'+(s===c.stage?' selected':'')+'>'+s+'</option>').join('');
     const ageTxt=(c.age!=null&&c.age!=='')?(esc(c.age)+' '+yearsWord(c.age)):'возраст —';
     const ageOut=(c.age!=null&&c.age!=='')&&(c.age<20||c.age>35);

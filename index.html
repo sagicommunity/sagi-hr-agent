@@ -433,6 +433,8 @@
       <div class="stat"><div class="big" id="bsTrainees">0</div><div class="lbl">стажёров</div></div>
       <div class="stat"><div class="big" id="bsManagers">0</div><div class="lbl">менеджеров</div></div>
       <div class="stat"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
+      <div class="stat"><div class="big" id="bsCands">0</div><div class="lbl">кандидатов в найме</div></div>
+      <div class="stat"><div class="big" id="bsWaiting">0</div><div class="lbl">ждут ответа</div></div>
     </div>
 
     <div class="bossLayout">
@@ -634,6 +636,26 @@ function phoneDigitsIntl(p){
 }
 function telLink(p){ const d=phoneDigitsIntl(p); return d?('tel:+'+d):''; }
 function waLink(p, text){ const d=phoneDigitsIntl(p); return d?('https://wa.me/'+d+(text?('?text='+encodeURIComponent(text)):'')):''; }
+// 2026-09-10, по указанию Sagi: у кандидатов из найма кнопка WhatsApp должна открывать уже
+// готовый текст (приглашение пройти обучение после анкеты), чтобы Sagi отправлял их пачкой и
+// не писал каждому руками. Текст намеренно БЕЗ двоеточий и длинных тире — так быстрее
+// вставлять и отправлять. Для стадий отказа/ухода готового текста нет.
+function firstWord(n){ return String(n||'').trim().split(/\s+/)[0]||''; }
+function candWaText(name, stage){
+  const st=String(stage||'');
+  if(st==='Отказ'||st==='Не подходит'||st==='Ушёл') return '';
+  const f=firstWord(name);
+  return 'Здравствуйте'+(f?', '+f:'')+'! Спасибо, вашу анкету получили и посмотрели. Приглашаем вас пройти обучение. Зарегистрируйтесь по ссылке hr.sagibonus.com/?start=1 и проходите базовую программу, обычно это занимает около часа. Наставника и стажировку подключим после неё. Если появятся вопросы, просто напишите мне здесь.';
+}
+function candContactBtnsHtml(c){
+  const phone=(c&&c.phone)||'';
+  if(!phone) return '<span style="color:var(--muted)">—</span>';
+  const text=candWaText(c.name, c.stage);
+  return '<div class="contactBtns">'+
+    '<a class="contactBtn" href="'+telLink(phone)+'" title="Позвонить">📞</a>'+
+    '<a class="contactBtn" href="'+waLink(phone, text)+'" target="_blank" rel="noopener" title="Написать в WhatsApp с готовым текстом">💬</a>'+
+    '</div>';
+}
 // 2026-08-24, по указанию Sagi: готовый текст для уведомления о стажировке — открываем ссылку
 // wa.me с этим текстом в СВОЁМ WhatsApp Sagi (он сам жмёт «Отправить»), никакой автоматической
 // рассылки через API — так нет риска блокировки номера за спам-рассылку.
@@ -1159,6 +1181,13 @@ function renderBoss(users, skipStatsFetch){
     return true;
   });
 
+  // 2026-09-10, по указанию Sagi («очень много кто заполнил анкету и пропал — непонятно, что
+  // делать»): кандидаты из найма раньше не попадали в плитки статистики, хотя видны в таблице.
+  // Показываем их отдельно. «Ждут ответа» — те, кто либо не ответил после сообщения (Ожидает
+  // ответа), либо получил приглашение, но ещё не зарегистрировался (Приглашён).
+  if($('#bsCands')) $('#bsCands').textContent=openCandidates.length;
+  if($('#bsWaiting')) $('#bsWaiting').textContent=openCandidates.filter(c=>c.stage==='Ожидает ответа'||c.stage==='Приглашён').length;
+
   const q=(peopleSearchQuery||'').trim().toLowerCase();
   const qDigits=digitsOnly(peopleSearchQuery);
   function matchesSearch(hayText, hayPhone){
@@ -1231,7 +1260,7 @@ function renderBoss(users, skipStatsFetch){
       const when=c.ts?new Date(c.ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}):'—';
       const candIdAttr=String(c.id||'').replace(/"/g,'&quot;');
       return '<tr class="bossRow candRow" data-candid="'+candIdAttr+'" style="cursor:pointer"><td><b>'+(c.name||'—')+'</b><br><span style="color:var(--muted);font-size:12px">🗂 кандидат, не зарегистрирован</span></td>'+
-        '<td>'+contactBtnsHtml(c.phone)+'</td>'+
+        '<td>'+candContactBtnsHtml(c)+'</td>'+
         '<td>'+(stageCls?'<span class="tag '+stageCls+'">'+stageLabel+'</span>':'<span style="color:var(--muted)">'+stageLabel+'</span>')+'</td>'+
         '<td style="color:var(--muted)">—</td>'+
         '<td style="color:var(--muted)">—</td>'+
