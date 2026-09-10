@@ -54,6 +54,7 @@ const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
 const STOP_FILE = path.join(DATA_DIR, 'stoplist.json');
 const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 const REPLIES_FILE = path.join(DATA_DIR, 'replies.jsonl');
+const SENDS_FILE = path.join(DATA_DIR, 'sends.jsonl');
 
 const logger = pino({ level: process.env.WA_LOG_LEVEL || 'warn' });
 const rlog = (...a) => console.log(new Date().toISOString(), ...a);
@@ -80,6 +81,13 @@ const todayAlmaty = () => new Date(Date.now() + 5 * 3600 * 1000).toISOString().s
 function persistQueue() { save(QUEUE_FILE, queue); }
 function persistStop() { save(STOP_FILE, [...stoplist]); }
 function persistStats() { save(STATS_FILE, stats); }
+function logSend(obj) { try { fs.appendFileSync(SENDS_FILE, JSON.stringify(obj) + '\n'); } catch (e) {} }
+function readLog(limit) {
+  try {
+    const lines = fs.readFileSync(SENDS_FILE, 'utf8').split('\n').filter(Boolean);
+    return lines.slice(-limit).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean).reverse();
+  } catch (e) { return []; }
+}
 function rollDay() { const d = todayAlmaty(); if (stats.day !== d) { stats.day = d; stats.sentToday = 0; persistStats(); } }
 
 // ── Baileys ──────────────────────────────────────────────
@@ -143,6 +151,7 @@ async function sendNow(to, text) {
   await sock.sendMessage(d + '@s.whatsapp.net', { text: String(text || '') });
   lastSentAt = Date.now();
   rollDay(); stats.sentTotal++; stats.sentToday++; persistStats();
+  logSend({ at: new Date().toISOString(), to: d, ok: true });
   return { ok: true, to: d };
 }
 
@@ -167,6 +176,7 @@ async function tick() {
     } catch (e) {
       // не потеряли сообщение — вернули в начало очереди
       queue.unshift(item); persistQueue();
+      logSend({ at: new Date().toISOString(), to: item.to, ok: false, err: e.message });
       rlog('ошибка отправки, вернул в очередь:', e.message);
     }
   } finally {
@@ -238,6 +248,11 @@ app.post('/enqueue', (req, res) => {
 });
 
 app.get('/queue', (req, res) => res.json({ pending: queue.length, paused, minIntervalMs: MIN_INTERVAL_MS, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size, items: queue.slice(0, 20) }));
+// Журнал последних отправок: кому, когда, успешно/ошибка. Для админки (через прокси HR).
+app.get('/log', (req, res) => {
+  const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit, 10) || 100));
+  res.json({ connected, number: meNumber, lastError, sentToday: stats.sentToday, sentTotal: stats.sentTotal, pending: queue.length, paused, items: readLog(limit) });
+});
 app.post('/pause', (req, res) => { if (!checkSecret(req)) return res.status(403).json({ error: 'forbidden' }); paused = true; res.json({ ok: true, paused }); });
 app.post('/resume', (req, res) => { if (!checkSecret(req)) return res.status(403).json({ error: 'forbidden' }); paused = false; res.json({ ok: true, paused }); });
 app.get('/stoplist', (req, res) => res.json({ count: stoplist.size, items: [...stoplist] }));

@@ -446,6 +446,7 @@
         <button class="bnItem" data-tab="analytics"><span class="ic">📊</span>Аналитика</button>
         <button class="bnItem" data-tab="checklist"><span class="ic">📋</span>Чек-лист оценки</button>
         <button class="bnItem" data-tab="broadcast"><span class="ic">📣</span>Ручная рассылка</button>
+        <button class="bnItem" data-tab="wa"><span class="ic">📲</span>WhatsApp рассылка</button>
       </div>
 
       <div class="bossContent">
@@ -504,6 +505,11 @@
           </div>
           <div class="copiedMsg" id="bcCopiedMsg">Скопировано ✓</div>
           <div class="sub" style="margin-top:14px">Пока эта форма подходит только под вакансию менеджера по продажам. Если понадобится такая же безопасная ссылка под вакансию техподдержки — скажи, добавлю.</div>
+        </div>
+
+        <div class="bossPane" data-pane="wa">
+          <div class="paneHead"><h2>📲 WhatsApp рассылка</h2><p>Кому уже отправлено, статус HR-номера и текущие тексты. Серый WhatsApp-воркер шлёт по одному сообщению раз в 2 минуты, чтобы номер не попал в бан. Если WhatsApp отключится, это будет видно в статусе.</p></div>
+          <div id="waBody"><div class="sub">Загрузка…</div></div>
         </div>
 
       </div>
@@ -1319,6 +1325,40 @@ let bossTabApplied=false;
 // 2026-08-24: вынесено в функцию — нужна и по клику на вкладку, и чтобы открыть нужный раздел
 // сразу по ссылке (?boss=1&tab=...), когда сюда редиректят старые самостоятельные страницы
 // (pipeline.html, analytics.html и т.д. — см. их редирект наверху, если открыты не как ?embed=1).
+// ── WhatsApp-рассылка: статус воркера, журнал отправок и тексты (Sagi, 2026-09-10) ──
+function waFmtTime(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
+function waStatusChip(d){
+  if(!d.configured) return '<span class="tag warn">не настроен</span>';
+  if(d.connected) return '<span class="tag mg">подключён'+(d.number?(' · '+d.number):'')+'</span>';
+  return '<span class="tag warn">Отключён'+(d.lastError?(' · '+esc(d.lastError)):'')+'</span>';
+}
+async function renderWaPane(){
+  const box=document.getElementById('waBody'); if(!box) return;
+  box.innerHTML='<div class="sub">Загружаю…</div>';
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_status',password:BOSS_PW})});
+    const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status));
+    const tile=(n,l)=>'<div class="stat"><div class="big">'+n+'</div><div class="lbl">'+l+'</div></div>';
+    const rows=(d.log||[]).map(x=>'<tr><td style="white-space:nowrap">'+waFmtTime(x.at)+'</td><td>'+esc(String(x.to||''))+'</td><td>'+(x.ok?'<span class="tag mg">отправлено</span>':('<span class="tag warn">ошибка</span>'+(x.err?(' '+esc(x.err)):'')))+'</td></tr>').join('');
+    const texts=d.texts||{};
+    const tbox=(t,txt)=>'<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">'+t+'</div><textarea readonly style="width:100%;box-sizing:border-box;min-height:96px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:12.5px;font-family:inherit">'+esc(txt||'')+'</textarea></div>';
+    box.innerHTML =
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+waStatusChip(d)+
+        '<span class="sub" style="margin:0">пауза между сообщениями '+Math.round((d.minIntervalMs||120000)/1000)+' сек</span>'+
+        '<button class="btn '+(d.paused?'btn-primary':'sec')+' small" id="waPauseBtn">'+(d.paused?'▶ Продолжить рассылку':'⏸ Пауза')+'</button>'+
+        '<button class="btn sec small" id="waRefreshBtn">⟳ Обновить</button>'+
+      '</div>'+
+      '<div class="stats">'+tile(d.pending||0,'в очереди')+tile(d.sentToday||0,'отправлено сегодня')+tile(d.sentTotal||0,'всего отправлено')+tile(d.stopped||0,'отписались')+'</div>'+
+      '<div class="paneHead" style="margin-top:18px"><h2>Кому уже отправлено</h2><p>Последние 100 сообщений. Если номер отключится — будет видно в статусе выше.</p></div>'+
+      (rows?('<div class="tw"><table><thead><tr><th>Когда</th><th>Кому</th><th>Статус</th></tr></thead><tbody>'+rows+'</tbody></table></div>'):'<div class="sub">Пока отправок не было.</div>')+
+      '<div class="paneHead" style="margin-top:18px"><h2>Тексты, которые отправляются</h2><p>Согласованные формулировки. Меняются только через разработку.</p></div>'+
+      tbox('После анкеты', texts.afterForm)+tbox('Не начал обучение', texts.notStarted)+tbox('Не закончил обучение', texts.notFinished)+tbox('Возврат после срока', texts.returnAfterDeadline)+tbox('Холодная база', texts.coldBase);
+    const pb=document.getElementById('waPauseBtn');
+    if(pb) pb.onclick=async()=>{ pb.disabled=true; try{ await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:(d.paused?'wa_resume':'wa_pause'),password:BOSS_PW})}); }catch(e){} renderWaPane(); };
+    const rb=document.getElementById('waRefreshBtn'); if(rb) rb.onclick=()=>renderWaPane();
+  }catch(e){ box.innerHTML='<div class="sub" style="color:#ff6b6b">Ошибка: '+esc(e.message)+'</div>'; }
+}
+
 function selectBossTab(tab){
   const btn=document.querySelector('.bnItem[data-tab="'+tab+'"]');
   if(!btn) return;
@@ -1330,6 +1370,7 @@ function selectBossTab(tab){
     frame.setAttribute('src', frame.dataset.src);
     frame.addEventListener('load', scheduleViewportSlice, {once:true});
   }
+  if(tab==='wa') renderWaPane();
   scheduleViewportSlice();
 }
 document.querySelectorAll('.bnItem').forEach(btn=>{

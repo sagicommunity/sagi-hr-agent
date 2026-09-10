@@ -5,6 +5,7 @@
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const CAND_KEY = 'hr:candidates';
+import { HR_WA } from './_wa.js';
 // 2026-08-18, по замечанию Sagi: «Стажировка» ставилась сразу после приглашения, до того как
 // человек вообще зарегистрировался и прошёл обучение — не отражало реальность. Теперь путь:
 // Ответил (написал в ответ на первое сообщение) -> Приглашён (отправлено приглашение, ждём
@@ -159,6 +160,56 @@ export default async function handler(req, res) {
     if (!R_URL || !R_TOK) { res.status(500).json({ error: 'Хранилище не подключено' }); return; }
 
     const action = body?.action;
+
+    // ── WhatsApp-рассылка: прокси к серому воркеру (Sagi, 2026-09-10) ──
+    // Панель руководителя не может звать воркер напрямую (CORS + секрет), поэтому проксируем
+    // отсюда. Возвращаем статус подключения (номер, отключён ли), счётчики, журнал последних
+    // отправок (кому/когда/успех), текущие согласованные тексты и паузу.
+    const GREY = (process.env.WA_GREY_URL || '').replace(/\/+$/, '');
+    const GREY_SECRET = process.env.WA_GREY_SECRET || '';
+    async function waWorker(pathname, method, payload) {
+      if (!GREY) return null;
+      try {
+        const r = await fetch(GREY + pathname, {
+          method: method || 'GET',
+          headers: Object.assign({ 'x-wa-secret': GREY_SECRET }, payload ? { 'content-type': 'application/json' } : {}),
+          body: payload ? JSON.stringify(payload) : undefined,
+        });
+        if (!r.ok) return { httpError: r.status };
+        return await r.json();
+      } catch (e) { return { httpError: e.message }; }
+    }
+
+    if (action === 'wa_status') {
+      const log = await waWorker('/log?limit=100');
+      const q = await waWorker('/queue');
+      res.status(200).json({
+        ok: true, configured: !!GREY,
+        connected: log ? !!log.connected : false,
+        number: log ? (log.number || '') : '',
+        lastError: log ? (log.lastError || '') : '',
+        pending: q ? (q.pending || 0) : (log ? (log.pending || 0) : 0),
+        sentToday: log ? (log.sentToday || 0) : 0,
+        sentTotal: log ? (log.sentTotal || 0) : 0,
+        paused: q ? !!q.paused : false,
+        minIntervalMs: q ? (q.minIntervalMs || 120000) : 120000,
+        stopped: q ? (q.stopped || 0) : 0,
+        log: log && Array.isArray(log.items) ? log.items : [],
+        texts: {
+          afterForm: HR_WA.afterForm('Имя'),
+          notStarted: HR_WA.notStarted('Имя'),
+          notFinished: HR_WA.notFinished('Имя', 0, 10),
+          returnAfterDeadline: HR_WA.returnAfterDeadline('Имя'),
+          coldBase: HR_WA.coldBase('Имя'),
+        },
+      });
+      return;
+    }
+    if (action === 'wa_pause' || action === 'wa_resume') {
+      const r = await waWorker(action === 'wa_pause' ? '/pause' : '/resume', 'POST', {});
+      res.status(200).json({ ok: true, paused: action === 'wa_pause', worker: r ? (r.httpError || 'ok') : 'not_configured' });
+      return;
+    }
 
     if (action === 'list') {
       const items = (await loadAll()).map(normalize);
