@@ -155,15 +155,10 @@ export default async function handler(req, res) {
       { key: 'Закончили обучение', count: finishedCount },
       { key: 'Трудоустроены', count: employedCount },
     ];
+    // (шаг «Начали стажировку» добавляется ниже, после загрузки аккаунтов — стажировка в системе
+    //  это роль 'manager', которая открывается автоматически после 10 базовых модулей)
+    let hiringFunnel = null;
     const hiringFirst = hiringRaw[0].count || 1;
-    const hiringFunnel = hiringRaw.map((r, i) => ({
-      key: r.key,
-      count: r.count,
-      fromPrevPct: i === 0 ? null : (hiringRaw[i - 1].count ? Math.round((r.count / hiringRaw[i - 1].count) * 1000) / 10 : 0),
-      fromStartPct: Math.round((r.count / hiringFirst) * 1000) / 10,
-    }));
-    // Боковая ветка (не следующий шаг воронки — не ломает fromPrevPct) — сколько всего отвалилось.
-    hiringFunnel.push({ key: '↳ Отказ / не подходят / ушли', count: declinedCount, fromPrevPct: null, fromStartPct: Math.round((declinedCount / hiringFirst) * 1000) / 10 });
 
     // ---- hh.kz воронка ----
     const [hhSeen, hhReplied, hhGateHandled, hhGatePassed, hhDeclined] = await redisBatch([
@@ -254,6 +249,19 @@ export default async function handler(req, res) {
     // назначается только когда isComplete===true), берём это как прокси «дошёл до конца базовой
     // программы», не пересчитывая модули заново на сервере.
     const users = await loadUsers();
+    // Шаг «Начали стажировку» — аккаунты с ролью 'manager'. В системе это и есть старт стажировки:
+    // когда закрыты все 10 базовых модулей, роль trainee автоматически меняется на manager
+    // (см. api/users.js, u.promotedAt/autoPromotedAt), открываются 10 продвинутых модулей ADV.
+    const internsCount = users.filter(u => u.role === 'manager').length;
+    hiringRaw.splice(5, 0, { key: 'Начали стажировку', count: internsCount });
+    hiringFunnel = hiringRaw.map((r, i) => ({
+      key: r.key,
+      count: r.count,
+      fromPrevPct: i === 0 ? null : (hiringRaw[i - 1].count ? Math.round((r.count / hiringRaw[i - 1].count) * 1000) / 10 : 0),
+      fromStartPct: Math.round((r.count / hiringFirst) * 1000) / 10,
+    }));
+    // Боковая ветка (не следующий шаг воронки — не ломает fromPrevPct) — сколько всего отвалилось.
+    hiringFunnel.push({ key: '↳ Отказ / не подходят / ушли', count: declinedCount, fromPrevPct: null, fromStartPct: Math.round((declinedCount / hiringFirst) * 1000) / 10 });
     const trainees = users.filter(u => u.role === 'trainee');
     const traineeByStatus = HIRE_STATUSES.map(s => ({ key: s, count: trainees.filter(t => (t.hireStatus || 'Активен') === s).length })).filter(x => x.count > 0);
     const traineeNotActive = trainees
