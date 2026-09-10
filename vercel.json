@@ -1,9 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/chat.js": { "maxDuration": 60 },
-    "api/hh_poll.js": { "maxDuration": 60 },
-    "api/wa_followup.js": { "maxDuration": 60 }
+    "api/chat.js": { "maxDuration": 60 }
   },
   "redirects": [
     { "source": "/dashboard", "destination": "/analytics.html", "permanent": false },
