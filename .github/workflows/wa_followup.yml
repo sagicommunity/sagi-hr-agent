@@ -24,7 +24,7 @@ jobs:
             exit 1
           fi
           CACHE_BUST="$RANDOM$RANDOM"
-          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/wa_followup?secret=${HH_POLL_SECRET}&r=${CACHE_BUST}")
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&followup=1&r=${CACHE_BUST}")
           echo "$RESP"
           OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
           if [ "$OK" != "true" ]; then

@@ -49,7 +49,7 @@ const CAND_KEY = 'hr:candidates';
 
 // 2026-09-10: отправка WhatsApp кандидатам и стажёрам (серый Baileys-воркер или Cloud API).
 // Если номер ещё не подключён — sendWA тихо ничего не делает, логика ниже не падает.
-import { sendWA, HR_WA, waDigits } from './_wa.js';
+import { sendWA, HR_WA, waDigits, enqueueWA, extractPhone as extractPhoneAny } from './_wa.js';
 const SEEN_KEY = 'hh:seen_negotiations';       // отклику отправлено первое сообщение
 const REPLIED_KEY = 'hh:replied_negotiations'; // ответ кандидата уже оценён и по нему был алерт
 const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карусели» для фазы B — чтобы каждый прогон проверял РАЗНЫХ кандидатов, а не всегда первых N
@@ -660,6 +660,67 @@ export default async function handler(req, res) {
 
   if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return; }
   if (!process.env.HH_POLL_SECRET || (req.query?.secret || '') !== process.env.HH_POLL_SECRET) { res.status(403).json({ error: 'forbidden' }); return; }
+
+  // ==== Лёгкая ветка «догон по WhatsApp» (Sagi, 2026-09-10) ====
+  // GET /api/hh_poll?secret=...&followup=1 — отдельным вызовом, ДО тяжёлых фаз (они не влезают
+  // в лимит времени, если смешать). Ставит ОДНИМ батч-запросом в очередь серого WhatsApp-воркера
+  // сообщения тем, кто откликнулся/заполнил, но не дошёл до обучения, и тем, у кого истекло время
+  // на базовую программу. Темп (1 сообщение в 2 минуты) держит сам воркер. Каждый человек получает
+  // не больше одного сообщения — отметки в Redis-сетах hr:wa_followup_done / hr:wa_return_done.
+  // Отдельным файлом делать нельзя — на Hobby лимит 12 serverless-функций, здесь уже 12.
+  if (req.query?.followup === '1') {
+    try {
+      const cap = Math.min(1000, Math.max(1, parseInt(req.query?.cap, 10) || 300));
+      const dry = req.query?.dryrun === '1';
+      const candRaw = await redis(['LRANGE', 'hr:candidates', 0, 1999]);
+      const candidates = (Array.isArray(candRaw) ? candRaw : []).map((s) => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const loginsF = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      const usersF = [];
+      for (const l of (Array.isArray(loginsF) ? loginsF : [])) {
+        const raw = await redis(['GET', 'hr:user:' + l]);
+        if (raw) { try { usersF.push({ login: l, u: JSON.parse(raw) }); } catch (e) {} }
+      }
+      const followDone = new Set((await redis(['SMEMBERS', 'hr:wa_followup_done'])) || []);
+      const returnDone = new Set((await redis(['SMEMBERS', 'hr:wa_return_done'])) || []);
+      const NUDGE = ['Новый', 'Ожидает ответа', 'Ответил', 'Приглашён'];
+      const items = [], fIds = [], rLogins = [], byStage = {};
+      for (const c of candidates) {
+        if (items.length >= cap) break;
+        const st = c.stage || 'Новый';
+        if (!NUDGE.includes(st)) continue;
+        const to = extractPhoneAny(c.phone, c.contact);
+        if (!to) continue;
+        if (followDone.has(String(c.id))) continue;
+        byStage[st] = (byStage[st] || 0) + 1;
+        items.push({ to, text: (st === 'Новый' || st === 'Ожидает ответа') ? HR_WA.coldBase(c.name) : HR_WA.afterForm(c.name) });
+        fIds.push(String(c.id));
+      }
+      for (const { login, u } of usersF) {
+        if (items.length >= cap) break;
+        const autoExpired = (u.hireStatus === 'На паузе') || (u.hireStatus === 'Не подходит' && /^Авто/.test(u.statusComment || ''));
+        if (!autoExpired) continue;
+        const to = extractPhoneAny(u.phone);
+        if (!to) continue;
+        if (returnDone.has(login)) continue;
+        items.push({ to, text: HR_WA.returnAfterDeadline(u.name) });
+        rLogins.push(login);
+      }
+      let queued = 0;
+      if (!dry && items.length) {
+        const r = await enqueueWA(items);
+        if (r && r.ok && r.queued) {
+          queued = r.queued;
+          if (fIds.length) await redis(['SADD', 'hr:wa_followup_done', ...fIds]);
+          if (rLogins.length) await redis(['SADD', 'hr:wa_return_done', ...rLogins]);
+        }
+      } else {
+        queued = items.length;
+      }
+      res.status(200).json({ ok: true, dryRun: dry, cap, candidatesChecked: candidates.length, usersChecked: usersF.length, byStage, toReturn: rLogins.length, queued });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+
   const debug = req.query?.debug === '1';
   const dryRun = req.query?.dryrun === '1';
 
