@@ -46,6 +46,17 @@ const AUTH_DIR = process.env.WA_AUTH_DIR || path.join(__dirname, 'auth');
 const DATA_DIR = process.env.WA_DATA_DIR || __dirname;
 const MIN_INTERVAL_MS = Math.max(60000, parseInt(process.env.WA_MIN_INTERVAL_MS || '120000', 10) || 120000);
 const DAILY_CAP = Math.max(0, parseInt(process.env.WA_DAILY_CAP || '0', 10) || 0);
+// Рабочее окно отправки (Sagi, 2026-09-10): ночью не пишем. Время по Алматы (UTC+5, без DST).
+// По умолчанию 07:30–22:00; меняется через WA_SEND_START / WA_SEND_END (формат HH:MM).
+const SEND_START = /^\d{1,2}:\d{2}$/.test(process.env.WA_SEND_START || '') ? process.env.WA_SEND_START : '07:30';
+const SEND_END = /^\d{1,2}:\d{2}$/.test(process.env.WA_SEND_END || '') ? process.env.WA_SEND_END : '22:00';
+function mins(s) { const [h, m] = s.split(':').map(Number); return h * 60 + m; }
+function almatyNow() { return new Date(Date.now() + 5 * 3600 * 1000); }
+function almatyHHMM() { const d = almatyNow(); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); }
+function inSendWindow() {
+  const cur = mins(almatyHHMM()), a = mins(SEND_START), b = mins(SEND_END);
+  return a <= b ? (cur >= a && cur < b) : (cur >= a || cur < b);
+}
 
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -159,6 +170,7 @@ async function sendNow(to, text) {
 async function tick() {
   if (sending || paused || !connected) return;
   if (!queue.length) return;
+  if (!inSendWindow()) return; // ночью/вне окна не пишем — просто ждём
   if (Date.now() - lastSentAt < MIN_INTERVAL_MS) return;
   rollDay();
   if (DAILY_CAP && stats.sentToday >= DAILY_CAP) return;
@@ -197,6 +209,7 @@ function checkSecret(req) {
 app.get('/status', (req, res) => res.json({
   connected, number: meNumber, hasQr: !!qrDataUrl, ready: true, lastError, paused,
   minIntervalMs: MIN_INTERVAL_MS, dailyCap: DAILY_CAP,
+  sendWindow: { start: SEND_START, end: SEND_END, open: inSendWindow(), now: almatyHHMM() },
   queue: { pending: queue.length, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size },
 }));
 
@@ -247,7 +260,7 @@ app.post('/enqueue', (req, res) => {
   res.json({ ok: true, added, pending: queue.length });
 });
 
-app.get('/queue', (req, res) => res.json({ pending: queue.length, paused, minIntervalMs: MIN_INTERVAL_MS, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size, items: queue.slice(0, 20) }));
+app.get('/queue', (req, res) => res.json({ pending: queue.length, paused, minIntervalMs: MIN_INTERVAL_MS, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size, sendWindow: { start: SEND_START, end: SEND_END, open: inSendWindow(), now: almatyHHMM() }, items: queue.slice(0, 20) }));
 // Журнал последних отправок: кому, когда, успешно/ошибка. Для админки (через прокси HR).
 app.get('/log', (req, res) => {
   const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit, 10) || 100));

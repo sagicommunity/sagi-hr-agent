@@ -1345,6 +1345,7 @@ async function renderWaPane(){
     box.innerHTML =
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+waStatusChip(d)+
         '<span class="sub" style="margin:0">пауза между сообщениями '+Math.round((d.minIntervalMs||120000)/1000)+' сек</span>'+
+        (d.sendWindow?('<span class="sub" style="margin:0">рассылка '+d.sendWindow.start+'–'+d.sendWindow.end+' по Алматы'+(d.sendWindow.open?'':' · сейчас вне окна, ждём')+')</span>'):'')+
         '<button class="btn '+(d.paused?'btn-primary':'sec')+' small" id="waPauseBtn">'+(d.paused?'▶ Продолжить рассылку':'⏸ Пауза')+'</button>'+
         '<button class="btn sec small" id="waRefreshBtn">⟳ Обновить</button>'+
       '</div>'+

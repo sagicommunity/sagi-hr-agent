@@ -194,6 +194,7 @@ export default async function handler(req, res) {
         paused: q ? !!q.paused : false,
         minIntervalMs: q ? (q.minIntervalMs || 120000) : 120000,
         stopped: q ? (q.stopped || 0) : 0,
+        sendWindow: q && q.sendWindow ? q.sendWindow : null,
         log: log && Array.isArray(log.items) ? log.items : [],
         texts: {
           afterForm: HR_WA.afterForm('Имя'),
