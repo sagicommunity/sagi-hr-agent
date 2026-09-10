@@ -130,6 +130,41 @@ export default async function handler(req, res) {
     const scored = candidates.filter(c => typeof c.score === 'number');
     const avgScore = scored.length ? Math.round((scored.reduce((s, c) => s + c.score, 0) / scored.length) * 10) / 10 : null;
 
+    // ---- Общая воронка найма по всем каналам (2026-09-10, запрос Sagi: «сколько было откликов,
+    // сколько заполнили, сколько начали обучаться, сколько закончили»). В отличие от hh-воронки
+    // выше (она по переписке hh.kz) и от «Воронки по стадиям» (просто счётчики стадий), здесь —
+    // последовательность с конверсией на каждом шаге по ВСЕМ источникам сразу.
+    //   Ответил/дальше = анкета заполнена (или у записи есть answers), Приглашён = отправлено
+    //   приглашение, Обучение = зарегистрировался и проходит программу, Стажировка = закончил все
+    //   модули и получил наставника, Трудоустроен = вышел на работу.
+    const POST_FORM_STAGES = ['Ответил', 'Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен', 'На связи', 'Квалификация', 'Интервью', 'Оффер'];
+    const INVITED_STAGES = ['Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен'];
+    const STARTED_STAGES = ['Обучение', 'Стажировка', 'Трудоустроен'];
+    const FINISHED_STAGES = ['Стажировка', 'Трудоустроен'];
+    const filledAnketa = candidates.filter(c => (Array.isArray(c.answers) && c.answers.length > 0) || POST_FORM_STAGES.includes(c.stage || '')).length;
+    const invitedCount = candidates.filter(c => INVITED_STAGES.includes(c.stage || '')).length;
+    const startedCount = candidates.filter(c => STARTED_STAGES.includes(c.stage || '')).length;
+    const finishedCount = candidates.filter(c => FINISHED_STAGES.includes(c.stage || '')).length;
+    const employedCount = candidates.filter(c => (c.stage || '') === 'Трудоустроен').length;
+    const declinedCount = candidates.filter(c => ['Отказ', 'Не подходит', 'Ушёл'].includes(c.stage || '')).length;
+    const hiringRaw = [
+      { key: 'Отклики получено', count: candidates.length },
+      { key: 'Заполнили анкету', count: filledAnketa },
+      { key: 'Приглашены на обучение', count: invitedCount },
+      { key: 'Начали обучение', count: startedCount },
+      { key: 'Закончили обучение', count: finishedCount },
+      { key: 'Трудоустроены', count: employedCount },
+    ];
+    const hiringFirst = hiringRaw[0].count || 1;
+    const hiringFunnel = hiringRaw.map((r, i) => ({
+      key: r.key,
+      count: r.count,
+      fromPrevPct: i === 0 ? null : (hiringRaw[i - 1].count ? Math.round((r.count / hiringRaw[i - 1].count) * 1000) / 10 : 0),
+      fromStartPct: Math.round((r.count / hiringFirst) * 1000) / 10,
+    }));
+    // Боковая ветка (не следующий шаг воронки — не ломает fromPrevPct) — сколько всего отвалилось.
+    hiringFunnel.push({ key: '↳ Отказ / не подходят / ушли', count: declinedCount, fromPrevPct: null, fromStartPct: Math.round((declinedCount / hiringFirst) * 1000) / 10 });
+
     // ---- hh.kz воронка ----
     const [hhSeen, hhReplied, hhGateHandled, hhGatePassed, hhDeclined] = await redisBatch([
       ['SCARD', HH_SEEN_KEY],
@@ -251,6 +286,7 @@ export default async function handler(req, res) {
         byVerdict,
         daily: days,
       },
+      hiringFunnel,
       retention: {
         employedTotal: everEmployed.length,
         stillEmployed: stillEmployed.length,

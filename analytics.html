@@ -115,6 +115,12 @@
   <div class="tiles" id="tiles"></div>
 
   <div class="section">
+    <h2>Воронка найма (все каналы)</h2>
+    <p class="note">От отклика до трудоустройства по всем источникам сразу. «От предыдущего шага» — конверсия между соседними шагами, «От всех откликов» — доля от самого начала. Здесь сразу видно, на каком шаге теряем больше всего людей.</p>
+    <div id="hiringFunnel"></div>
+  </div>
+
+  <div class="section">
     <h2>Динамика по дням (пайплайн, 14 дней)</h2>
     <p class="note">Сколько кандидатов добавлено в общий пайплайн каждый день — все каналы вместе.</p>
     <div class="daily" id="daily"></div>
@@ -256,6 +262,25 @@ function tile(label, val, sub, cls){
   return '<div class="tile'+(cls?(' '+cls):'')+'"><div class="lbl">'+esc(label)+'</div><div class="val">'+esc(val)+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>';
 }
 
+// Воронка найма по всем каналам (2026-09-10) — данные приходят из api/analytics.js как hiringFunnel:
+// Отклики → Заполнили анкету → Приглашены → Начали обучение → Закончили → Трудоустроены (плюс
+// боковая ветка «отказ/не подходят/ушли»). Показываем и абсолютное число, и обе конверсии.
+function renderHiringFunnel(el, rows){
+  if(!rows || !rows.length){ el.innerHTML='<div class="empty">Данных пока нет.</div>'; return; }
+  const max = Math.max(...rows.map(r=>r.count), 1);
+  el.innerHTML = '<table><thead><tr><th>Шаг</th><th class="num">Человек</th><th class="num">От предыдущего шага</th><th class="num">От всех откликов</th></tr></thead><tbody>'+
+    rows.map(r=>{
+      const w = Math.max(2, Math.round((r.count/max)*100));
+      const branch = String(r.key).startsWith('↳');
+      const prev = (r.fromPrevPct==null)?'—':(r.fromPrevPct+'%');
+      const start = (r.fromStartPct==null)?'—':(r.fromStartPct+'%');
+      return '<tr'+(branch?' style="opacity:.75"':'')+'><td>'+esc(r.key)+
+        '<div style="height:6px;margin-top:6px;background:var(--panel-2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,var(--brand-2),var(--brand))"></div></div></td>'+
+        '<td class="num">'+r.count+'</td><td class="num">'+prev+'</td><td class="num">'+start+'</td></tr>';
+    }).join('')+
+    '</tbody></table>';
+}
+
 function renderDaily(days){
   const max = Math.max(...days.map(d=>d.count), 1);
   $('#daily').innerHTML = days.map(d=>{
@@ -280,6 +305,7 @@ async function load(){
   ].join('');
 
   renderDaily(c.daily);
+  renderHiringFunnel($('#hiringFunnel'), d.hiringFunnel || []);
 
   // hh.kz funnel as bars
   barList($('#hhFunnel'), [
