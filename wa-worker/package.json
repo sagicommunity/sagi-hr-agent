@@ -1,0 +1,17 @@
+{
+  "name": "sagi-hr-wa-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Серый (Baileys) WhatsApp-воркер для HR-системы Sagi. Привязывается к отдельному номеру и шлёт сообщения по HTTP-запросу от hr.sagibonus.com.",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "express": "^4.21.2",
+    "pino": "^9.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "overrides": { "libsignal": "npm:libsignal@^6.0.0" }
+}

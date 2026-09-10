@@ -46,6 +46,10 @@
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const CAND_KEY = 'hr:candidates';
+
+// 2026-09-10: отправка WhatsApp кандидатам и стажёрам (серый Baileys-воркер или Cloud API).
+// Если номер ещё не подключён — sendWA тихо ничего не делает, логика ниже не падает.
+import { sendWA, HR_WA, waDigits } from './_wa.js';
 const SEEN_KEY = 'hh:seen_negotiations';       // отклику отправлено первое сообщение
 const REPLIED_KEY = 'hh:replied_negotiations'; // ответ кандидата уже оценён и по нему был алерт
 const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карусели» для фазы B — чтобы каждый прогон проверял РАЗНЫХ кандидатов, а не всегда первых N
@@ -2732,22 +2736,29 @@ export default async function handler(req, res) {
           const deadlineAt = u.createdAt + TRAINEE_DEADLINE_MS;
           const now = Date.now();
           if (now >= deadlineAt) {
-            // Срок истёк, программа не пройдена — переводим в «Не подходит» (НЕ безвозвратно,
-            // Sagi сам решает по каждому, звонком/лично — см. комментарий у TRAINEE_DEADLINE_MS).
+            // 2026-09-10, по указанию Sagi: НЕ закрываем жёстко. Раньше здесь сразу ставилось
+            // «Не подходит» — из-за этого почти все, кто не успел в 3 часа, вылетали молча
+            // (в панели это были 11 «Не подходит» с 0/10). Теперь переводим в мягкое «На паузе»,
+            // оставляем в воронке и пишем в WhatsApp, чтобы человек вернулся и закончил. Решение
+            // по каждому человеку всё равно за Sagi.
             actionsUsed++; deadlineExpired++;
             if (!dryRun) {
-              u.hireStatus = 'Не подходит';
+              u.hireStatus = 'На паузе';
               u.statusUpdatedAt = now;
-              u.statusComment = `Авто: не уложился(лась) в срок ${TRAINEE_DEADLINE_HOURS}ч на базовую программу (${doneCount}/${BASIC_MODULE_IDS.length} модулей)`;
+              u.statusComment = `Авто: время на базовую программу истекло (${doneCount}/${BASIC_MODULE_IDS.length} модулей), ждёт возврата`;
               changed = true;
               const linkedCandId = u.candId || (u.hhNegId ? 'hh_' + u.hhNegId : null);
-              if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'Не подходит' });
-              if (u.hhNegId) { await hhReply(u.hhNegId, token, buildDeadlineExpiredText(u.name, doneCount, BASIC_MODULE_IDS.length)); await hhMoveState(u.hhNegId, 'discard_by_employer', token); }
+              if (linkedCandId) await updateCandidateRecord(linkedCandId, { stage: 'На связи' });
+              if (u.hhNegId) { await hhReply(u.hhNegId, token, buildDeadlineExpiredText(u.name, doneCount, BASIC_MODULE_IDS.length)); }
+              // WhatsApp-возврат (Sagi, 2026-09-10): у кандидатов из формы/ТГ нет hh-канала,
+              // им пишем в WhatsApp. Один раз — статус уже не «Активен», повторно сюда не заходим.
+              const waTo = waDigits(u.phone);
+              if (waTo) { await sendWA(waTo, HR_WA.returnAfterDeadline(u.name)); }
               else noChannelCount++;
               const tok = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
               if (tok && chat) {
                 const traineeContact = (u.hhNegId && candById.get('hh_' + u.hhNegId)?.contact) || '—';
-                const txt = `⏰ Стажёр не уложился в срок обучения (${TRAINEE_DEADLINE_HOURS}ч) — Sagi\n\n👤 ${u.name} (@${login})\n📞 ${traineeContact}\nПрогресс: ${doneCount}/${BASIC_MODULE_IDS.length} модулей\n\nСтатус автоматически переведён в «Не подходит». Если хочешь дать ещё шанс — позвони и реши сам, статус можно вернуть в «Активен» в панели руководителя.`;
+                const txt = `⏰ Стажёр не уложился в срок обучения (${TRAINEE_DEADLINE_HOURS}ч) — Sagi\n\n👤 ${u.name} (@${login})\n📞 ${traineeContact}\nПрогресс: ${doneCount}/${BASIC_MODULE_IDS.length} модулей\n\nСтатус переведён в «На паузе», человек остался в воронке. Ему отправлено сообщение в WhatsApp с приглашением вернуться. Если не нужно — верни/закрой статус в панели руководителя.`;
                 try { await fetch(`https://api.telegram.org/bot${tok}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: txt, disable_web_page_preview: true }) }); } catch (e) {}
               }
             }
@@ -2762,6 +2773,9 @@ export default async function handler(req, res) {
                 if (!dryRun) {
                   if (u.hhNegId) { await hhReply(u.hhNegId, token, buildDeadlineReminderText(u.name, doneCount, BASIC_MODULE_IDS.length, deadlineAt - now)); remindersToTrainees++; }
                   else noChannelCount++;
+                  // WhatsApp-напоминание (Sagi, 2026-09-10) — независимо от hh-канала, если есть телефон.
+                  const waTo = waDigits(u.phone);
+                  if (waTo) await sendWA(waTo, doneCount > 0 ? HR_WA.notFinished(u.name, doneCount, BASIC_MODULE_IDS.length) : HR_WA.notStarted(u.name));
                   await redis(['SET', TRAINEE_DEADLINE_REMINDER_KEY_PREFIX + login, String(now)]);
                 } else {
                   remindersToTrainees++;

@@ -10,6 +10,8 @@ const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL 
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const CAND_KEY = 'hr:candidates';
 
+import { sendWA, HR_WA, extractPhone } from './_wa.js';
+
 async function redis(cmd) {
   if (!R_URL || !R_TOK) return null;
   const r = await fetch(R_URL, {
@@ -361,6 +363,15 @@ export default async function handler(req, res) {
       if (!saved) { await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]); await redis(['LTRIM', CAND_KEY, 0, 999]); saved = rec; }
     } catch (e) {}
     notifyTelegram(saved || rec); // best-effort, не блокируем ответ
+
+    // 2026-09-10, по указанию Sagi: после анкеты кандидат ждёт, что с ним свяжутся, а раньше
+    // ему писал только Telegram-бот РОПу. Теперь сразу шлём приглашение в WhatsApp. Только
+    // продажи (у success/support своя воронка) и только приглашённым (не «Отказ»). Если
+    // WhatsApp ещё не подключён — sendWA тихо вернёт not_configured, ничего не сломается.
+    if (!isSuccess && !isSupport && invited) {
+      const to = (saved && saved.phone) || extractPhone(rec.contact, (saved && saved.contact) || rec.contact);
+      sendWA(to, HR_WA.afterForm(rec.name)).catch(() => {});
+    }
 
     // 2026-08-26, по указанию Sagi: ссылка в шаге 1 была обычным текстом (не кликабельная на
     // apply.html — см. фронтенд-фикс с escHtml/linkify), из-за чего кандидату было неясно, куда
