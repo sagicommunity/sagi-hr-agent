@@ -190,7 +190,15 @@ app.get('/status', (req, res) => res.json({
   queue: { pending: queue.length, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size },
 }));
 
+app.get('/health', (req, res) => res.json({ ok: true, connected, number: meNumber }));
+
 app.get('/', (req, res) => {
+  if (process.env.WA_DISABLE_QR_PAGE === '1') {
+    // В проде страницу привязки наружу не отдаём: QR появляется только при отсутствии сессии,
+    // а отсканировавший чужой телефон привязал бы СВОЙ номер к нашему воркеру.
+    const q = req.query.secret || req.headers['x-wa-secret'] || '';
+    if (!SECRET || q !== SECRET) return res.status(403).send('forbidden');
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Sagi HR WhatsApp — привязка</title>
 <style>body{background:#111;color:#eee;font-family:-apple-system,Segoe UI,Roboto,sans-serif;text-align:center;padding:24px}
@@ -205,6 +213,10 @@ document.getElementById('q').src='/qr?t='+Date.now();}catch(e){}},2500);</script
 });
 
 app.get('/qr', async (req, res) => {
+  if (process.env.WA_DISABLE_QR_PAGE === '1') {
+    const q = req.query.secret || req.headers['x-wa-secret'] || '';
+    if (!SECRET || q !== SECRET) return res.status(403).end();
+  }
   if (!qrDataUrl) return res.status(204).end();
   res.setHeader('Content-Type', 'image/png');
   res.send(Buffer.from(qrDataUrl.split(',')[1] || '', 'base64'));
