@@ -49,7 +49,7 @@ const CAND_KEY = 'hr:candidates';
 
 // 2026-09-10: отправка WhatsApp кандидатам и стажёрам (серый Baileys-воркер или Cloud API).
 // Если номер ещё не подключён — sendWA тихо ничего не делает, логика ниже не падает.
-import { sendWA, HR_WA, waDigits, extractPhone as extractPhoneAny } from './_wa.js';
+import { sendWA, HR_WA, waDigits } from './_wa.js';
 const SEEN_KEY = 'hh:seen_negotiations';       // отклику отправлено первое сообщение
 const REPLIED_KEY = 'hh:replied_negotiations'; // ответ кандидата уже оценён и по нему был алерт
 const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карусели» для фазы B — чтобы каждый прогон проверял РАЗНЫХ кандидатов, а не всегда первых N
@@ -2859,49 +2859,6 @@ export default async function handler(req, res) {
       errors.push({ step: 'retention_pulse', error: e.message });
     }
 
-    // ==== ФАЗА WA: догон через WhatsApp (Sagi, 2026-09-10) ====
-    // Ставит в очередь серого WhatsApp-воркера сообщения тем, кто откликнулся и заполнил,
-    // но не дошёл до обучения, а также тем, у кого истекло время на базовую программу.
-    // Воркер сам держит темп (1 сообщение в 2 минуты), поэтому здесь можно поставить сразу
-    // много. Одно сообщение на человека — флаг в Redis (hr:wa_followup_sent / hr:wa_return_sent).
-    let waFollowChecked = 0, waFollowQueued = 0;
-    try {
-      const WA_CAP = Math.min(1000, Math.max(1, parseInt(process.env.WA_FOLLOWUP_CAP || '200', 10) || 200));
-      const NUDGE_STAGES = ['Новый', 'Ожидает ответа', 'Ответил', 'Приглашён'];
-      for (const c of candById.values()) {
-        if (waFollowQueued >= WA_CAP) break;
-        const st = c.stage || 'Новый';
-        if (!NUDGE_STAGES.includes(st)) continue;
-        const to = extractPhoneAny(c.phone, c.contact);
-        if (!to) continue;
-        waFollowChecked++;
-        const key = 'hr:wa_followup_sent:' + c.id;
-        if (await redis(['GET', key])) continue;
-        if (dryRun) { waFollowQueued++; continue; }
-        const msg = (st === 'Новый' || st === 'Ожидает ответа') ? HR_WA.coldBase(c.name) : HR_WA.afterForm(c.name);
-        const sent = await sendWA(to, msg);
-        if (sent && sent.ok !== false) { await redis(['SET', key, String(Date.now())]); waFollowQueued++; }
-      }
-      const logins3 = (await redis(['SMEMBERS', 'hr:users'])) || [];
-      for (const login of logins3) {
-        if (waFollowQueued >= WA_CAP) break;
-        const raw = await redis(['GET', 'hr:user:' + login]);
-        if (!raw) continue;
-        let u; try { u = JSON.parse(raw); } catch (e) { continue; }
-        const autoExpired = (u.hireStatus === 'На паузе') || (u.hireStatus === 'Не подходит' && /^Авто/.test(u.statusComment || ''));
-        if (!autoExpired) continue;
-        const to = extractPhoneAny(u.phone);
-        if (!to) continue;
-        const key = 'hr:wa_return_sent:' + login;
-        if (await redis(['GET', key])) continue;
-        if (dryRun) { waFollowQueued++; continue; }
-        const sent = await sendWA(to, HR_WA.returnAfterDeadline(u.name));
-        if (sent && sent.ok !== false) { await redis(['SET', key, String(Date.now())]); waFollowQueued++; }
-      }
-    } catch (e) {
-      errors.push({ step: 'wa_followup', error: e.message });
-    }
-
     res.status(200).json({
       ok: true, dryRun,
       intake: { totalResponses: items.length, newTotal: newItems.length, processed: intakeProcessed, remaining: remainingNew, preview: dryRun ? intakePreview : undefined },
@@ -2913,7 +2870,6 @@ export default async function handler(req, res) {
       trainees: { checked: traineesChecked, remindersSent: remindersToTrainees, mentorsAssigned, noChannel: noChannelCount, deadlineExpired, mentorNudgesSent },
       mentorLoad,
       retentionPulse: { checked: pulsesChecked, sent: pulsesSent },
-      waFollowup: { checked: waFollowChecked, queued: waFollowQueued },
       errors: debug ? errors : errors.length,
     });
   } catch (e) {

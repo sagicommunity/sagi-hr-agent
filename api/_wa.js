@@ -115,3 +115,30 @@ export async function sendWA(to, text) {
 export function waConfigured() {
   return !!(GREY_URL || (WA_TOKEN && WA_PHONE_ID));
 }
+
+// Батч-постановка в очередь серого воркера одним HTTP-запросом (для рассылок/догона —
+// чтобы не делать сотни отдельных вызовов). Для Cloud API просто шлёт по одному.
+export async function enqueueWA(items) {
+  const clean = (items || [])
+    .map((it) => ({ to: waDigits(it && it.to), text: it && it.text }))
+    .filter((x) => x.to && x.text);
+  if (!clean.length) return { ok: true, queued: 0 };
+  if (GREY_URL) {
+    try {
+      const r = await fetch(GREY_URL + '/enqueue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-wa-secret': GREY_SECRET },
+        body: JSON.stringify({ items: clean }),
+      });
+      return { ok: r.ok, queued: clean.length, status: r.status };
+    } catch (e) {
+      return { ok: false, queued: 0, error: e.message };
+    }
+  }
+  if (WA_TOKEN && WA_PHONE_ID) {
+    let n = 0;
+    for (const it of clean) { const r = await sendWA(it.to, it.text); if (r.ok) n++; }
+    return { ok: true, queued: n, transport: 'cloud' };
+  }
+  return { ok: false, queued: 0, skipped: 'not_configured' };
+}

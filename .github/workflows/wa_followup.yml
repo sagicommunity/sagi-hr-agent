@@ -1,0 +1,33 @@
+name: HR WhatsApp follow-up
+
+# Раз в час ставит в очередь серого WhatsApp-воркера сообщения-догона тем, кто
+# откликнулся/заполнил, но не дошёл до обучения, и тем, у кого истекло время на
+# базовую программу. Темп отправки держит сам воркер (1 сообщение в 2 минуты).
+# Запускается через тот же секрет HH_POLL_SECRET, что и опрос hh.kz.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  followup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Queue WhatsApp follow-up
+        env:
+          HH_POLL_SECRET: ${{ secrets.HH_POLL_SECRET }}
+        run: |
+          set -e
+          if [ -z "$HH_POLL_SECRET" ]; then
+            echo "::error::Секрет HH_POLL_SECRET не настроен в Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          CACHE_BUST="$RANDOM$RANDOM"
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/wa_followup?secret=${HH_POLL_SECRET}&r=${CACHE_BUST}")
+          echo "$RESP"
+          OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
+          if [ "$OK" != "true" ]; then
+            echo "::error::wa_followup не вернул ok:true — см. вывод выше"
+            exit 1
+          fi
