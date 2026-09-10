@@ -1,2 +1,6 @@
 node_modules
 auth
+queue.json
+stats.json
+replies.jsonl
+stoplist.json
