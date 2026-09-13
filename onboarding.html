@@ -529,14 +529,11 @@ function renderGroups(){
         // trainingGateStatus) присылает актуальный статус в RECORD.trainingGate; реальная
         // защита всё равно на сервере (contract_get/contract_save) — это честное отражение
         // того же самого в интерфейсе, чтобы человек не упирался в отказ на contract.html.
-        const gate = RECORD.trainingGate;
-        const locked = !checked && gate && !gate.ok;
-        const lockHint = locked
-          ? '<div style="font-size:12.5px;margin-top:8px;color:var(--warn);background:rgba(255,207,102,.08);border:1px solid rgba(255,207,102,.3);border-radius:10px;padding:8px 10px">🔒 Вкладка «Договор» откроется, когда будет готово: '+esc(gate.missing.join('; '))+'.</div>'
-          : '';
-        const signBtn = locked
-          ? '<span class="btn sec" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;opacity:.5;cursor:not-allowed" aria-disabled="true" title="Пока недоступно">🔒 Пока недоступно</span>'
-          : '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>';
+        // 2026-09-13: договор опционален и доступен в любой момент, в том числе для
+        // аккаунтов, которые руководитель создал вручную. Подписание отдельно от процента
+        // обучения, а после подписи появляется единый вход в CRM.
+        const lockHint = '';
+        const signBtn = '<a class="btn" style="padding:9px 16px;font-size:13.5px;white-space:nowrap;text-decoration:none" href="'+link+'" target="_blank" rel="noopener">'+(checked?'Открыть':'Изучить и подписать')+' →</a>';
         row.innerHTML = '<div class="itemBody" style="width:100%">'+
           '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
           '<div><label style="font-weight:'+(checked?'400':'600')+'">'+esc(text)+'</label>'+

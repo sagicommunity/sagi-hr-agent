@@ -367,6 +367,22 @@
       <div class="sub" style="margin-top:6px" id="obSub">Обязательный финальный шаг обучения — доступы, WhatsApp, видео-примеры реальных встреч. Загружаю статус…</div>
     </a>
 
+    <div class="card lbCard" id="contractCard" style="margin-bottom:6px;border-color:rgba(25,227,154,.28)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <b>📄 Договор ГПХ</b>
+          <div class="sub" id="contractStatus" style="margin-top:6px">Загружаю статус договора…</div>
+        </div>
+        <div id="contractActions" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:6px;border-color:rgba(95,155,207,.3);background:rgba(95,155,207,.06)">
+      <b>🆘 Нужна помощь?</b>
+      <div class="sub" style="margin-top:6px">Если не открывается обучение, договор или CRM, напиши или позвони в WhatsApp</div>
+      <a href="https://wa.me/77077000087" target="_blank" rel="noopener" class="btn sec small" style="display:inline-block;margin-top:10px;text-decoration:none">💬 +7 707 700 0087</a>
+    </div>
+
     <!-- 2026-08-26, по указанию Sagi: рейтинг стажёров по баллам за модули — публичный, все видят
          друг друга по именам (решение Sagi, по аналогии с лидербордом на фитнес-занятиях). -->
     <div class="card lbCard" id="lbTeaserCard" style="margin-bottom:6px" onclick="openLeaderboard()">
@@ -904,6 +920,7 @@ function renderCabinet(u){
   loadTrainerStats(u.login);
   loadLeaderboardTeaser();
   loadOnboardingStatus(u, doneCount, all.length);
+  loadContractStatus(u);
 
   show('screen-cabinet');
 }
@@ -945,6 +962,35 @@ async function loadOnboardingStatus(u, modDone, modTotal){
     fr.querySelector('.mt').innerHTML='Чек-лист адаптации<small>'+descTxt+'</small>';
   }
 }
+// Договор доступен из кабинета в любой момент и не входит в процент обучения.
+// Для вручную созданных аккаунтов onboarding-записи может ещё не быть — сервер берёт имя
+// из hr:user:<login>. После акцепта кнопка ведёт единым SSO-входом в CRM.
+async function loadContractStatus(u){
+  const status=$('#contractStatus'), actions=$('#contractActions');
+  if(!status||!actions) return;
+  const link='/contract.html?id='+encodeURIComponent(u.login)+'&name='+encodeURIComponent(u.name||'')+'&role=sales';
+  try{
+    const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'contract_get',id:u.login})});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    if(d.item&&d.item.signed){
+      status.textContent='✅ Подписан. Договор сохранён в личном деле.'; status.style.color='var(--brand)';
+      actions.innerHTML='<button class="btn small" onclick="openCrmFromCabinet(this)">Войти в CRM →</button><a class="btn sec small" href="'+link+'" target="_blank" rel="noopener" style="text-decoration:none">Открыть договор</a>';
+    }else{
+      status.textContent='Опционально. Можно подписать договор сейчас, после этого будет доступен вход в CRM.'; status.style.color='var(--muted)';
+      actions.innerHTML='<a class="btn small" href="'+link+'" target="_blank" rel="noopener" style="text-decoration:none">Изучить и подписать →</a>';
+    }
+  }catch(e){ status.textContent='Не удалось загрузить статус договора. Вопросы — в WhatsApp +7 707 700 0087'; status.style.color='var(--warn)'; }
+}
+async function openCrmFromCabinet(btn){
+  const old=btn.textContent; btn.disabled=true; btn.textContent='Открываю…';
+  try{
+    const r=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sso_crm',id:CUR&&CUR.login||''})});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    if(d.url) window.open(d.url,'_blank','noopener');
+  }catch(e){ alert(e.message||'Не удалось открыть CRM'); }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+
 async function loadTrainerStats(login){
   const el=$('#trainerStats'); if(!el) return;
   el.textContent='Загружаю статистику тренажёра…';

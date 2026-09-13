@@ -205,7 +205,9 @@ async function notifyTelegram(text) {
 }
 
 function computeProgress(role, checked) {
-  const items = itemsForRole(role);
+  // Договор ГПХ — отдельный необязательный юридический шаг, не часть процента
+  // обучения. Его статус хранится отдельно в hr:contract.
+  const items = itemsForRole(role).filter(([key]) => key !== CONTRACT_ITEM_KEY);
   const total = items.length;
   let done = 0;
   for (const [key] of items) if (checked && checked[key] === true) done++;
@@ -358,16 +360,11 @@ export default async function handler(req, res) {
       const existing = await loadContract(id);
       if (existing) { res.status(200).json({ ok: true, item: { ...existing, signed: true } }); return; }
       const onboarding = await loadRecord(id);
-      let trainingGate = null;
-      if (onboarding && onboarding.role === 'sales') {
-        const checked = { ...(onboarding.checked || {}) };
-        checked[CONTRACT_ITEM_KEY] = false; // ещё не подписан — мы как раз это и проверяем
-        const trainingUser = await loadTrainingUser(id);
-        trainingGate = trainingGateStatus(trainingUser, checked, onboarding.role);
-      }
+      const trainingUser = onboarding ? null : await loadTrainingUser(id);
+      const owner = onboarding || (trainingUser ? { role: 'sales', name: trainingUser.name || '' } : null);
       res.status(200).json({
         ok: true,
-        item: { id, signed: false, role: onboarding?.role || '', name: onboarding?.name || '', trainingGate },
+        item: { id, signed: false, role: owner?.role || '', name: owner?.name || '', trainingGate: null },
       });
       return;
     }
@@ -381,20 +378,8 @@ export default async function handler(req, res) {
       if (already) { res.status(200).json({ ok: true, item: { ...already, signed: true } }); return; }
 
       const onboarding = await loadRecord(id);
-      if (!onboarding) { res.status(400).json({ error: 'Не найден чек-лист адаптации для этого id — сначала начните его на onboarding.html' }); return; }
-
-      // 2026-09-08, по указанию Sagi: договор нельзя подписать, пока не пройдено базовое
-      // обучение, стажировка и не закончен ПОЛНОСТЬЮ чек-лист адаптации — см. trainingGateStatus.
-      if (onboarding.role === 'sales') {
-        const checked = { ...(onboarding.checked || {}) };
-        checked[CONTRACT_ITEM_KEY] = false;
-        const trainingUser = await loadTrainingUser(id);
-        const gate = trainingGateStatus(trainingUser, checked, onboarding.role);
-        if (!gate.ok) {
-          res.status(403).json({ error: 'Договор пока нельзя подписать — сначала нужно: ' + gate.missing.join('; ') + '.', trainingGate: gate });
-          return;
-        }
-      }
+      const trainingUser = onboarding ? null : await loadTrainingUser(id);
+      if (!onboarding && !trainingUser) { res.status(400).json({ error: 'Не найден аккаунт стажёра' }); return; }
 
       const fieldsIn = (body?.fields && typeof body.fields === 'object') ? body.fields : {};
       const fields = {};
@@ -422,7 +407,7 @@ export default async function handler(req, res) {
         || (req.headers['x-real-ip'] || '').toString() || '';
       const item = {
         id,
-        role: onboarding.role || '',
+        role: onboarding?.role || 'sales',
         fields,
         contractVersion: CONTRACT_VERSION,
         signedAt: Date.now(),
@@ -431,7 +416,7 @@ export default async function handler(req, res) {
       await redis(['HSET', CONTRACT_HKEY, id, JSON.stringify(item)]);
 
       // Личное дело → CRM (чтобы Sagi видел подписанный договор в crm.sagibonus.com).
-      await pushPersonalFileToCrm(item, onboarding.name || '');
+      await pushPersonalFileToCrm(item, onboarding?.name || trainingUser?.name || '');
 
       notifyTelegram(
         `📄 Договор ГПХ подписан — Sagi\n\n` +
@@ -520,10 +505,12 @@ export default async function handler(req, res) {
       if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
       if (!SSO_SECRET) { res.status(503).json({ error: 'Единый вход не настроен (нет SSO_SHARED_SECRET)' }); return; }
       const rec = await loadRecord(id);
-      if (!rec) { res.status(400).json({ error: 'Не найден профиль стажёра' }); return; }
+      const trainingUser = rec ? null : await loadTrainingUser(id);
+      const owner = rec || (trainingUser ? { name: trainingUser.name || '', role: 'sales' } : null);
+      if (!owner) { res.status(400).json({ error: 'Не найден профиль стажёра' }); return; }
       const signed = await isContractSigned(id);
       if (!signed) { res.status(403).json({ error: 'Сначала изучите и подпишите договор ГПХ' }); return; }
-      res.status(200).json({ ok: true, url: crmSsoUrl(id, rec.name || '', rec.role || '') });
+      res.status(200).json({ ok: true, url: crmSsoUrl(id, owner.name || '', owner.role || 'sales') });
       return;
     }
 
