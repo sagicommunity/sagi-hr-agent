@@ -6,6 +6,7 @@
   "redirects": [
     { "source": "/dashboard", "destination": "/analytics.html", "permanent": false },
     { "source": "/dashboard/", "destination": "/analytics.html", "permanent": false },
-    { "source": "/dashboard/:path*", "destination": "/analytics.html", "permanent": false }
+    { "source": "/dashboard/:path*", "destination": "/analytics.html", "permanent": false },
+    { "source": "/hr-agent-app-sync/:path*", "destination": "/:path*", "permanent": false }
   ]
 }
