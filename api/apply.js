@@ -191,12 +191,18 @@ export default async function handler(req, res) {
     const contact = (body?.contact || '').toString().slice(0, 120).trim();
     const ageRaw = body?.age;
     const age = (typeof ageRaw === 'number' && ageRaw >= 14 && ageRaw <= 75) ? ageRaw : null;
-    const city = (body?.city || '').toString().slice(0, 80).trim();
-    const source = (body?.source || '').toString().slice(0, 80).trim();
-    const expSales = (body?.expSales || '').toString().slice(0, 200).trim();
-    const techReady = (body?.techReady || '').toString().slice(0, 200).trim();
-    const noCombine = (body?.noCombine || '').toString().slice(0, 200).trim();
-    const startWhen = (body?.startWhen || '').toString().slice(0, 120).trim();
+    // 2026-09-14, по указанию Sagi («не пропускает, разреши любой вариант писать» — менеджер
+    // сообщил, что заявка кандидата блокируется): раньше эти поля были жёстко обязательны, и
+    // заявка, пришедшая не через актуальную форму apply.html (старая ссылка / кэш / другой
+    // источник без этих конкретных полей), падала с «заполните все обязательные поля» даже когда
+    // кандидат явно всё заполнил на своей странице. Теперь недостающее подставляем плейсхолдером
+    // вместо блокировки — заявка всегда проходит, Sagi/рекрутер видит «не указано» и уточняет сам.
+    const city = (body?.city || '').toString().slice(0, 80).trim() || 'не указано';
+    const source = (body?.source || '').toString().slice(0, 80).trim() || 'не указано';
+    const expSales = (body?.expSales || '').toString().slice(0, 200).trim() || 'не указано';
+    const techReady = (body?.techReady || '').toString().slice(0, 200).trim() || 'не указано';
+    const noCombine = (body?.noCombine || '').toString().slice(0, 200).trim() || 'не указано';
+    const startWhen = (body?.startWhen || '').toString().slice(0, 120).trim() || 'не указано';
     const comment = (body?.comment || '').toString().slice(0, 2000).trim();
     // 2026-08-19, реферальная программа (по указанию Sagi): друг указывает, кто из сотрудников/
     // стажёров его порекомендовал — имя и телефон, БЕЗ сверки с базой сотрудников («без проверки»,
@@ -218,21 +224,21 @@ export default async function handler(req, res) {
     // день попросил вернуть — эта роль реально требует ИИ-инструменты в повседневной работе.
     // Уровень казахского — вопрос ТОЛЬКО для success_remote (см. apply.html: showKazakh), добавлен
     // 2026-08-23 по правке Асемгуль (COO): для этой роли это реальное требование, а не «плюс».
-    const aiComfort = (body?.aiComfort || '').toString().slice(0, 200).trim();
-    const kazakh = (body?.kazakh || '').toString().slice(0, 200).trim();
+    const aiComfort = (body?.aiComfort || '').toString().slice(0, 200).trim() || 'не указано';
+    const kazakh = (body?.kazakh || '').toString().slice(0, 200).trim() || 'не указано';
     // 2026-08-24, по указанию Sagi: конкретные вопросы для support_remote (список от Sagi) —
     // кассовые интеграции, объём обращений в день, CRM Битрикс24, Product Management. cashIntegrationDetail
     // и supportTicketsPerDay — необязательные уточнения (не блокируют отправку формы).
-    const cashIntegration = (body?.cashIntegration || '').toString().slice(0, 200).trim();
+    const cashIntegration = (body?.cashIntegration || '').toString().slice(0, 200).trim() || 'не указано';
     const cashIntegrationDetail = (body?.cashIntegrationDetail || '').toString().slice(0, 200).trim();
     const supportTicketsPerDay = (body?.supportTicketsPerDay || '').toString().slice(0, 120).trim();
-    const bitrix24 = (body?.bitrix24 || '').toString().slice(0, 200).trim();
-    const productManagement = (body?.productManagement || '').toString().slice(0, 200).trim();
+    const bitrix24 = (body?.bitrix24 || '').toString().slice(0, 200).trim() || 'не указано';
+    const productManagement = (body?.productManagement || '').toString().slice(0, 200).trim() || 'не указано';
     // 2026-08-24, добавлено по указанию Sagi: график (готовность к вечерам/выходным, если
     // потребуется) и самооценка грамотности письменной речи (общение с клиентами в основном
     // перепиской в WhatsApp/чате) — тоже только для support_remote.
-    const workSchedule = (body?.workSchedule || '').toString().slice(0, 200).trim();
-    const literacy = (body?.literacy || '').toString().slice(0, 200).trim();
+    const workSchedule = (body?.workSchedule || '').toString().slice(0, 200).trim() || 'не указано';
+    const literacy = (body?.literacy || '').toString().slice(0, 200).trim() || 'не указано';
     // Метка канала-источника (hh.kz-негоциация / Telegram-чат и т.д.) — см. findAndUpdateCandidate выше.
     const refId = (body?.refId || '').toString().slice(0, 100).trim();
     // 2026-08-26, по указанию Sagi: флаг «пришёл по ссылке, которую Sagi переслал лично» (?src=wa
@@ -242,8 +248,14 @@ export default async function handler(req, res) {
     const viaPersonalLink = body?.viaPersonalLink === true;
     const needAiComfort = isSuccess || isSupport;
     const needSupportExtra = isSupport;
-    if (!name || !contact || !city || !source || !expSales || !techReady || !noCombine || !startWhen || (needAiComfort && !aiComfort) || (isSuccess && !kazakh) || (needSupportExtra && (!cashIntegration || !bitrix24 || !productManagement || !workSchedule || !literacy))) {
-      res.status(400).json({ error: 'Заполните, пожалуйста, все обязательные поля анкеты.' }); return;
+    // 2026-09-14, по указанию Sagi: единственное, что реально нужно, чтобы связаться с кандидатом —
+    // имя и контакт. Раньше сюда же попадали city/source/expSales/... и весь блок для success/support
+    // (aiComfort/kazakh/cashIntegration/...) — если анкета пришла без какого-то из этих конкретных
+    // полей (старая версия формы, другой источник и т.п.), заявка блокировалась целиком с «заполните
+    // все обязательные поля», хотя кандидат реально всё написал у себя на странице. Все эти поля
+    // теперь подставляют «не указано», если пусты (см. выше), и никогда не блокируют отправку.
+    if (!name || !contact) {
+      res.status(400).json({ error: 'Заполните, пожалуйста, имя и контакт — иначе не сможем связаться.' }); return;
     }
 
     const expQLabel = isSuccess ? 'Опыт работы с текущими клиентами / удержанием'
