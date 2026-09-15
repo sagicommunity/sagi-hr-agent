@@ -8,7 +8,13 @@ name: HR daily digest
 on:
   schedule:
     - cron: '0 2 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dryrun:
+        description: 'dryrun=1 — только посчитать и показать, в Telegram не слать'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   digest:
@@ -17,14 +23,20 @@ jobs:
       - name: Send daily digest
         env:
           HH_POLL_SECRET: ${{ secrets.HH_POLL_SECRET }}
+          DRYRUN: ${{ inputs.dryrun }}
         run: |
           set -e
           if [ -z "$HH_POLL_SECRET" ]; then
             echo "::error::Секрет HH_POLL_SECRET не настроен в Settings → Secrets and variables → Actions"
             exit 1
           fi
+          DRY_PARAM=""
+          if [ "$DRYRUN" = "true" ]; then
+            DRY_PARAM="&dryrun=1"
+            echo "::notice::Тестовый прогон (dryrun) — в Telegram отправлено не будет"
+          fi
           CACHE_BUST="$RANDOM$RANDOM"
-          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&digest=1&r=${CACHE_BUST}")
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&digest=1${DRY_PARAM}&r=${CACHE_BUST}")
           echo "$RESP"
           OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
           if [ "$OK" != "true" ]; then

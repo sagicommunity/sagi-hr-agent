@@ -8,7 +8,13 @@ name: HR WhatsApp reactivate old base
 on:
   schedule:
     - cron: '15 3 * * 1'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dryrun:
+        description: 'dryrun=1 — только посчитать и показать, ничего не отправлять'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   reactivate:
@@ -17,14 +23,20 @@ jobs:
       - name: Queue reactivation messages
         env:
           HH_POLL_SECRET: ${{ secrets.HH_POLL_SECRET }}
+          DRYRUN: ${{ inputs.dryrun }}
         run: |
           set -e
           if [ -z "$HH_POLL_SECRET" ]; then
             echo "::error::Секрет HH_POLL_SECRET не настроен в Settings → Secrets and variables → Actions"
             exit 1
           fi
+          DRY_PARAM=""
+          if [ "$DRYRUN" = "true" ]; then
+            DRY_PARAM="&dryrun=1"
+            echo "::notice::Тестовый прогон (dryrun) — сообщения отправлены не будут"
+          fi
           CACHE_BUST="$RANDOM$RANDOM"
-          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&reactivate=1&r=${CACHE_BUST}")
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&reactivate=1${DRY_PARAM}&r=${CACHE_BUST}")
           echo "$RESP"
           OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
           if [ "$OK" != "true" ]; then
