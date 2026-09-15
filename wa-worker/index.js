@@ -87,6 +87,41 @@ let lastError = '';
 let lastSentAt = 0;
 let sending = false;
 
+// ── Алерт в Telegram при обрыве связи (Sagi, 2026-09-15) ──────────────────
+// Раньше про обрыв узнавали только зайдя в статус вручную — реальный случай: номер лежал
+// отключённым (logged out) больше 2 суток, накопилось 525 сообщений в очереди, никто не заметил,
+// потому что ничего никуда не сигналило. Теперь шлём алерт в Telegram сразу при отключении, потом
+// повторяем раз в час, пока не переподключится (чтобы точно не пропустили, а не только один раз
+// в моменте), и отдельно шлём «снова подключён» с длительностью простоя, когда починили.
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
+const PUBLIC_URL = (process.env.WA_PUBLIC_URL || '').replace(/\/+$/, ''); // например https://wa-hr.sagibonus.com — для ссылки на страницу QR в алерте
+let downSince = 0;
+let lastDownAlertAt = 0;
+const DOWN_ALERT_REPEAT_MS = 60 * 60 * 1000; // повторный алерт не чаще раза в час
+const DOWN_ALERT_MIN_DELAY_MS = 10 * 60 * 1000; // первый повтор — не раньше чем через 10 минут простоя (не считая мгновенного алерта на logged out)
+
+async function tgSend(text) {
+  if (!TG_TOKEN || !TG_CHAT) { rlog('TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы — алерт не отправлен:', text.replace(/\n/g, ' | ')); return; }
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: TG_CHAT, text, disable_web_page_preview: true }),
+    });
+  } catch (e) { rlog('ошибка отправки Telegram-алерта:', e.message); }
+}
+function reconnectHint() {
+  return PUBLIC_URL
+    ? `Открой ${PUBLIC_URL}/ и отсканируй новый QR в WhatsApp этого номера (Настройки → Связанные устройства).`
+    : `Открой страницу привязки воркера (адрес — там же, где настраивали WA_GREY_URL) и отсканируй новый QR.`;
+}
+function fmtDur(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 60) return m + ' мин';
+  const h = Math.floor(m / 60), mm = m % 60;
+  return h + ' ч' + (mm ? ' ' + mm + ' мин' : '');
+}
+
 const digits = (s) => String(s || '').replace(/\D/g, '');
 const todayAlmaty = () => new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
 function persistQueue() { save(QUEUE_FILE, queue); }
@@ -135,12 +170,20 @@ async function start() {
         connected = true; qrDataUrl = '';
         meNumber = (sock.user && sock.user.id ? String(sock.user.id).split(':')[0].split('@')[0] : '');
         rlog('подключено, номер', meNumber);
+        if (downSince) {
+          const dur = fmtDur(Date.now() - downSince);
+          tgSend(`✅ HR WhatsApp (${meNumber}) снова подключён.\nБыл отключён: ${dur}.\nВ очереди: ${queue.length} сообщений — рассылка продолжится.`);
+          downSince = 0; lastDownAlertAt = 0;
+        }
       } else if (connection === 'close') {
         connected = false;
         const code = lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode;
+        if (!downSince) downSince = Date.now();
         if (code === DisconnectReason.loggedOut) {
           lastError = 'logged out — нужен новый QR';
           rlog('номер отвязан. Сканируй QR заново.');
+          tgSend(`⚠️ HR WhatsApp отключился — номер отвязан, нужен новый QR.\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
+          lastDownAlertAt = Date.now();
         } else {
           rlog('соединение закрыто, переподключаюсь…', code || '');
           setTimeout(() => { starting = false; start(); }, 3000);
@@ -196,6 +239,17 @@ async function tick() {
   }
 }
 setInterval(() => tick().catch(() => {}), 10000);
+
+// Повторный алерт, пока не переподключится — на случай, если самый первый (при logged out) не
+// заметили или соединение отвалилось не по «logged out», а просто перестало восстанавливаться.
+setInterval(() => {
+  if (connected || !downSince) return;
+  const elapsed = Date.now() - downSince;
+  if (elapsed < DOWN_ALERT_MIN_DELAY_MS) return;
+  if (Date.now() - lastDownAlertAt < DOWN_ALERT_REPEAT_MS) return;
+  tgSend(`⚠️ HR WhatsApp всё ещё отключён (${fmtDur(elapsed)}).\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
+  lastDownAlertAt = Date.now();
+}, 5 * 60 * 1000);
 
 // ── HTTP ─────────────────────────────────────────────────
 const app = express();
