@@ -1,0 +1,33 @@
+name: HR daily digest
+
+# Раз в сутки шлёт Sagi в Telegram короткий отчёт: сколько новых заявок за сутки, воронка
+# по стадиям, статус WhatsApp-воркера (подключён ли, что в очереди) — чтобы не заходить и
+# не проверять руками каждый день. 07:00 по Алматы = 02:00 UTC. Запускается через тот же
+# секрет HH_POLL_SECRET.
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send daily digest
+        env:
+          HH_POLL_SECRET: ${{ secrets.HH_POLL_SECRET }}
+        run: |
+          set -e
+          if [ -z "$HH_POLL_SECRET" ]; then
+            echo "::error::Секрет HH_POLL_SECRET не настроен в Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          CACHE_BUST="$RANDOM$RANDOM"
+          RESP=$(curl -s -m 55 "https://hr.sagibonus.com/api/hh_poll?secret=${HH_POLL_SECRET}&digest=1&r=${CACHE_BUST}")
+          echo "$RESP"
+          OK=$(echo "$RESP" | jq -r '.ok // false' 2>/dev/null || echo "false")
+          if [ "$OK" != "true" ]; then
+            echo "::error::daily_digest не вернул ok:true — см. вывод выше"
+            exit 1
+          fi

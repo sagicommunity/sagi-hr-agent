@@ -34,6 +34,13 @@
 //   ?dryrun=1       — ничего не отправлять/не сохранять/не помечать, только показать, что бы произошло
 //   ?limit=N        — сколько НОВЫХ откликов обработать за этот запуск (по умолчанию 5)
 //   ?limitReplies=N — сколько ожидающих ответа проверить на новые сообщения за этот запуск (по умолчанию 5)
+//   ?followup=1     — догон по WhatsApp тем, кто откликнулся/заполнил, но не дошёл до обучения
+//                      (эскалация до 3 сообщений с нарастающим интервалом, см. блок ниже), раз в час
+//                      (.github/workflows/wa_followup.yml)
+//   ?reactivate=1   — реактивация старой базы (кому отказали/не подошёл раньше), раз в неделю
+//                      (.github/workflows/wa_reactivate.yml)
+//   ?digest=1       — ежедневный отчёт в Telegram (воронка, статус WhatsApp), раз в сутки
+//                      (.github/workflows/daily_digest.yml)
 //
 // Env нужны:
 //   HH_CLIENT_ID, HH_CLIENT_SECRET       — уже должны быть в проекте (используются и в chat.js для поиска вакансий)
@@ -680,20 +687,54 @@ export default async function handler(req, res) {
         const raw = await redis(['GET', 'hr:user:' + l]);
         if (raw) { try { usersF.push({ login: l, u: JSON.parse(raw) }); } catch (e) {} }
       }
-      const followDone = new Set((await redis(['SMEMBERS', 'hr:wa_followup_done'])) || []);
+      // 2026-09-15, по указанию Sagi («умнее автонапоминания») — раньше каждый кандидат получал
+      // РОВНО одно напоминание за всё время (простой SET hr:wa_followup_done) и на этом всё, даже
+      // если он так и не ответил и не сдвинулся с места. Теперь ведём состояние в HASH
+      // hr:wa_followup_state (id -> {count,lastAt}) и догоняем ещё дважды с нарастающим интервалом
+      // (через 3 дня после первого, потом ещё через 4), текст каждый раз мягче/короче, после чего
+      // останавливаемся (см. HR_WA.nudgeAgain/nudgeFinal в _wa.js). Старый SET читаем один раз для
+      // миграции — кто уже получил первое сообщение раньше, тому проставляем count=1/lastAt=сейчас,
+      // чтобы не обвалить всем сразу второе сообщение в момент деплоя этой правки.
+      const followDoneOld = new Set((await redis(['SMEMBERS', 'hr:wa_followup_done'])) || []);
+      const followStateFlat = await redis(['HGETALL', 'hr:wa_followup_state']);
+      const followState = {};
+      if (Array.isArray(followStateFlat)) {
+        for (let i = 0; i < followStateFlat.length; i += 2) {
+          try { followState[followStateFlat[i]] = JSON.parse(followStateFlat[i + 1]); } catch (e) {}
+        }
+      }
       const returnDone = new Set((await redis(['SMEMBERS', 'hr:wa_return_done'])) || []);
       const NUDGE = ['Новый', 'Ожидает ответа', 'Ответил', 'Приглашён'];
-      const items = [], fIds = [], rLogins = [], byStage = {};
+      const NUDGE2_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
+      const NUDGE3_DELAY_MS = 4 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const items = [], rLogins = [], byStage = {}, migrateWrites = {}, sendWrites = {};
+      let firstSent = 0, escalated2 = 0, escalated3 = 0;
       for (const c of candidates) {
         if (items.length >= cap) break;
         const st = c.stage || 'Новый';
         if (!NUDGE.includes(st)) continue;
         const to = extractPhoneAny(c.phone, c.contact);
         if (!to) continue;
-        if (followDone.has(String(c.id))) continue;
+        const id = String(c.id);
+        let s = followState[id];
+        if (!s) {
+          if (followDoneOld.has(id)) { s = { count: 1, lastAt: now }; if (!dry) migrateWrites[id] = s; }
+          else s = { count: 0, lastAt: 0 };
+        }
+        let text = null, nextCount = null;
+        if (s.count === 0) {
+          text = (st === 'Новый' || st === 'Ожидает ответа') ? HR_WA.coldBase(c.name) : HR_WA.afterForm(c.name);
+          nextCount = 1; firstSent++;
+        } else if (s.count === 1 && now - s.lastAt >= NUDGE2_DELAY_MS) {
+          text = HR_WA.nudgeAgain(c.name); nextCount = 2; escalated2++;
+        } else if (s.count === 2 && now - s.lastAt >= NUDGE3_DELAY_MS) {
+          text = HR_WA.nudgeFinal(c.name); nextCount = 3; escalated3++;
+        }
+        if (!text) continue;
         byStage[st] = (byStage[st] || 0) + 1;
-        items.push({ to, text: (st === 'Новый' || st === 'Ожидает ответа') ? HR_WA.coldBase(c.name) : HR_WA.afterForm(c.name) });
-        fIds.push(String(c.id));
+        items.push({ to, text });
+        sendWrites[id] = { count: nextCount, lastAt: now };
       }
       for (const { login, u } of usersF) {
         if (items.length >= cap) break;
@@ -706,17 +747,111 @@ export default async function handler(req, res) {
         rLogins.push(login);
       }
       let queued = 0;
+      if (!dry && Object.keys(migrateWrites).length) {
+        for (const [id, s] of Object.entries(migrateWrites)) await redis(['HSET', 'hr:wa_followup_state', id, JSON.stringify(s)]);
+      }
       if (!dry && items.length) {
         const r = await enqueueWA(items);
         if (r && r.ok && r.queued) {
           queued = r.queued;
-          if (fIds.length) await redis(['SADD', 'hr:wa_followup_done', ...fIds]);
           if (rLogins.length) await redis(['SADD', 'hr:wa_return_done', ...rLogins]);
+          for (const [id, s] of Object.entries(sendWrites)) await redis(['HSET', 'hr:wa_followup_state', id, JSON.stringify(s)]);
         }
       } else {
         queued = items.length;
       }
-      res.status(200).json({ ok: true, dryRun: dry, cap, candidatesChecked: candidates.length, usersChecked: usersF.length, byStage, toReturn: rLogins.length, queued });
+      res.status(200).json({ ok: true, dryRun: dry, cap, candidatesChecked: candidates.length, usersChecked: usersF.length, byStage, toReturn: rLogins.length, queued, firstSent, escalated2, escalated3, migrated: Object.keys(migrateWrites).length });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+
+  // ==== Реактивация старой базы (Sagi, 2026-09-15, «хантинг» — реактивация уже собранной базы) ====
+  // GET /api/hh_poll?secret=...&reactivate=1 — отдельным нечастым запуском (см.
+  // .github/workflows/wa_reactivate.yml, раз в неделю, а не каждый час как followup, чтобы не
+  // выглядело навязчиво). Кандидатам, которым раньше отказали / кто не подошёл на тот момент, но
+  // вакансия открыта постоянно — пишем ОДИН раз (hr:wa_reactivate_done), и только если с момента
+  // заявки прошло не меньше месяца (свежие отказы не трогаем, решение ещё «свежее»).
+  if (req.query?.reactivate === '1') {
+    try {
+      const cap = Math.min(500, Math.max(1, parseInt(req.query?.cap, 10) || 100));
+      const dry = req.query?.dryrun === '1';
+      const REACTIVATE_STAGES = ['Отказ', 'Резерв', 'Не подходит'];
+      const REACTIVATE_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+      const candRaw = await redis(['LRANGE', 'hr:candidates', 0, 1999]);
+      const candidates = (Array.isArray(candRaw) ? candRaw : []).map((s) => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const done = new Set((await redis(['SMEMBERS', 'hr:wa_reactivate_done'])) || []);
+      const now = Date.now();
+      const items = [], ids = [];
+      for (const c of candidates) {
+        if (items.length >= cap) break;
+        const st = c.stage || '';
+        if (!REACTIVATE_STAGES.includes(st)) continue;
+        const id = String(c.id);
+        if (done.has(id)) continue;
+        if (!c.ts || now - c.ts < REACTIVATE_MIN_AGE_MS) continue;
+        const to = extractPhoneAny(c.phone, c.contact);
+        if (!to) continue;
+        items.push({ to, text: HR_WA.reactivateOld(c.name) });
+        ids.push(id);
+      }
+      let queued = 0;
+      if (!dry && items.length) {
+        const r = await enqueueWA(items);
+        if (r && r.ok && r.queued) { queued = r.queued; if (ids.length) await redis(['SADD', 'hr:wa_reactivate_done', ...ids]); }
+      } else {
+        queued = items.length;
+      }
+      res.status(200).json({ ok: true, dryRun: dry, cap, candidatesChecked: candidates.length, queued });
+    } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
+    return;
+  }
+
+  // ==== Ежедневный отчёт в Telegram (Sagi, 2026-09-15) ====
+  // GET /api/hh_poll?secret=...&digest=1 — раз в сутки (см. .github/workflows/daily_digest.yml).
+  // Коротко: сколько новых заявок за сутки, воронка по стадиям, статус WhatsApp-воркера (подключён
+  // ли, что в очереди) — чтобы не заходить и не проверять руками, и особенно чтобы сразу было видно,
+  // если WhatsApp отвалился, а алерт при обрыве (см. wa-worker/index.js) по какой-то причине не дошёл.
+  if (req.query?.digest === '1') {
+    try {
+      const dry = req.query?.dryrun === '1';
+      const candRaw = await redis(['LRANGE', 'hr:candidates', 0, 1999]);
+      const candidates = (Array.isArray(candRaw) ? candRaw : []).map((s) => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      const newToday = candidates.filter((c) => c.ts && now - c.ts < dayMs).length;
+      const byStage = {};
+      for (const c of candidates) { const st = c.stage || 'Новый'; byStage[st] = (byStage[st] || 0) + 1; }
+      const GREY = (process.env.WA_GREY_URL || '').replace(/\/+$/, '');
+      const GREY_SECRET = process.env.WA_GREY_SECRET || '';
+      let wa = { configured: !!GREY };
+      if (GREY) {
+        try {
+          const wr = await fetch(GREY + '/status', { headers: { 'x-wa-secret': GREY_SECRET } });
+          if (wr.ok) wa = { configured: true, ...(await wr.json()) };
+          else wa.error = 'HTTP ' + wr.status;
+        } catch (e) { wa.error = e.message; }
+      }
+      const stagesOrder = ['Новый', 'Ожидает ответа', 'Ответил', 'Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен', 'Не подходит', 'Отказ', 'Ушёл'];
+      const funnelLine = stagesOrder.filter((s) => byStage[s]).map((s) => s + ' ' + byStage[s]).join(' · ') || 'пусто';
+      const pending = (wa.queue && wa.queue.pending) || 0;
+      const waLine = !wa.configured
+        ? 'не настроен'
+        : wa.connected
+        ? `подключён (${wa.number || '—'}), в очереди ${pending}`
+        : `⚠️ ОТКЛЮЧЁН${wa.lastError ? ' (' + wa.lastError + ')' : ''}, в очереди ${pending}`;
+      const text = `📊 Ежедневный отчёт HR — Sagi\n\n` +
+        `Новых заявок за сутки: ${newToday}\n` +
+        `Воронка: ${funnelLine}\n` +
+        `Всего кандидатов в базе: ${candidates.length}\n` +
+        `WhatsApp: ${waLine}\n\n` +
+        `Пайплайн: https://hr.sagibonus.com/pipeline.html`;
+      const token = process.env.TELEGRAM_BOT_TOKEN || '', chat = process.env.TELEGRAM_CHAT_ID || '';
+      let sent = false;
+      if (token && chat && !dry) {
+        const tr = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) });
+        sent = tr.ok;
+      }
+      res.status(200).json({ ok: true, dryRun: dry, sent, text, byStage, newToday, wa });
     } catch (e) { res.status(200).json({ ok: false, error: e.message }); }
     return;
   }
