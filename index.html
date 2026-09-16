@@ -1372,6 +1372,13 @@ let bossTabApplied=false;
 // сразу по ссылке (?boss=1&tab=...), когда сюда редиректят старые самостоятельные страницы
 // (pipeline.html, analytics.html и т.д. — см. их редирект наверху, если открыты не как ?embed=1).
 // ── WhatsApp-рассылка: статус воркера, журнал отправок и тексты (Sagi, 2026-09-10) ──
+// 2026-09-16: найден реальный корень бага «Загружаю... виснет навсегда» — esc() здесь
+// использовалась (waStatusChip/rows/tbox/catch) с самого начала, но никогда не была
+// определена в этом файле (есть в pipeline.html/analytics.html и др., но не была
+// скопирована сюда) → renderWaPane() всегда падал с ReferenceError внутри try, ПОЭТОМУ
+// панель никогда не отрисовывалась, независимо от статуса воркера. Тот же helper, что
+// в остальных страницах проекта.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function waFmtTime(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
 function waStatusChip(d){
   if(!d.configured) return '<span class="tag warn">не настроен</span>';
