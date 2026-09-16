@@ -1378,8 +1378,34 @@ function waStatusChip(d){
   if(d.connected) return '<span class="tag mg">подключён'+(d.number?(' · '+d.number):'')+'</span>';
   return '<span class="tag warn">Отключён'+(d.lastError?(' · '+esc(d.lastError)):'')+'</span>';
 }
+// 2026-09-16, по просьбе Sagi: раньше для привязки номера заново приходилось звать Claude —
+// теперь QR виден и обновляется прямо в этой панели, без ручного вмешательства.
+let _waPollTimer=null;
+function waStopPoll(){ if(_waPollTimer){ clearInterval(_waPollTimer); _waPollTimer=null; } }
+async function waFetchQr(){
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_qr',password:BOSS_PW})});
+    const d=await r.json();
+    return (d && d.ok) ? (d.qr||null) : null;
+  }catch(e){ return null; }
+}
+async function waPollTick(){
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_status',password:BOSS_PW})});
+    const d=await r.json(); if(!r.ok||d.error) return;
+    if(d.connected){ waStopPoll(); renderWaPane(); return; }
+    const chip=document.getElementById('waChip'); if(chip) chip.innerHTML=waStatusChip(d);
+    const img=document.getElementById('waQrImg'), hint=document.getElementById('waQrHint');
+    if(img){
+      const qr=await waFetchQr();
+      if(qr){ img.src=qr; img.style.display=''; if(hint) hint.textContent='Обновляется каждые ~10 сек — если не сканируется, подождите обновления'; }
+      else { img.style.display='none'; if(hint) hint.textContent='QR пока не готов, жду от воркера…'; }
+    }
+  }catch(e){}
+}
 async function renderWaPane(){
   const box=document.getElementById('waBody'); if(!box) return;
+  waStopPoll();
   box.innerHTML='<div class="sub">Загружаю…</div>';
   try{
     const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_status',password:BOSS_PW})});
@@ -1389,12 +1415,20 @@ async function renderWaPane(){
     const texts=d.texts||{};
     const tbox=(t,txt)=>'<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">'+t+'</div><textarea readonly style="width:100%;box-sizing:border-box;min-height:96px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:12.5px;font-family:inherit">'+esc(txt||'')+'</textarea></div>';
     box.innerHTML =
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+waStatusChip(d)+
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><span id="waChip">'+waStatusChip(d)+'</span>'+
         '<span class="sub" style="margin:0">пауза между сообщениями '+Math.round((d.minIntervalMs||120000)/1000)+' сек</span>'+
         (d.sendWindow?('<span class="sub" style="margin:0">рассылка '+d.sendWindow.start+'–'+d.sendWindow.end+' по Алматы'+(d.sendWindow.open?'':' · сейчас вне окна, ждём')+')</span>'):'')+
         '<button class="btn '+(d.paused?'btn-primary':'sec')+' small" id="waPauseBtn">'+(d.paused?'▶ Продолжить рассылку':'⏸ Пауза')+'</button>'+
         '<button class="btn sec small" id="waRefreshBtn">⟳ Обновить</button>'+
       '</div>'+
+      (d.connected ? '' :
+        '<div class="card" style="margin:0 0 18px;padding:14px;max-width:340px">'+
+          '<div style="font-weight:700;margin-bottom:8px">📷 Привязать WhatsApp заново</div>'+
+          '<div class="sub" style="margin-bottom:10px">На телефоне: WhatsApp → Настройки → Связанные устройства → Привязать устройство, навести камеру на QR ниже. Привязывайте тот же номер, что был раньше'+(d.number?(' ('+esc(d.number)+')'):'')+'.</div>'+
+          '<img id="waQrImg" style="width:220px;height:220px;border-radius:8px;background:#fff;padding:8px;display:none" alt="QR код для привязки WhatsApp"/>'+
+          '<div class="sub" id="waQrHint" style="margin-top:8px">Загружаю QR…</div>'+
+        '</div>'
+      )+
       '<div class="stats">'+tile(d.pending||0,'в очереди')+tile(d.sentToday||0,'отправлено сегодня')+tile(d.sentTotal||0,'всего отправлено')+tile(d.stopped||0,'отписались')+'</div>'+
       '<div class="paneHead" style="margin-top:18px"><h2>Кому уже отправлено</h2><p>Последние 100 сообщений. Если номер отключится — будет видно в статусе выше.</p></div>'+
       (rows?('<div class="tw"><table><thead><tr><th>Когда</th><th>Кому</th><th>Статус</th></tr></thead><tbody>'+rows+'</tbody></table></div>'):'<div class="sub">Пока отправок не было.</div>')+
@@ -1403,6 +1437,13 @@ async function renderWaPane(){
     const pb=document.getElementById('waPauseBtn');
     if(pb) pb.onclick=async()=>{ pb.disabled=true; try{ await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:(d.paused?'wa_resume':'wa_pause'),password:BOSS_PW})}); }catch(e){} renderWaPane(); };
     const rb=document.getElementById('waRefreshBtn'); if(rb) rb.onclick=()=>renderWaPane();
+    if(!d.connected){
+      const img=document.getElementById('waQrImg'), hint=document.getElementById('waQrHint');
+      const qr=await waFetchQr();
+      if(img && qr){ img.src=qr; img.style.display=''; if(hint) hint.textContent='Обновляется каждые ~10 сек'; }
+      else if(hint){ hint.textContent='QR пока не готов, жду от воркера…'; }
+      _waPollTimer=setInterval(waPollTick, 10000);
+    }
   }catch(e){ box.innerHTML='<div class="sub" style="color:#ff6b6b">Ошибка: '+esc(e.message)+'</div>'; }
 }
 
@@ -1417,7 +1458,7 @@ function selectBossTab(tab){
     frame.setAttribute('src', frame.dataset.src);
     frame.addEventListener('load', scheduleViewportSlice, {once:true});
   }
-  if(tab==='wa') renderWaPane();
+  if(tab==='wa') renderWaPane(); else waStopPoll();
   scheduleViewportSlice();
 }
 document.querySelectorAll('.bnItem').forEach(btn=>{

@@ -211,6 +211,23 @@ export default async function handler(req, res) {
       res.status(200).json({ ok: true, paused: action === 'wa_pause', worker: r ? (r.httpError || 'ok') : 'not_configured' });
       return;
     }
+    // 2026-09-16: QR для повторной привязки номера прямо из панели руководителя — раньше
+    // это можно было получить только вручную (kubectl port-forward), теперь фронт дергает
+    // это действие сам, пока WhatsApp отключён (см. renderWaPane/waFetchQr в index.html).
+    // Картинка бинарная (PNG), поэтому не идёт через общий waWorker()-хелпер (он делает .json()) —
+    // отдельный fetch с ручным base64.
+    if (action === 'wa_qr') {
+      if (!GREY) { res.status(200).json({ ok: true, configured: false, qr: null }); return; }
+      try {
+        const qr = await fetch(GREY + '/qr', { headers: { 'x-wa-secret': GREY_SECRET } });
+        if (qr.status === 204 || !qr.ok) { res.status(200).json({ ok: true, configured: true, qr: null }); return; }
+        const buf = Buffer.from(await qr.arrayBuffer());
+        res.status(200).json({ ok: true, configured: true, qr: 'data:image/png;base64,' + buf.toString('base64') });
+      } catch (e) {
+        res.status(200).json({ ok: true, configured: true, qr: null, error: e.message });
+      }
+      return;
+    }
 
     if (action === 'list') {
       const items = (await loadAll()).map(normalize);
