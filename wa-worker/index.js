@@ -184,6 +184,18 @@ async function start() {
           rlog('номер отвязан. Сканируй QR заново.');
           tgSend(`⚠️ HR WhatsApp отключился — номер отвязан, нужен новый QR.\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
           lastDownAlertAt = Date.now();
+          // 2026-09-22 (Sagi): раньше здесь просто останавливались, и qrDataUrl больше никогда
+          // не обновлялся — при следующем вызове start() useMultiFileAuthState() читал те же уже
+          // недействительные creds.json, Baileys пытался переподключиться со старой (удалённой на
+          // телефоне) сессией и снова падал с тем же logged out, по кругу, без нового QR. Сагi это
+          // и словил: «почему я не могу загрузить QR». Теперь при реальном логауте чистим папку
+          // сессии и перезапускаемся — Baileys увидит пустое состояние и сразу сгенерирует свежий
+          // QR сам, без захода в кластер руками.
+          try {
+            for (const f of fs.readdirSync(AUTH_DIR)) { try { fs.unlinkSync(path.join(AUTH_DIR, f)); } catch (e2) {} }
+            rlog('сессия очищена — жду новый QR');
+          } catch (e) { rlog('не удалось очистить сессию:', e.message); }
+          setTimeout(() => { starting = false; start(); }, 2000);
         } else {
           rlog('соединение закрыто, переподключаюсь…', code || '');
           setTimeout(() => { starting = false; start(); }, 3000);
