@@ -56,7 +56,7 @@ const CAND_KEY = 'hr:candidates';
 
 // 2026-09-10: отправка WhatsApp кандидатам и стажёрам (серый Baileys-воркер или Cloud API).
 // Если номер ещё не подключён — sendWA тихо ничего не делает, логика ниже не падает.
-import { sendWA, HR_WA, waDigits, enqueueWA, extractPhone as extractPhoneAny } from './_wa.js';
+import { sendWA, HR_WA, waDigits, enqueueWA, extractPhone as extractPhoneAny, waStatusAll } from './_wa.js';
 const SEEN_KEY = 'hh:seen_negotiations';       // отклику отправлено первое сообщение
 const REPLIED_KEY = 'hh:replied_negotiations'; // ответ кандидата уже оценён и по нему был алерт
 const REPLY_CURSOR_KEY = 'hh:reply_check_cursor'; // позиция «карусели» для фазы B — чтобы каждый прогон проверял РАЗНЫХ кандидатов, а не всегда первых N
@@ -821,24 +821,21 @@ export default async function handler(req, res) {
       const newToday = candidates.filter((c) => c.ts && now - c.ts < dayMs).length;
       const byStage = {};
       for (const c of candidates) { const st = c.stage || 'Новый'; byStage[st] = (byStage[st] || 0) + 1; }
-      const GREY = (process.env.WA_GREY_URL || '').replace(/\/+$/, '');
-      const GREY_SECRET = process.env.WA_GREY_SECRET || '';
-      let wa = { configured: !!GREY };
-      if (GREY) {
-        try {
-          const wr = await fetch(GREY + '/status', { headers: { 'x-wa-secret': GREY_SECRET } });
-          if (wr.ok) wa = { configured: true, ...(await wr.json()) };
-          else wa.error = 'HTTP ' + wr.status;
-        } catch (e) { wa.error = e.message; }
-      }
+      // 2026-09-22: раньше проверяли только один номер (WA_GREY_URL) — если резервный
+      // (WA_GREY_URL_2/_3) отвалится, в ежедневном отчёте это было бы не видно вообще.
+      // Теперь смотрим статус всех настроенных номеров через waStatusAll().
+      const waAccounts = await waStatusAll();
       const stagesOrder = ['Новый', 'Ожидает ответа', 'Ответил', 'Приглашён', 'Обучение', 'Стажировка', 'Трудоустроен', 'Не подходит', 'Отказ', 'Ушёл'];
       const funnelLine = stagesOrder.filter((s) => byStage[s]).map((s) => s + ' ' + byStage[s]).join(' · ') || 'пусто';
-      const pending = (wa.queue && wa.queue.pending) || 0;
-      const waLine = !wa.configured
+      const waLine = !waAccounts.length
         ? 'не настроен'
-        : wa.connected
-        ? `подключён (${wa.number || '—'}), в очереди ${pending}`
-        : `⚠️ ОТКЛЮЧЁН${wa.lastError ? ' (' + wa.lastError + ')' : ''}, в очереди ${pending}`;
+        : waAccounts.map((a) => {
+            const pending = a.queue ? (a.queue.pending || 0) : 0;
+            return a.connected
+              ? `№${a.id} подключён (${a.number || '—'}), в очереди ${pending}`
+              : `№${a.id} ⚠️ ОТКЛЮЧЁН${a.lastError ? ' (' + a.lastError + ')' : ''}, в очереди ${pending}`;
+          }).join(' | ');
+      const wa = { accounts: waAccounts };
       const text = `📊 Ежедневный отчёт HR — Sagi\n\n` +
         `Новых заявок за сутки: ${newToday}\n` +
         `Воронка: ${funnelLine}\n` +

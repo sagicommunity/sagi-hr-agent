@@ -42,6 +42,9 @@ const {
 
 const PORT = parseInt(process.env.WA_WORKER_PORT || '8790', 10);
 const SECRET = process.env.WA_WORKER_SECRET || '';
+// 2026-09-22: подпись номера, когда их несколько (см. WA_GREY_URL_2/_3 в Vercel) — только для
+// удобства в логах/алертах, на работу самого воркера не влияет.
+const ACCOUNT_ID = process.env.WA_ACCOUNT_ID || '1';
 const AUTH_DIR = process.env.WA_AUTH_DIR || path.join(__dirname, 'auth');
 const DATA_DIR = process.env.WA_DATA_DIR || __dirname;
 const MIN_INTERVAL_MS = Math.max(60000, parseInt(process.env.WA_MIN_INTERVAL_MS || '120000', 10) || 120000);
@@ -172,7 +175,7 @@ async function start() {
         rlog('подключено, номер', meNumber);
         if (downSince) {
           const dur = fmtDur(Date.now() - downSince);
-          tgSend(`✅ HR WhatsApp (${meNumber}) снова подключён.\nБыл отключён: ${dur}.\nВ очереди: ${queue.length} сообщений — рассылка продолжится.`);
+          tgSend(`✅ HR WhatsApp №${ACCOUNT_ID} (${meNumber}) снова подключён.\nБыл отключён: ${dur}.\nВ очереди: ${queue.length} сообщений — рассылка продолжится.`);
           downSince = 0; lastDownAlertAt = 0;
         }
       } else if (connection === 'close') {
@@ -182,7 +185,7 @@ async function start() {
         if (code === DisconnectReason.loggedOut) {
           lastError = 'logged out — нужен новый QR';
           rlog('номер отвязан. Сканируй QR заново.');
-          tgSend(`⚠️ HR WhatsApp отключился — номер отвязан, нужен новый QR.\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
+          tgSend(`⚠️ HR WhatsApp №${ACCOUNT_ID} отключился — номер отвязан, нужен новый QR.\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
           lastDownAlertAt = Date.now();
           // 2026-09-22 (Sagi): раньше здесь просто останавливались, и qrDataUrl больше никогда
           // не обновлялся — при следующем вызове start() useMultiFileAuthState() читал те же уже
@@ -217,7 +220,10 @@ async function sendNow(to, text) {
   await sock.sendMessage(d + '@s.whatsapp.net', { text: String(text || '') });
   lastSentAt = Date.now();
   rollDay(); stats.sentTotal++; stats.sentToday++; persistStats();
-  logSend({ at: new Date().toISOString(), to: d, ok: true });
+  // 2026-09-22: раньше в лог не писали сам текст сообщения — журнал (/log) показывал только
+  // кому/когда/успешно, этого хватало для табличного вида. Для общей переписки в одном экране
+  // (/threads, единый чат по всем номерам — просьба Sagi) нужен и текст исходящего тоже.
+  logSend({ at: new Date().toISOString(), to: d, ok: true, text: String(text || '') });
   return { ok: true, to: d };
 }
 
@@ -243,7 +249,7 @@ async function tick() {
     } catch (e) {
       // не потеряли сообщение — вернули в начало очереди
       queue.unshift(item); persistQueue();
-      logSend({ at: new Date().toISOString(), to: item.to, ok: false, err: e.message });
+      logSend({ at: new Date().toISOString(), to: item.to, ok: false, err: e.message, text: String(item.text || '') });
       rlog('ошибка отправки, вернул в очередь:', e.message);
     }
   } finally {
@@ -259,7 +265,7 @@ setInterval(() => {
   const elapsed = Date.now() - downSince;
   if (elapsed < DOWN_ALERT_MIN_DELAY_MS) return;
   if (Date.now() - lastDownAlertAt < DOWN_ALERT_REPEAT_MS) return;
-  tgSend(`⚠️ HR WhatsApp всё ещё отключён (${fmtDur(elapsed)}).\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
+  tgSend(`⚠️ HR WhatsApp №${ACCOUNT_ID} всё ещё отключён (${fmtDur(elapsed)}).\nВ очереди: ${queue.length} сообщений ждут отправки.\n${reconnectHint()}`);
   lastDownAlertAt = Date.now();
 }, 5 * 60 * 1000);
 
@@ -331,6 +337,35 @@ app.get('/queue', (req, res) => res.json({ pending: queue.length, paused, minInt
 app.get('/log', (req, res) => {
   const limit = Math.min(500, Math.max(1, parseInt(req.query?.limit, 10) || 100));
   res.json({ connected, number: meNumber, lastError, sentToday: stats.sentToday, sentTotal: stats.sentTotal, pending: queue.length, paused, items: readLog(limit) });
+});
+// 2026-09-22 (Sagi): «вообще вся переписка должна быть в одном экране» — раньше /log отдавал
+// только исходящие (кому/когда/успех), входящие ответы копились отдельно в replies.jsonl и нигде
+// наружу не показывались. Здесь склеиваем и то и другое в переписку по каждому контакту
+// (сортировка по времени внутри треда), чтобы дашборд мог отрисовать обычный чат. Требует секрет —
+// это уже настоящая переписка кандидатов, а не просто статистика, как в открытых /status и /log.
+app.get('/threads', (req, res) => {
+  if (!checkSecret(req)) return res.status(403).json({ error: 'forbidden' });
+  const limit = Math.min(2000, Math.max(1, parseInt(req.query?.limit, 10) || 500));
+  const outItems = readLog(limit)
+    .filter((x) => x && x.to)
+    .map((x) => ({ dir: 'out', at: x.at, text: x.text || '', contact: x.to, ok: x.ok !== false }));
+  let inItems = [];
+  try {
+    inItems = fs.readFileSync(REPLIES_FILE, 'utf8').split('\n').filter(Boolean).slice(-limit)
+      .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean)
+      .map((x) => ({ dir: 'in', at: x.at, text: x.text || '', contact: x.from }));
+  } catch (e) {}
+  const byContact = new Map();
+  for (const m of [...outItems, ...inItems]) {
+    if (!m.contact) continue;
+    if (!byContact.has(m.contact)) byContact.set(m.contact, []);
+    byContact.get(m.contact).push(m);
+  }
+  const threads = [...byContact.entries()].map(([contact, messages]) => {
+    messages.sort((a, b) => new Date(a.at) - new Date(b.at));
+    return { contact, stopped: stoplist.has(contact), messages, lastAt: messages.length ? messages[messages.length - 1].at : '' };
+  }).sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
+  res.json({ account: ACCOUNT_ID, threads });
 });
 app.post('/pause', (req, res) => { if (!checkSecret(req)) return res.status(403).json({ error: 'forbidden' }); paused = true; res.json({ ok: true, paused }); });
 app.post('/resume', (req, res) => { if (!checkSecret(req)) return res.status(403).json({ error: 'forbidden' }); paused = false; res.json({ ok: true, paused }); });

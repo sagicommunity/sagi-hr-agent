@@ -5,7 +5,19 @@
 const R_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
 const R_TOK = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const CAND_KEY = 'hr:candidates';
-import { HR_WA } from './_wa.js';
+import { HR_WA, waAccountStatus } from './_wa.js';
+
+// До 5 номеров с запасом — сейчас обычно 1-3, WA_GREY_URL (основной), WA_GREY_URL_2, WA_GREY_URL_3
+// (резервные). Секрет один общий на все воркеры (WA_GREY_SECRET) — так проще, все под контролем Sagi.
+function waGetAccounts() {
+  const list = [];
+  for (let i = 1; i <= 5; i++) {
+    const key = i === 1 ? 'WA_GREY_URL' : ('WA_GREY_URL_' + i);
+    const url = (process.env[key] || '').replace(/\/+$/, '');
+    if (url) list.push({ id: String(i), url });
+  }
+  return list;
+}
 // 2026-08-18, по замечанию Sagi: «Стажировка» ставилась сразу после приглашения, до того как
 // человек вообще зарегистрировался и прошёл обучение — не отражало реальность. Теперь путь:
 // Ответил (написал в ответ на первое сообщение) -> Приглашён (отправлено приглашение, ждём
@@ -161,16 +173,18 @@ export default async function handler(req, res) {
 
     const action = body?.action;
 
-    // ── WhatsApp-рассылка: прокси к серому воркеру (Sagi, 2026-09-10) ──
-    // Панель руководителя не может звать воркер напрямую (CORS + секрет), поэтому проксируем
-    // отсюда. Возвращаем статус подключения (номер, отключён ли), счётчики, журнал последних
-    // отправок (кому/когда/успех), текущие согласованные тексты и паузу.
-    const GREY = (process.env.WA_GREY_URL || '').replace(/\/+$/, '');
+    // ── WhatsApp: прокси к серым воркерам (Sagi, 2026-09-10; несколько номеров — 2026-09-22) ──
+    // Панель руководителя не может звать воркеры напрямую (CORS + секрет), поэтому проксируем
+    // отсюда. До 2026-09-22 был один номер — теперь их может быть несколько (резерв на случай
+    // блокировки, см. _wa.js), поэтому статус/пауза/QR теперь работают по каждому номеру отдельно,
+    // а wa_threads собирает переписку со всех номеров в один экран (по просьбе Sagi — «вообще вся
+    // переписка должна быть в одном экране»).
+    const WA_ACCOUNTS = waGetAccounts();
     const GREY_SECRET = process.env.WA_GREY_SECRET || '';
-    async function waWorker(pathname, method, payload) {
-      if (!GREY) return null;
+    async function waWorker(acc, pathname, method, payload) {
+      if (!acc) return null;
       try {
-        const r = await fetch(GREY + pathname, {
+        const r = await fetch(acc.url + pathname, {
           method: method || 'GET',
           headers: Object.assign({ 'x-wa-secret': GREY_SECRET }, payload ? { 'content-type': 'application/json' } : {}),
           body: payload ? JSON.stringify(payload) : undefined,
@@ -181,21 +195,24 @@ export default async function handler(req, res) {
     }
 
     if (action === 'wa_status') {
-      const log = await waWorker('/log?limit=100');
-      const q = await waWorker('/queue');
+      const accounts = await Promise.all(WA_ACCOUNTS.map(async (acc) => {
+        const d = await waAccountStatus(acc);
+        return {
+          id: acc.id, configured: true,
+          connected: !!d.connected,
+          number: d.number || '',
+          lastError: d.lastError || d.error || (d.httpError ? ('HTTP ' + d.httpError) : ''),
+          pending: d.queue ? (d.queue.pending || 0) : 0,
+          sentToday: d.queue ? (d.queue.sentToday || 0) : 0,
+          sentTotal: d.queue ? (d.queue.sentTotal || 0) : 0,
+          stopped: d.queue ? (d.queue.stopped || 0) : 0,
+          paused: !!d.paused,
+          minIntervalMs: d.minIntervalMs || 120000,
+          sendWindow: d.sendWindow || null,
+        };
+      }));
       res.status(200).json({
-        ok: true, configured: !!GREY,
-        connected: log ? !!log.connected : false,
-        number: log ? (log.number || '') : '',
-        lastError: log ? (log.lastError || '') : '',
-        pending: q ? (q.pending || 0) : (log ? (log.pending || 0) : 0),
-        sentToday: log ? (log.sentToday || 0) : 0,
-        sentTotal: log ? (log.sentTotal || 0) : 0,
-        paused: q ? !!q.paused : false,
-        minIntervalMs: q ? (q.minIntervalMs || 120000) : 120000,
-        stopped: q ? (q.stopped || 0) : 0,
-        sendWindow: q && q.sendWindow ? q.sendWindow : null,
-        log: log && Array.isArray(log.items) ? log.items : [],
+        ok: true, accounts,
         texts: {
           afterForm: HR_WA.afterForm('Имя'),
           notStarted: HR_WA.notStarted('Имя'),
@@ -207,25 +224,64 @@ export default async function handler(req, res) {
       return;
     }
     if (action === 'wa_pause' || action === 'wa_resume') {
-      const r = await waWorker(action === 'wa_pause' ? '/pause' : '/resume', 'POST', {});
-      res.status(200).json({ ok: true, paused: action === 'wa_pause', worker: r ? (r.httpError || 'ok') : 'not_configured' });
+      const targetId = (body?.account || '').toString();
+      const targets = targetId ? WA_ACCOUNTS.filter((a) => a.id === targetId) : WA_ACCOUNTS;
+      await Promise.all(targets.map((acc) => waWorker(acc, action === 'wa_pause' ? '/pause' : '/resume', 'POST', {})));
+      res.status(200).json({ ok: true, paused: action === 'wa_pause' });
       return;
     }
     // 2026-09-16: QR для повторной привязки номера прямо из панели руководителя — раньше
     // это можно было получить только вручную (kubectl port-forward), теперь фронт дергает
     // это действие сам, пока WhatsApp отключён (см. renderWaPane/waFetchQr в index.html).
+    // 2026-09-22: теперь по конкретному номеру (body.account, по умолчанию первый).
     // Картинка бинарная (PNG), поэтому не идёт через общий waWorker()-хелпер (он делает .json()) —
     // отдельный fetch с ручным base64.
     if (action === 'wa_qr') {
-      if (!GREY) { res.status(200).json({ ok: true, configured: false, qr: null }); return; }
+      const targetId = (body?.account || '1').toString();
+      const acc = WA_ACCOUNTS.find((a) => a.id === targetId) || WA_ACCOUNTS[0];
+      if (!acc) { res.status(200).json({ ok: true, configured: false, qr: null }); return; }
       try {
-        const qr = await fetch(GREY + '/qr', { headers: { 'x-wa-secret': GREY_SECRET } });
+        const qr = await fetch(acc.url + '/qr', { headers: { 'x-wa-secret': GREY_SECRET } });
         if (qr.status === 204 || !qr.ok) { res.status(200).json({ ok: true, configured: true, qr: null }); return; }
         const buf = Buffer.from(await qr.arrayBuffer());
         res.status(200).json({ ok: true, configured: true, qr: 'data:image/png;base64,' + buf.toString('base64') });
       } catch (e) {
         res.status(200).json({ ok: true, configured: true, qr: null, error: e.message });
       }
+      return;
+    }
+    // 2026-09-22 (Sagi): «вообще вся переписка должна быть в одном экране» — собираем и
+    // исходящие (что отправили), и входящие (ответы кандидатов) со ВСЕХ номеров сразу, склеиваем
+    // по номеру кандидата в единый тред (candidate может успеть пообщаться с разными нашими
+    // номерами, если один по пути отключался) и подписываем контакт именем из базы, если он там
+    // уже есть.
+    if (action === 'wa_threads') {
+      const results = await Promise.all(WA_ACCOUNTS.map(async (acc) => {
+        const r = await waWorker(acc, '/threads?limit=500');
+        return { acc, threads: (r && Array.isArray(r.threads)) ? r.threads : [] };
+      }));
+      const merged = new Map();
+      for (const { acc, threads } of results) {
+        for (const t of threads) {
+          if (!t || !t.contact) continue;
+          if (!merged.has(t.contact)) merged.set(t.contact, { contact: t.contact, stopped: false, messages: [] });
+          const m = merged.get(t.contact);
+          m.stopped = m.stopped || !!t.stopped;
+          for (const msg of (t.messages || [])) m.messages.push(Object.assign({}, msg, { account: acc.id }));
+        }
+      }
+      let nameByPhone = {};
+      try {
+        const cands = (await loadAll()).map(normalize);
+        for (const c of cands) if (c.phone) nameByPhone[c.phone] = c.name;
+      } catch (e) {}
+      const threads = [...merged.values()].map((t) => {
+        t.messages.sort((a, b) => new Date(a.at) - new Date(b.at));
+        t.name = nameByPhone[t.contact] || '';
+        t.lastAt = t.messages.length ? t.messages[t.messages.length - 1].at : '';
+        return t;
+      }).sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
+      res.status(200).json({ ok: true, threads });
       return;
     }
 

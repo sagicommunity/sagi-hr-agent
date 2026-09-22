@@ -1380,77 +1380,141 @@ let bossTabApplied=false;
 // в остальных страницах проекта.
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 function waFmtTime(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
-function waStatusChip(d){
-  if(!d.configured) return '<span class="tag warn">не настроен</span>';
-  if(d.connected) return '<span class="tag mg">подключён'+(d.number?(' · '+d.number):'')+'</span>';
-  return '<span class="tag warn">Отключён'+(d.lastError?(' · '+esc(d.lastError)):'')+'</span>';
+function waFmtTimeShort(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function waStatusChip(a){
+  if(!a.configured) return '<span class="tag warn">не настроен</span>';
+  if(a.connected) return '<span class="tag mg">подключён'+(a.number?(' · '+esc(a.number)):'')+'</span>';
+  return '<span class="tag warn">отключён'+(a.lastError?(' · '+esc(a.lastError)):'')+'</span>';
 }
-// 2026-09-16, по просьбе Sagi: раньше для привязки номера заново приходилось звать Claude —
-// теперь QR виден и обновляется прямо в этой панели, без ручного вмешательства.
-let _waPollTimer=null;
-function waStopPoll(){ if(_waPollTimer){ clearInterval(_waPollTimer); _waPollTimer=null; } }
-async function waFetchQr(){
+// 2026-09-22 (Sagi): несколько номеров в резерве (если один заблокируют — рассылка идёт через
+// следующий) + вся переписка (исходящие и ответы) в одном экране, а не только журнал отправок.
+// Раньше (2026-09-16) был один номер и один QR — теперь по каждому номеру своя карточка со своим
+// статусом/QR/паузой, а ниже — общий почтовый ящик-переписка по всем номерам сразу.
+let _waPollTimer=null, _waInboxTimer=null, _waSelectedContact=null, _waThreadsCache=[];
+function waStopPoll(){
+  if(_waPollTimer){ clearInterval(_waPollTimer); _waPollTimer=null; }
+  if(_waInboxTimer){ clearInterval(_waInboxTimer); _waInboxTimer=null; }
+}
+async function waApi(action, extra){
   try{
-    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_qr',password:BOSS_PW})});
-    const d=await r.json();
-    return (d && d.ok) ? (d.qr||null) : null;
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action,password:BOSS_PW},extra||{}))});
+    const d=await r.json(); if(!r.ok||d.error) return null; return d;
   }catch(e){ return null; }
 }
-async function waPollTick(){
-  try{
-    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_status',password:BOSS_PW})});
-    const d=await r.json(); if(!r.ok||d.error) return;
-    if(d.connected){ waStopPoll(); renderWaPane(); return; }
-    const chip=document.getElementById('waChip'); if(chip) chip.innerHTML=waStatusChip(d);
-    const img=document.getElementById('waQrImg'), hint=document.getElementById('waQrHint');
-    if(img){
-      const qr=await waFetchQr();
-      if(qr){ img.src=qr; img.style.display=''; if(hint) hint.textContent='Обновляется каждые ~10 сек — если не сканируется, подождите обновления'; }
-      else { img.style.display='none'; if(hint) hint.textContent='QR пока не готов, жду от воркера…'; }
+async function waFetchQr(accountId){ const d=await waApi('wa_qr',{account:accountId}); return (d&&d.ok)?(d.qr||null):null; }
+
+function waRenderAccountsBar(accounts){
+  if(!accounts.length) return '<div class="sub">WhatsApp ещё не настроен.</div>';
+  return accounts.map(a=>{
+    const needsQr = a.configured && !a.connected;
+    return '<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap" data-wa-account="'+a.id+'">'+
+      '<b>Номер '+esc(a.id)+'</b>'+waStatusChip(a)+
+      '<span class="sub" style="margin:0">очередь '+(a.pending||0)+' · сегодня '+(a.sentToday||0)+' · всего '+(a.sentTotal||0)+(a.stopped?(' · отписалось '+a.stopped):'')+'</span>'+
+      (a.sendWindow && !a.sendWindow.open?'<span class="sub" style="margin:0">вне окна отправки ('+a.sendWindow.start+'–'+a.sendWindow.end+')</span>':'')+
+      '<button class="btn '+(a.paused?'btn-primary':'sec')+' small waPauseBtn" data-account="'+a.id+'" data-paused="'+(a.paused?'1':'0')+'">'+(a.paused?'▶ Продолжить':'⏸ Пауза')+'</button>'+
+      (needsQr?(
+        '<button class="btn sec small waShowQrBtn" data-account="'+a.id+'">📷 Показать QR</button>'+
+        '<span class="waQrWrap" data-account="'+a.id+'" style="display:none;align-items:center;gap:8px">'+
+          '<img class="waQrImg" style="width:150px;height:150px;border-radius:8px;background:#fff;padding:6px"/>'+
+          '<span class="sub" style="margin:0;max-width:220px">WhatsApp на телефоне этого номера → Настройки → Связанные устройства → Привязать устройство, навести камеру. Обновляется само.</span>'+
+        '</span>'
+      ):'')+
+    '</div>';
+  }).join('');
+}
+function waWireAccountsBar(){
+  document.querySelectorAll('.waPauseBtn').forEach(btn=>{
+    btn.onclick=async()=>{
+      btn.disabled=true; const id=btn.dataset.account; const paused=btn.dataset.paused==='1';
+      await waApi(paused?'wa_resume':'wa_pause',{account:id});
+      waAccountsTick();
+    };
+  });
+  document.querySelectorAll('.waShowQrBtn').forEach(btn=>{
+    btn.onclick=async()=>{
+      const id=btn.dataset.account; const wrap=document.querySelector('.waQrWrap[data-account="'+id+'"]');
+      if(!wrap) return; wrap.style.display='inline-flex';
+      const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(id); if(qr) img.src=qr;
+    };
+  });
+}
+async function waAccountsTick(){
+  const d=await waApi('wa_status'); if(!d||!d.ok) return;
+  const bar=document.getElementById('waAccountsBar'); if(bar) bar.innerHTML=waRenderAccountsBar(d.accounts||[]);
+  waWireAccountsBar();
+  for(const a of (d.accounts||[])){
+    if(a.configured && !a.connected){
+      const wrap=document.querySelector('.waQrWrap[data-account="'+a.id+'"]');
+      if(wrap && wrap.style.display!=='none'){
+        const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(a.id); if(qr) img.src=qr;
+      }
     }
-  }catch(e){}
+  }
+}
+function waRenderContactList(threads, selected){
+  if(!threads.length) return '<div class="sub" style="padding:10px">Переписки пока нет.</div>';
+  return threads.map(t=>{
+    const last=t.messages[t.messages.length-1]||{};
+    const active = t.contact===selected;
+    return '<div class="waContactRow" data-contact="'+esc(t.contact)+'" style="padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;'+(active?'background:var(--bg)':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><b style="font-size:13px">'+esc(t.name||t.contact)+'</b><span class="sub" style="margin:0;font-size:11px;white-space:nowrap">'+waFmtTimeShort(last.at)+'</span></div>'+
+      (t.name?'<div class="sub" style="margin:0;font-size:11px">'+esc(t.contact)+'</div>':'')+
+      '<div class="sub" style="margin:2px 0 0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(last.dir==='out'?'Вы: ':'')+esc((last.text||'').slice(0,60))+'</div>'+
+      (t.stopped?'<span class="tag warn" style="margin-top:4px;display:inline-block;font-size:10px">стоп-лист</span>':'')+
+    '</div>';
+  }).join('');
+}
+function waRenderThread(thread){
+  if(!thread) return '<div class="sub" style="padding:20px;text-align:center">Выберите переписку слева</div>';
+  const bubbles=thread.messages.map(m=>{
+    const mine=m.dir==='out';
+    return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:6px 4px">'+
+      '<div style="max-width:72%;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:'+(mine?'var(--brand,#2563eb)':'var(--bg)')+';color:'+(mine?'#fff':'var(--text)')+'">'+
+        '<div style="white-space:pre-wrap;font-size:13px;line-height:1.4">'+esc(m.text||'')+'</div>'+
+        '<div style="font-size:10px;opacity:.7;margin-top:4px;text-align:right">'+waFmtTimeShort(m.at)+(mine&&m.account?(' · №'+esc(m.account)):'')+(mine&&m.ok===false?' · ошибка':'')+'</div>'+
+      '</div></div>';
+  }).join('');
+  return '<div style="padding:10px 4px;border-bottom:1px solid var(--border);margin-bottom:6px"><b>'+esc(thread.name||thread.contact)+'</b> <span class="sub" style="margin-left:6px">'+esc(thread.contact)+(thread.stopped?' · в стоп-листе':'')+'</span></div>'+
+    '<div style="max-height:440px;overflow-y:auto;padding:2px 2px 8px">'+(bubbles||'<div class="sub" style="padding:10px">Сообщений пока нет.</div>')+'</div>';
+}
+async function waInboxTick(){
+  const d=await waApi('wa_threads'); if(!d||!d.ok) return;
+  _waThreadsCache=d.threads||[];
+  if(_waSelectedContact===null && _waThreadsCache.length) _waSelectedContact=_waThreadsCache[0].contact;
+  const list=document.getElementById('waContactList');
+  if(list) list.innerHTML=waRenderContactList(_waThreadsCache,_waSelectedContact);
+  document.querySelectorAll('.waContactRow').forEach(row=>{ row.onclick=()=>{ _waSelectedContact=row.dataset.contact; waInboxTick(); }; });
+  const pane=document.getElementById('waThreadPane');
+  if(pane) pane.innerHTML=waRenderThread(_waThreadsCache.find(t=>t.contact===_waSelectedContact));
 }
 async function renderWaPane(){
   const box=document.getElementById('waBody'); if(!box) return;
   waStopPoll();
   box.innerHTML='<div class="sub">Загружаю…</div>';
   try{
-    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'wa_status',password:BOSS_PW})});
-    const d=await r.json(); if(!r.ok||d.error) throw new Error(d.error||('HTTP '+r.status));
-    const tile=(n,l)=>'<div class="stat"><div class="big">'+n+'</div><div class="lbl">'+l+'</div></div>';
-    const rows=(d.log||[]).map(x=>'<tr><td style="white-space:nowrap">'+waFmtTime(x.at)+'</td><td>'+esc(String(x.to||''))+'</td><td>'+(x.ok?'<span class="tag mg">отправлено</span>':('<span class="tag warn">ошибка</span>'+(x.err?(' '+esc(x.err)):'')))+'</td></tr>').join('');
+    const d=await waApi('wa_status'); if(!d||!d.ok) throw new Error('ошибка загрузки статуса');
     const texts=d.texts||{};
     const tbox=(t,txt)=>'<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">'+t+'</div><textarea readonly style="width:100%;box-sizing:border-box;min-height:96px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:12.5px;font-family:inherit">'+esc(txt||'')+'</textarea></div>';
     box.innerHTML =
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px"><span id="waChip">'+waStatusChip(d)+'</span>'+
-        '<span class="sub" style="margin:0">пауза между сообщениями '+Math.round((d.minIntervalMs||120000)/1000)+' сек</span>'+
-        (d.sendWindow?('<span class="sub" style="margin:0">рассылка '+d.sendWindow.start+'–'+d.sendWindow.end+' по Алматы'+(d.sendWindow.open?'':' · сейчас вне окна, ждём')+')</span>'):'')+
-        '<button class="btn '+(d.paused?'btn-primary':'sec')+' small" id="waPauseBtn">'+(d.paused?'▶ Продолжить рассылку':'⏸ Пауза')+'</button>'+
-        '<button class="btn sec small" id="waRefreshBtn">⟳ Обновить</button>'+
+      '<div class="paneHead"><h2>Номера WhatsApp</h2><p>Если рабочий номер отключится или его заблокируют, рассылка сама переходит на следующий подключённый.</p></div>'+
+      '<div id="waAccountsBar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">'+waRenderAccountsBar(d.accounts||[])+'</div>'+
+      '<div class="paneHead"><h2>Переписка</h2><p>Вся переписка по всем номерам сразу — и то, что отправили, и ответы кандидатов.</p></div>'+
+      '<div style="display:flex;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:460px;margin-bottom:18px">'+
+        '<div id="waContactList" style="width:280px;min-width:220px;border-right:1px solid var(--border);overflow-y:auto;max-height:520px"><div class="sub" style="padding:10px">Загружаю…</div></div>'+
+        '<div id="waThreadPane" style="flex:1;padding:0 12px;overflow:hidden">'+waRenderThread(null)+'</div>'+
       '</div>'+
-      (d.connected ? '' :
-        '<div class="card" style="margin:0 0 18px;padding:14px;max-width:340px">'+
-          '<div style="font-weight:700;margin-bottom:8px">📷 Привязать WhatsApp заново</div>'+
-          '<div class="sub" style="margin-bottom:10px">На телефоне: WhatsApp → Настройки → Связанные устройства → Привязать устройство, навести камеру на QR ниже. Привязывайте тот же номер, что был раньше'+(d.number?(' ('+esc(d.number)+')'):'')+'.</div>'+
-          '<img id="waQrImg" style="width:220px;height:220px;border-radius:8px;background:#fff;padding:8px;display:none" alt="QR код для привязки WhatsApp"/>'+
-          '<div class="sub" id="waQrHint" style="margin-top:8px">Загружаю QR…</div>'+
-        '</div>'
-      )+
-      '<div class="stats">'+tile(d.pending||0,'в очереди')+tile(d.sentToday||0,'отправлено сегодня')+tile(d.sentTotal||0,'всего отправлено')+tile(d.stopped||0,'отписались')+'</div>'+
-      '<div class="paneHead" style="margin-top:18px"><h2>Кому уже отправлено</h2><p>Последние 100 сообщений. Если номер отключится — будет видно в статусе выше.</p></div>'+
-      (rows?('<div class="tw"><table><thead><tr><th>Когда</th><th>Кому</th><th>Статус</th></tr></thead><tbody>'+rows+'</tbody></table></div>'):'<div class="sub">Пока отправок не было.</div>')+
-      '<div class="paneHead" style="margin-top:18px"><h2>Тексты, которые отправляются</h2><p>Согласованные формулировки. Меняются только через разработку.</p></div>'+
+      '<div class="paneHead"><h2>Тексты, которые отправляются</h2><p>Согласованные формулировки. Меняются только через разработку.</p></div>'+
       tbox('После анкеты', texts.afterForm)+tbox('Не начал обучение', texts.notStarted)+tbox('Не закончил обучение', texts.notFinished)+tbox('Возврат после срока', texts.returnAfterDeadline)+tbox('Холодная база', texts.coldBase);
-    const pb=document.getElementById('waPauseBtn');
-    if(pb) pb.onclick=async()=>{ pb.disabled=true; try{ await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:(d.paused?'wa_resume':'wa_pause'),password:BOSS_PW})}); }catch(e){} renderWaPane(); };
-    const rb=document.getElementById('waRefreshBtn'); if(rb) rb.onclick=()=>renderWaPane();
-    if(!d.connected){
-      const img=document.getElementById('waQrImg'), hint=document.getElementById('waQrHint');
-      const qr=await waFetchQr();
-      if(img && qr){ img.src=qr; img.style.display=''; if(hint) hint.textContent='Обновляется каждые ~10 сек'; }
-      else if(hint){ hint.textContent='QR пока не готов, жду от воркера…'; }
-      _waPollTimer=setInterval(waPollTick, 10000);
+    waWireAccountsBar();
+    for(const a of (d.accounts||[])){
+      if(a.configured && !a.connected){
+        const wrap=document.querySelector('.waQrWrap[data-account="'+a.id+'"]');
+        if(wrap){ wrap.style.display='inline-flex'; const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(a.id); if(qr) img.src=qr; }
+      }
     }
+    await waInboxTick();
+    _waPollTimer=setInterval(waAccountsTick, 4000);
+    _waInboxTimer=setInterval(waInboxTick, 6000);
   }catch(e){ box.innerHTML='<div class="sub" style="color:#ff6b6b">Ошибка: '+esc(e.message)+'</div>'; }
 }
 
