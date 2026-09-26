@@ -89,6 +89,19 @@ let qrDataUrl = '';
 let lastError = '';
 let lastSentAt = 0;
 let sending = false;
+// 2026-09-26 (реальный инцидент): после logged out воркер начал получать от WhatsApp 403 на
+// КАЖДУЮ попытку подключиться — ещё до показа QR, раз в несколько секунд, без остановки. Это
+// не обычный обрыв связи (тогда переподключение с фиксированной паузой в 3 сек — нормально), а
+// либо блокировка номера самим WhatsApp, либо WhatsApp сам придерживает нас за слишком частые
+// попытки — долбёжка каждые 3 секунды в обоих случаях только вредит. Плюс из-за отдельного бага
+// process ушёл в тихий hang на fetchLatestBaileysVersion() и перестал вообще пытаться
+// переподключаться на 2+ суток, никак это не залогировав. Ниже — экспоненциальная пауза
+// (до 5 минут) вместо фиксированной, и явный алерт, если 403 повторяется много раз подряд БЕЗ
+// единого показанного QR — тогда это, скорее всего, блокировка номера, и пересканирование не
+// поможет, пока Sagi не проверит сам номер в приложении WhatsApp.
+let reconnectAttempts = 0;
+let sawQrThisCycle = false;
+let banAlertSent = false;
 
 // ── Алерт в Telegram при обрыве связи (Sagi, 2026-09-15) ──────────────────
 // Раньше про обрыв узнавали только зайдя в статус вручную — реальный случай: номер лежал
@@ -143,9 +156,17 @@ function rollDay() { const d = todayAlmaty(); if (stats.day !== d) { stats.day =
 async function start() {
   if (starting) return;
   starting = true;
+  sawQrThisCycle = false;
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+    // 2026-09-26: этот запрос за версией однажды тихо завис навсегда (не упал, не вернулся) —
+    // starting остался true, и воркер молча перестал переподключаться на 2+ суток, никто не
+    // заметил. Таймаут гарантирует, что зависание превратится в обычную ошибку и попадёт в общий
+    // цикл переподключения ниже, а не в вечное молчание.
+    const version = await Promise.race([
+      fetchLatestBaileysVersion().then((v) => v.version),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('fetchLatestBaileysVersion завис (>15с)')), 15000)),
+    ]);
     sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger, browser: ['Sagi HR', 'Chrome', '1.0.0'] });
     sock.ev.on('creds.update', saveCreds);
 
@@ -168,9 +189,10 @@ async function start() {
 
     sock.ev.on('connection.update', async (u) => {
       const { connection, lastDisconnect, qr } = u;
-      if (qr) { qrDataUrl = await QRCode.toDataURL(qr).catch(() => ''); rlog('QR готов — открой /'); }
+      if (qr) { qrDataUrl = await QRCode.toDataURL(qr).catch(() => ''); sawQrThisCycle = true; rlog('QR готов — открой /'); }
       if (connection === 'open') {
-        connected = true; qrDataUrl = '';
+        connected = true; qrDataUrl = ''; lastError = '';
+        reconnectAttempts = 0; banAlertSent = false;
         meNumber = (sock.user && sock.user.id ? String(sock.user.id).split(':')[0].split('@')[0] : '');
         rlog('подключено, номер', meNumber);
         if (downSince) {
@@ -198,16 +220,40 @@ async function start() {
             for (const f of fs.readdirSync(AUTH_DIR)) { try { fs.unlinkSync(path.join(AUTH_DIR, f)); } catch (e2) {} }
             rlog('сессия очищена — жду новый QR');
           } catch (e) { rlog('не удалось очистить сессию:', e.message); }
+          reconnectAttempts = 0;
           setTimeout(() => { starting = false; start(); }, 2000);
         } else {
-          rlog('соединение закрыто, переподключаюсь…', code || '');
-          setTimeout(() => { starting = false; start(); }, 3000);
+          reconnectAttempts++;
+          // Экспоненциальный откат (3с → … → максимум 5 минут) вместо фиксированных 3 секунд —
+          // см. комментарий у объявления reconnectAttempts выше про реальный инцидент 2026-09-26.
+          const backoffMs = Math.min(300000, 3000 * Math.pow(1.6, Math.min(reconnectAttempts, 14)));
+          rlog(`соединение закрыто, переподключаюсь через ${Math.round(backoffMs / 1000)}с…`, code || '');
+          // Если WhatsApp закрывает соединение с 403 много раз подряд, и мы при этом НИ РАЗУ не
+          // получили QR (sawQrThisCycle) — это не обычный обрыв связи, а похоже на блокировку
+          // номера самим WhatsApp (или защиту от слишком частых попыток подключения). В этом
+          // случае повторное сканирование не поможет, и стоит явно предупредить, а не молчать —
+          // именно так этот случай и был пропущен на 2+ суток в прошлый раз.
+          if (code === 403 && !sawQrThisCycle && reconnectAttempts === 8 && !banAlertSent) {
+            banAlertSent = true;
+            tgSend(`🚫 HR WhatsApp №${ACCOUNT_ID}: WhatsApp отклоняет подключение (403) уже ${reconnectAttempts} раз подряд, ни разу не показав QR. Это похоже на блокировку номера самим WhatsApp, а не на обычный обрыв — новый QR тут не поможет. Открой WhatsApp на телефоне этого номера (${meNumber || 'номер из настроек'}) и проверь, нет ли сообщения о блокировке или ограничении.`);
+          }
+          setTimeout(() => { starting = false; start(); }, backoffMs);
         }
       }
     });
   } catch (e) {
     lastError = e.message;
     rlog('ошибка запуска:', e.message);
+    // 2026-09-26: раньше при ошибке ЗДЕСЬ (до регистрации обработчика connection.update — то есть
+    // до того, как обычный цикл переподключения ниже вообще начинает работать) воркер просто
+    // останавливался НАВСЕГДА без единой попытки переподключиться, и без единого лога об этом —
+    // ни сети, ни логов, ни алертов. Именно так уже случалось: fetchLatestBaileysVersion() завис,
+    // ошибка (теперь, с таймаутом выше) дошла бы досюда, и всё равно ничего не произошло бы. Здесь
+    // нужен свой отдельный повтор с той же нарастающей паузой.
+    reconnectAttempts++;
+    const backoffMs = Math.min(300000, 3000 * Math.pow(1.6, Math.min(reconnectAttempts, 14)));
+    rlog(`переподключение (после ошибки запуска) через ${Math.round(backoffMs / 1000)}с`);
+    setTimeout(() => start(), backoffMs);
   } finally {
     starting = false;
   }
