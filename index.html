@@ -1402,6 +1402,22 @@ async function waApi(action, extra){
   }catch(e){ return null; }
 }
 async function waFetchQr(accountId){ const d=await waApi('wa_qr',{account:accountId}); return (d&&d.ok)?(d.qr||null):null; }
+// 2026-09-28 (Sagi: «QR на секунду появляется и исчезает»): панель номеров перерисовывается каждые
+// 4 с, и раньше каждая перерисовка создавала блок QR заново — скрытым и с пустой картинкой, а
+// обновление QR смотрело как раз на «скрыт» и больше его не загружало. Теперь помним последний QR и
+// то, скрыл ли его руководитель, перерисовываем панель только когда что-то реально поменялось, а
+// сам QR обновляем прямо в картинке, не пересоздавая её.
+let _waQrCache={}, _waQrHidden={}, _waBarSig='';
+function waBarSig(accounts){ return JSON.stringify((accounts||[]).map(a=>[a.id,a.configured,a.connected,a.paused,a.pending,a.sentToday,a.sentTotal,a.stopped,a.sendWindow&&a.sendWindow.open])); }
+async function waRefreshQrs(accounts){
+  for(const a of (accounts||[])){
+    if(!(a.configured && !a.connected)){ delete _waQrCache[a.id]; continue; }
+    if(_waQrHidden[a.id]) continue;
+    const qr=await waFetchQr(a.id); if(!qr || qr===_waQrCache[a.id]) continue;
+    _waQrCache[a.id]=qr;
+    const img=document.querySelector('.waQrWrap[data-account="'+a.id+'"] .waQrImg'); if(img) img.src=qr;
+  }
+}
 
 function waRenderAccountsBar(accounts){
   if(!accounts.length) return '<div class="sub">WhatsApp ещё не настроен.</div>';
@@ -1413,9 +1429,9 @@ function waRenderAccountsBar(accounts){
       (a.sendWindow && !a.sendWindow.open?'<span class="sub" style="margin:0">вне окна отправки ('+a.sendWindow.start+'–'+a.sendWindow.end+')</span>':'')+
       '<button class="btn '+(a.paused?'btn-primary':'sec')+' small waPauseBtn" data-account="'+a.id+'" data-paused="'+(a.paused?'1':'0')+'">'+(a.paused?'▶ Продолжить':'⏸ Пауза')+'</button>'+
       (needsQr?(
-        '<button class="btn sec small waShowQrBtn" data-account="'+a.id+'">📷 Показать QR</button>'+
-        '<span class="waQrWrap" data-account="'+a.id+'" style="display:none;align-items:center;gap:8px">'+
-          '<img class="waQrImg" style="width:150px;height:150px;border-radius:8px;background:#fff;padding:6px"/>'+
+        '<button class="btn sec small waShowQrBtn" data-account="'+a.id+'">'+(_waQrHidden[a.id]?'📷 Показать QR':'🙈 Скрыть QR')+'</button>'+
+        '<span class="waQrWrap" data-account="'+a.id+'" style="display:'+(_waQrHidden[a.id]?'none':'inline-flex')+';align-items:center;gap:8px">'+
+          '<img class="waQrImg" alt="QR загружается…" '+(_waQrCache[a.id]?('src="'+_waQrCache[a.id]+'" '):'')+'style="width:220px;height:220px;border-radius:8px;background:#fff;padding:6px;color:#333;font-size:12px"/>'+
           '<span class="sub" style="margin:0;max-width:220px">WhatsApp на телефоне этого номера → Настройки → Связанные устройства → Привязать устройство, навести камеру. Обновляется само.</span>'+
         '</span>'
       ):'')+
@@ -1433,23 +1449,21 @@ function waWireAccountsBar(){
   document.querySelectorAll('.waShowQrBtn').forEach(btn=>{
     btn.onclick=async()=>{
       const id=btn.dataset.account; const wrap=document.querySelector('.waQrWrap[data-account="'+id+'"]');
-      if(!wrap) return; wrap.style.display='inline-flex';
-      const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(id); if(qr) img.src=qr;
+      if(!wrap) return;
+      _waQrHidden[id]=!_waQrHidden[id];
+      wrap.style.display=_waQrHidden[id]?'none':'inline-flex';
+      btn.textContent=_waQrHidden[id]?'📷 Показать QR':'🙈 Скрыть QR';
+      if(!_waQrHidden[id]){ const qr=await waFetchQr(id); if(qr){ _waQrCache[id]=qr; wrap.querySelector('.waQrImg').src=qr; } }
     };
   });
 }
 async function waAccountsTick(){
   const d=await waApi('wa_status'); if(!d||!d.ok) return;
-  const bar=document.getElementById('waAccountsBar'); if(bar) bar.innerHTML=waRenderAccountsBar(d.accounts||[]);
-  waWireAccountsBar();
-  for(const a of (d.accounts||[])){
-    if(a.configured && !a.connected){
-      const wrap=document.querySelector('.waQrWrap[data-account="'+a.id+'"]');
-      if(wrap && wrap.style.display!=='none'){
-        const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(a.id); if(qr) img.src=qr;
-      }
-    }
-  }
+  const accounts=d.accounts||[];
+  const sig=waBarSig(accounts);
+  const bar=document.getElementById('waAccountsBar');
+  if(bar && sig!==_waBarSig){ _waBarSig=sig; bar.innerHTML=waRenderAccountsBar(accounts); waWireAccountsBar(); }
+  await waRefreshQrs(accounts);
 }
 function waRenderContactList(threads, selected){
   if(!threads.length) return '<div class="sub" style="padding:10px">Переписки пока нет.</div>';
@@ -1506,12 +1520,8 @@ async function renderWaPane(){
       '<div class="paneHead"><h2>Тексты, которые отправляются</h2><p>Согласованные формулировки. Меняются только через разработку.</p></div>'+
       tbox('После анкеты', texts.afterForm)+tbox('Не начал обучение', texts.notStarted)+tbox('Не закончил обучение', texts.notFinished)+tbox('Возврат после срока', texts.returnAfterDeadline)+tbox('Холодная база', texts.coldBase);
     waWireAccountsBar();
-    for(const a of (d.accounts||[])){
-      if(a.configured && !a.connected){
-        const wrap=document.querySelector('.waQrWrap[data-account="'+a.id+'"]');
-        if(wrap){ wrap.style.display='inline-flex'; const img=wrap.querySelector('.waQrImg'); const qr=await waFetchQr(a.id); if(qr) img.src=qr; }
-      }
-    }
+    _waBarSig=waBarSig(d.accounts||[]);
+    await waRefreshQrs(d.accounts||[]);
     await waInboxTick();
     _waPollTimer=setInterval(waAccountsTick, 4000);
     _waInboxTimer=setInterval(waInboxTick, 6000);
