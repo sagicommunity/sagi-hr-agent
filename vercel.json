@@ -1,12 +1,48 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/chat.js": { "maxDuration": 60 }
+    "api/chat.js": {
+      "maxDuration": 60
+    }
   },
   "redirects": [
-    { "source": "/dashboard", "destination": "/analytics.html", "permanent": false },
-    { "source": "/dashboard/", "destination": "/analytics.html", "permanent": false },
-    { "source": "/dashboard/:path*", "destination": "/analytics.html", "permanent": false },
-    { "source": "/hr-agent-app-sync/:path*", "destination": "/:path*", "permanent": false }
+    {
+      "source": "/dashboard",
+      "destination": "/analytics.html",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/",
+      "destination": "/analytics.html",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/:path*",
+      "destination": "/analytics.html",
+      "permanent": false
+    },
+    {
+      "source": "/hr-agent-app-sync/:path*",
+      "destination": "/:path*",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/vacancies",
+      "destination": "/vacancies.html"
+    },
+    {
+      "source": "/vacancies/",
+      "destination": "/vacancies.html"
+    },
+    {
+      "source": "/vakansii",
+      "destination": "/vacancies.html"
+    },
+    {
+      "source": "/careers",
+      "destination": "/vacancies.html"
+    }
   ]
 }
