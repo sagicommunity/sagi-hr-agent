@@ -184,6 +184,23 @@
     border-radius:10px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--text);
     text-decoration:none;font-size:14px;transition:.15s}
   .contactBtn:hover{border-color:rgba(25,227,154,.5);background:var(--panel)}
+  /* 2026-09-28, Sagi: «сразу показывать номер телефона» — отдельная колонка с номером текстом.
+     Клик по номеру копирует его. */
+  .phoneTxt{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:13px;cursor:copy;border-bottom:1px dashed var(--line-2)}
+  .phoneTxt:hover{color:var(--brand)}
+  .phoneTxt.copied{color:var(--brand);border-bottom-color:transparent}
+  /* 2026-09-28, Sagi: «тяжело ориентироваться» — плитки статистики стали компактной строкой из 6
+     и кликабельными ярлыками в нужный раздел; на пунктах меню — счётчики. */
+  .bossStats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .bossStats .stat{padding:10px 12px;cursor:pointer;transition:.15s}
+  .bossStats .stat:hover{border-color:rgba(25,227,154,.45);background:var(--panel-2)}
+  .bossStats .stat .big{font-size:21px}
+  .bossStats .stat .lbl{font-size:11.5px}
+  @media(max-width:900px){.bossStats{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:520px){.bossStats{grid-template-columns:repeat(2,1fr)}}
+  .bnItem .bnCount{margin-left:auto;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line-2);color:var(--muted)}
+  .bnItem .bnCount.hot{color:var(--amber);border-color:rgba(239,159,39,.35);background:var(--amber-bg)}
+  .bnItem .bnCount:empty{display:none}
 
   /* 2026-08-24, по указанию Sagi: «увидеть тех, кого перевёл на стажировку» — быстрый фильтр
      по роли над списком сотрудников, чтобы не искать глазами по бейджам в таблице. */
@@ -444,19 +461,19 @@
   <section id="screen-boss" class="hidden">
     <div class="sectitle" style="margin-top:18px">🎯 Панель руководителя</div>
 
-    <div class="g4">
-      <div class="stat"><div class="big" id="bsTotal">0</div><div class="lbl">всего сотрудников</div></div>
-      <div class="stat"><div class="big" id="bsTrainees">0</div><div class="lbl">стажёров</div></div>
-      <div class="stat"><div class="big" id="bsManagers">0</div><div class="lbl">менеджеров</div></div>
-      <div class="stat"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
-      <div class="stat"><div class="big" id="bsCands">0</div><div class="lbl">кандидатов в найме</div></div>
-      <div class="stat"><div class="big" id="bsWaiting">0</div><div class="lbl">ждут ответа</div></div>
+    <div class="bossStats">
+      <div class="stat" data-go="employees" data-role="all" title="Открыть всех сотрудников"><div class="big" id="bsTotal">0</div><div class="lbl">всего сотрудников</div></div>
+      <div class="stat" data-go="employees" data-role="trainee" title="Показать только обучение"><div class="big" id="bsTrainees">0</div><div class="lbl">стажёров</div></div>
+      <div class="stat" data-go="employees" data-role="manager" title="Показать только стажировку"><div class="big" id="bsManagers">0</div><div class="lbl">менеджеров</div></div>
+      <div class="stat" data-go="analytics" title="Открыть аналитику"><div class="big" id="bsAvg">0%</div><div class="lbl">средний прогресс</div></div>
+      <div class="stat" data-go="pipeline" title="Открыть пайплайн найма"><div class="big" id="bsCands">0</div><div class="lbl">кандидатов в найме</div></div>
+      <div class="stat" data-go="pipeline" title="Открыть пайплайн найма"><div class="big" id="bsWaiting">0</div><div class="lbl">ждут ответа</div></div>
     </div>
 
     <div class="bossLayout">
       <div class="bossNav" id="bossNav">
-        <button class="bnItem active" data-tab="employees"><span class="ic">👥</span>Сотрудники и прогресс</button>
-        <button class="bnItem" data-tab="pipeline"><span class="ic">🗂</span>Пайплайн найма</button>
+        <button class="bnItem active" data-tab="employees"><span class="ic">👥</span>Сотрудники и прогресс<span class="bnCount" id="bnCountEmployees"></span></button>
+        <button class="bnItem" data-tab="pipeline"><span class="ic">🗂</span>Пайплайн найма<span class="bnCount hot" id="bnCountPipeline" title="ждут ответа"></span></button>
         <button class="bnItem" data-tab="onboarding"><span class="ic">✅</span>Адаптация новичков</button>
         <button class="bnItem" data-tab="training"><span class="ic">📚</span>Материалы обучения</button>
         <button class="bnItem" data-tab="analytics"><span class="ic">📊</span>Аналитика</button>
@@ -701,6 +718,20 @@ function credentialsText(u, newLogin, newPassword){
 // Случайный пароль из цифр — стажёры чаще всего заходят с телефона, цифровую клавиатуру проще
 // набрать и продиктовать по телефону, чем случайную строку с буквами разного регистра.
 function genPassword(){ return String(Math.floor(100000+Math.random()*900000)); }
+// 2026-09-28: номер телефона текстом в таблице, в привычном виде +7 777 123 45 67.
+function fmtPhone(phone){
+  let d=String(phone||'').replace(/[^\d]/g,'');
+  if(!d) return '';
+  if(d.length===11 && d[0]==='8') d='7'+d.slice(1);
+  if(d.length===10) d='7'+d;
+  if(d.length===11 && d[0]==='7') return '+7 '+d.slice(1,4)+' '+d.slice(4,7)+' '+d.slice(7,9)+' '+d.slice(9,11);
+  return (String(phone).trim().startsWith('+')?'+':'')+d;
+}
+function phoneCellHtml(phone){
+  const f=fmtPhone(phone);
+  if(!f) return '<span style="color:var(--muted)">—</span>';
+  return '<span class="phoneTxt" data-phone="'+f.replace(/\s/g,'')+'" title="Нажми, чтобы скопировать">'+f+'</span>';
+}
 function contactBtnsHtml(phone){
   if(!phone) return '<span style="color:var(--muted)">—</span>';
   return '<div class="contactBtns">'+
@@ -1238,7 +1269,10 @@ function renderBoss(users, skipStatsFetch){
   // Показываем их отдельно. «Ждут ответа» — те, кто либо не ответил после сообщения (Ожидает
   // ответа), либо получил приглашение, но ещё не зарегистрировался (Приглашён).
   if($('#bsCands')) $('#bsCands').textContent=openCandidates.length;
-  if($('#bsWaiting')) $('#bsWaiting').textContent=openCandidates.filter(c=>c.stage==='Ожидает ответа'||c.stage==='Приглашён').length;
+  const waitingCount=openCandidates.filter(c=>c.stage==='Ожидает ответа'||c.stage==='Приглашён').length;
+  if($('#bsWaiting')) $('#bsWaiting').textContent=waitingCount;
+  if($('#bnCountEmployees')) $('#bnCountEmployees').textContent=(users.length+openCandidates.length)||'';
+  if($('#bnCountPipeline')) $('#bnCountPipeline').textContent=waitingCount||'';
 
   const q=(peopleSearchQuery||'').trim().toLowerCase();
   const qDigits=digitsOnly(peopleSearchQuery);
@@ -1290,6 +1324,7 @@ function renderBoss(users, skipStatsFetch){
         // видимая пометка для ручного решения (юридически рискованно жёстко отклонять по возрасту).
         const ageBadge=u.ageOutOfRange ? ' <span class="tag warn" title="Вне диапазона 20-35 лет — не автоотказ, решение за тобой">'+(u.age!=null?u.age+' лет':'возраст')+' ⚠️</span>' : '';
         return '<tr class="bossRow" data-login="'+loginAttr+'" style="cursor:pointer"><td><b>'+u.name+'</b>'+ageBadge+'<br><span style="color:var(--muted);font-size:12px">@'+u.login+'</span></td>'+
+          '<td>'+phoneCellHtml(u.phone)+'</td>'+
           '<td>'+contactBtnsHtml(u.phone)+'</td>'+
           '<td><span class="tag '+(u.role==='manager'?'mg':'tr')+'" title="'+(u.role==='manager'?'Роль в базе: manager':'Роль в базе: trainee')+'">'+(u.role==='manager'?'🎓 Стажировка':'📘 Обучение')+'</span></td>'+
           '<td>'+statusCell+'</td>'+
@@ -1312,6 +1347,7 @@ function renderBoss(users, skipStatsFetch){
       const when=c.ts?new Date(c.ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}):'—';
       const candIdAttr=String(c.id||'').replace(/"/g,'&quot;');
       return '<tr class="bossRow candRow" data-candid="'+candIdAttr+'" style="cursor:pointer"><td><b>'+(c.name||'—')+'</b><br><span style="color:var(--muted);font-size:12px">🗂 кандидат, не зарегистрирован</span></td>'+
+        '<td>'+phoneCellHtml(c.phone)+'</td>'+
         '<td>'+candContactBtnsHtml(c)+'</td>'+
         '<td>'+(stageCls?'<span class="tag '+stageCls+'">'+stageLabel+'</span>':'<span style="color:var(--muted)">'+stageLabel+'</span>')+'</td>'+
         '<td style="color:var(--muted)">—</td>'+
@@ -1325,13 +1361,22 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">'+when+'</td>'+
         '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть в пайплайне найма">🗂 →</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Контакт</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Телефон</th><th>Связаться</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
-        if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn')) return;
+        if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn') || e.target.closest('.phoneTxt')) return;
         if(tr.classList.contains('candRow')){ selectBossTab('pipeline'); return; }
         const u=BOSS_USERS[tr.dataset.login];
         if(u) renderProfile(u);
+      });
+    });
+    wrap.querySelectorAll('.phoneTxt').forEach(el=>{
+      el.addEventListener('click', async e=>{
+        e.stopPropagation();
+        const txt=el.dataset.phone||el.textContent;
+        try{ await navigator.clipboard.writeText(txt); }catch(err){ return; }
+        const was=el.textContent; el.classList.add('copied'); el.textContent='скопировано ✓';
+        setTimeout(()=>{ el.textContent=was; el.classList.remove('copied'); }, 1200);
       });
     });
     wrap.querySelectorAll('.candGotoBtn').forEach(btn=>{
@@ -1354,7 +1399,10 @@ function renderBoss(users, skipStatsFetch){
   show('screen-boss');
   // Открыть нужный раздел по ?tab=... (редирект со старых самостоятельных страниц) — только один
   // раз при первом входе в панель, чтобы периодическое обновление статистики не сбрасывало вкладку.
-  if(BOSS_TAB && !bossTabApplied){ bossTabApplied=true; selectBossTab(BOSS_TAB); }
+  const hashTab=(location.hash||'').replace('#','');
+  const startTab=BOSS_TAB || (document.querySelector('.bnItem[data-tab="'+hashTab+'"]') ? hashTab : '');
+  if(startTab && !bossTabApplied){ bossTabApplied=true; selectBossTab(startTab); }
+  preloadBossFrames();
 }
 let bossTabApplied=false;
 
@@ -1541,6 +1589,32 @@ function selectBossTab(tab){
   }
   if(tab==='wa') renderWaPane(); else waStopPoll();
   scheduleViewportSlice();
+  // 2026-09-28, Sagi: «тяжело ориентироваться». Запоминаем раздел в адресе (#pipeline) — после
+  // обновления страницы остаёшься там же; и если меню ушло вверх за экран (долистал таблицу), при
+  // переключении возвращаем начало раздела в поле зрения, а не оставляем пустое место.
+  try{ history.replaceState(null,'',location.pathname+location.search+'#'+tab); }catch(e){}
+  const layout=document.querySelector('.bossLayout');
+  if(layout){ const top=layout.getBoundingClientRect().top; if(top<0) window.scrollTo({top:window.scrollY+top-70, behavior:'smooth'}); }
+}
+// Плитки статистики — ярлыки в нужный раздел (и сразу нужный фильтр сотрудников).
+document.querySelectorAll('.bossStats .stat[data-go]').forEach(st=>{
+  st.addEventListener('click', ()=>{
+    const role=st.dataset.role;
+    if(role){ const rb=document.querySelector('.rfBtn[data-role="'+role+'"]'); if(rb) rb.click(); }
+    selectBossTab(st.dataset.go);
+  });
+});
+// Тяжёлые встроенные разделы (пайплайн, адаптация) подгружаем заранее в фоне, чтобы по клику они
+// открывались сразу, а не с пустым экраном на несколько секунд.
+let bossFramesPreloaded=false;
+function preloadBossFrames(){
+  if(bossFramesPreloaded) return; bossFramesPreloaded=true;
+  setTimeout(()=>{
+    ['frame-pipeline','frame-onboarding'].forEach(id=>{
+      const f=document.getElementById(id);
+      if(f && !f.getAttribute('src')) f.setAttribute('src', f.dataset.src);
+    });
+  }, 2500);
 }
 document.querySelectorAll('.bnItem').forEach(btn=>{
   btn.addEventListener('click', ()=>selectBossTab(btn.dataset.tab));
