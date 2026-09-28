@@ -15,6 +15,10 @@
  *   WA_AUTH_DIR         — папка сессии (по умолчанию ./auth)
  *   WA_MIN_INTERVAL_MS  — пауза между сообщениями (по умолчанию 120000 = 2 минуты)
  *   WA_DAILY_CAP        — максимум сообщений в сутки (по умолчанию 0 = без лимита)
+ *   WA_PROXY_URL        — резидентный/мобильный прокси для соединения с WhatsApp, например
+ *                         "http://user:pass@host:port" или "socks5://user:pass@host:port".
+ *                         Нужен, потому что WhatsApp блокирует подключения с серверных
+ *                         (дата-центровых) IP ещё до показа QR (проверено 2026-09-28).
  *
  * HTTP (все изменяющие — с заголовком x-wa-secret):
  *   GET  /                 — страница привязки (QR, обновляется сама)
@@ -39,6 +43,30 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
+
+// 2026-09-28: WhatsApp блокирует подключения с серверного (дата-центрового) IP ещё до показа QR —
+// проверено напрямую (с домашнего IP QR приходит мгновенно, с сервера — 403 без единого QR за
+// 38+ часов подряд). Решение — пустить соединение через резидентный/мобильный прокси.
+// WA_PROXY_URL: "http://user:pass@host:port" или "socks5://user:pass@host:port". Пусто — без прокси.
+const PROXY_URL = process.env.WA_PROXY_URL || '';
+function buildProxyAgent(url) {
+  if (!url) return null;
+  try {
+    if (/^socks/i.test(url)) {
+      const { SocksProxyAgent } = require('socks-proxy-agent');
+      return new SocksProxyAgent(url);
+    }
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    return new HttpsProxyAgent(url);
+  } catch (e) {
+    console.error('не удалось создать прокси-агент:', e.message);
+    return null;
+  }
+}
+const PROXY_AGENT = buildProxyAgent(PROXY_URL);
+if (PROXY_URL) {
+  console.log(PROXY_AGENT ? 'прокси включён для WhatsApp-соединения' : 'WA_PROXY_URL задан, но агент не создался — проверь формат URL');
+}
 
 const PORT = parseInt(process.env.WA_WORKER_PORT || '8790', 10);
 const SECRET = process.env.WA_WORKER_SECRET || '';
@@ -167,7 +195,14 @@ async function start() {
       fetchLatestBaileysVersion().then((v) => v.version),
       new Promise((_, rej) => setTimeout(() => rej(new Error('fetchLatestBaileysVersion завис (>15с)')), 15000)),
     ]);
-    sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger, browser: ['Sagi HR', 'Chrome', '1.0.0'] });
+    sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: false,
+      logger,
+      browser: ['Sagi HR', 'Chrome', '1.0.0'],
+      ...(PROXY_AGENT ? { agent: PROXY_AGENT, fetchAgent: PROXY_AGENT } : {}),
+    });
     sock.ev.on('creds.update', saveCreds);
 
     // Входящие: фиксируем ответы и ловим «стоп».
@@ -326,6 +361,7 @@ function checkSecret(req) {
 
 app.get('/status', (req, res) => res.json({
   connected, number: meNumber, hasQr: !!qrDataUrl, ready: true, lastError, paused,
+  proxy: !!PROXY_AGENT,
   minIntervalMs: MIN_INTERVAL_MS, dailyCap: DAILY_CAP,
   sendWindow: { start: SEND_START, end: SEND_END, open: inSendWindow(), now: almatyHHMM() },
   queue: { pending: queue.length, sentToday: stats.sentToday, sentTotal: stats.sentTotal, stopped: stoplist.size },
