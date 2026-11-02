@@ -328,8 +328,10 @@
   <section id="screen-boss-login" class="hidden">
     <div class="authbox card">
       <div class="sectitle" style="margin-top:0">Вход для руководителя</div>
-      <div class="sub" style="margin-bottom:18px">Доступ к данным сотрудников и найму. Пароль — тот же, что у дашборда РОПа.</div>
+      <div class="sub" style="margin-bottom:18px">Доступ к данным сотрудников и найму. Логин admin, пароль — тот же, что у дашборда РОПа.</div>
       <div class="err" id="bossErr"></div>
+      <label>Логин</label>
+      <input id="f-boss-login" placeholder="admin" maxlength="40" autocomplete="username" value="admin" />
       <label>Пароль руководителя</label>
       <input id="f-boss" type="password" placeholder="••••••" maxlength="40" />
       <button class="btn" id="bossSubmit">Войти</button>
@@ -839,6 +841,17 @@ $('#bossBack').onclick=()=>show('screen-entry');
 $('#authSubmit').onclick=async()=>{
   const name=$('#f-name').value, login=$('#f-login').value, pass=$('#f-pass').value, phone=$('#f-phone').value;
   const btn=$('#authSubmit'), old=btn.textContent; btn.disabled=true; btn.textContent='Подождите…';
+  // 2026-11-02, Sagi: вводил «admin» + пароль руководителя в обычную форму входа сотрудника и
+  // получал ошибку. Теперь логин admin в этой форме сразу пробует вход руководителя; если пароль не
+  // руководителя — идём обычным путём (вдруг у кого-то из сотрудников такой логин).
+  if(authMode==='login' && login.trim().toLowerCase()==='admin'){
+    const b=await api({action:'list', password:pass});
+    if(b.ok){
+      btn.disabled=false; btn.textContent=old;
+      $('#f-login').value=$('#f-pass').value='';
+      BOSS_PW=pass; localStorage.setItem(BOSS_PW_KEY, pass); renderBoss(b.users); return;
+    }
+  }
   const res = authMode==='register'
     ? await api({action:'register', name, login, password:pass, role:'trainee', hh:REF_HH, phone})
     : await api({action:'login', login, password:pass});
@@ -852,6 +865,8 @@ $('#authSubmit').onclick=async()=>{
 /* ---- BOSS ---- */
 $('#bossSubmit').onclick=async()=>{
   const pw=$('#f-boss').value;
+  const bl=($('#f-boss-login')?$('#f-boss-login').value:'admin').trim().toLowerCase();
+  if(bl!=='admin'){ const e=$('#bossErr'); e.textContent='Неверный логин руководителя (логин: admin)'; e.style.display='block'; return; }
   const btn=$('#bossSubmit'), old=btn.textContent; btn.disabled=true; btn.textContent='Подождите…';
   const res=await api({action:'list', password:pw});
   btn.disabled=false; btn.textContent=old;
@@ -1847,6 +1862,7 @@ $('#logoHome').onclick=async e=>{ e.preventDefault();
 /* ---- ввод по Enter ---- */
 ['f-name','f-login','f-pass'].forEach(id=>{ const el=$('#'+id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') $('#authSubmit').click(); }); });
 $('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#bossSubmit').click(); });
+$('#f-boss-login')&&$('#f-boss-login').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#bossSubmit').click(); });
 
 /* ---- restore session ---- */
 (async function(){
