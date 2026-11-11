@@ -277,6 +277,18 @@
   #candModal .cmItem{border-top:1px solid var(--line);padding:10px 0}
   #candModal .cmQ{color:var(--muted);font-size:12.5px}
   #candModal .cmA{white-space:pre-wrap;font-size:14px;margin-top:2px}
+  #candModal input[type=text],#candModal textarea{background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:9px 12px;font:inherit;min-width:0}
+  #candModal textarea{width:100%;min-height:64px;resize:vertical}
+  #candModal .cmCom{border-top:1px solid var(--line);padding:8px 0;font-size:14px}
+  #candModal .cmCom small{color:var(--muted)}
+  #candModal .cmCom button{background:none;border:0;color:var(--muted);cursor:pointer}
+  .ownerTag{display:inline-block;font-size:12px;padding:2px 9px;border-radius:999px;background:rgba(25,227,154,.12);color:var(--brand);border:1px solid rgba(25,227,154,.3)}
+  .comPrev{color:var(--muted);font-size:12px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+  .taskTag{display:inline-block;font-size:12px;padding:2px 9px;border-radius:999px;background:rgba(255,207,102,.12);color:var(--warn,#ffcf66);border:1px solid rgba(255,207,102,.35);margin-top:3px}
+  .taskTag.over{background:rgba(255,107,107,.14);color:#ff6b6b;border-color:rgba(255,107,107,.4)}
+  #candModal .cmTask{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:7px 0;font-size:14px}
+  #candModal .cmTask.done span{text-decoration:line-through;color:var(--muted)}
+  #candModal input[type=datetime-local]{background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:8px 10px;font:inherit}
 </style>
 </head>
 <body>
@@ -504,6 +516,8 @@
             <button class="rfBtn" data-role="trainee">📘 Обучение</button>
             <button class="rfBtn" data-role="manager">🎓 Стажировка</button>
             <button class="rfBtn" data-role="candidate">🗂 Только кандидаты</button>
+            <button class="rfBtn dueBtn" id="dueFilter" title="Только с невыполненными задачами" style="margin-left:8px">⏰ Задачи</button>
+            <select id="ownerFilter" title="Фильтр по РОПу" style="margin-left:8px;background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px"><option value="">РОП: все</option></select>
           </div>
           <div id="bossTableWrap"></div>
         </div>
@@ -668,6 +682,26 @@
       <button class="btn small" id="cmSave">Сохранить стадию</button>
       <span class="sub" id="cmMsg" style="margin:0"></span>
     </div>
+    <div class="cmRow">
+      <label style="margin:0">РОП:</label>
+      <input type="text" id="cmOwner" list="ownersList" placeholder="Имя руководителя" maxlength="60" />
+      <datalist id="ownersList"></datalist>
+      <button class="btn small" id="cmAssign">Закрепить</button>
+      <span class="sub" id="cmOwnerMsg" style="margin:0"></span>
+    </div>
+    <div style="font-weight:700;margin-top:14px">⏰ Задачи: перезвонить / напомнить</div>
+    <div id="cmTasks"></div>
+    <div class="cmRow">
+      <input type="datetime-local" id="cmTaskAt" />
+      <button class="btn sec small cmQuick" data-h="1">через 1 час</button>
+      <button class="btn sec small cmQuick" data-h="3">через 3 часа</button>
+      <button class="btn sec small cmQuick" data-h="tom">завтра 10:00</button>
+    </div>
+    <div class="cmRow"><input type="text" id="cmTaskText" placeholder="Что сделать (по умолчанию: Перезвонить)" maxlength="300" style="flex:1" /><button class="btn small" id="cmTaskAdd">Поставить задачу</button><span class="sub" id="cmTaskMsg" style="margin:0"></span></div>
+    <div style="font-weight:700;margin-top:14px">Комментарии</div>
+    <div id="cmComments"></div>
+    <textarea id="cmComText" placeholder="Например: дозвонился, перезвонить завтра в 15:00"></textarea>
+    <div class="cmRow"><button class="btn small" id="cmComAdd">Добавить комментарий</button><span class="sub" id="cmComMsg" style="margin:0"></span></div>
     <div id="cmBody"></div>
     <div class="cmRow"><button class="btn sec small" id="cmGoto">🗂 Открыть в пайплайне найма →</button></div>
   </div>
@@ -1200,10 +1234,11 @@ let BOSS_USERS={}; // login -> user, кэш последнего списка о
 // ниже, объединяющий сотрудников (api/users.js) и кандидатов из пайплайна (api/pipeline.js), см.
 // CANDIDATES/loadCandidatesAll и сборку списка в renderBoss.
 let bossRoleFilter='all';
-document.querySelectorAll('.rfBtn').forEach(btn=>{
+document.querySelectorAll('.rfBtn:not(.dueBtn)').forEach(btn=>{
   btn.addEventListener('click', ()=>{
+    if(!btn.dataset.role) return;
     bossRoleFilter=btn.dataset.role;
-    document.querySelectorAll('.rfBtn').forEach(b=>b.classList.toggle('active', b===btn));
+    document.querySelectorAll('.rfBtn:not(.dueBtn)').forEach(b=>b.classList.toggle('active', b===btn));
     if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS, true);
   });
 });
@@ -1327,7 +1362,20 @@ function renderBoss(users, skipStatsFetch){
   let peopleUsers = bossRoleFilter==='candidate' ? [] : (bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter));
   peopleUsers = peopleUsers.filter(u=>matchesSearch(u.name+' '+u.login+' '+(u.howFound||''), u.phone));
   let peopleCandidates = (bossRoleFilter==='trainee' || bossRoleFilter==='manager') ? [] : openCandidates;
-  peopleCandidates = peopleCandidates.filter(c=>matchesSearch(c.name+' '+(c.contact||'')+' '+(c.source||''), c.phone));
+  peopleCandidates = peopleCandidates.filter(c=>matchesSearch(c.name+' '+(c.contact||'')+' '+(c.source||'')+' '+(c.owner||'')+' '+((c.comments||[]).map(m=>m.text).join(' ')), c.phone));
+  // 2026-11-11: фильтр по закреплённому РОПу (+ «не закреплён») и по задачам
+  const ofEl=$('#ownerFilter');
+  if(ofEl){
+    const owners=[...new Set((CANDIDATES||[]).map(c=>c.owner).filter(Boolean))].sort();
+    const cur=ofEl.value;
+    ofEl.innerHTML='<option value="">РОП: все</option><option value="__none">Не закреплён</option>'+owners.map(o=>'<option value="'+esc(o)+'">'+esc(o)+'</option>').join('');
+    ofEl.value=[...ofEl.options].some(o=>o.value===cur)?cur:'';
+    if(dueOnly){ peopleCandidates=peopleCandidates.filter(c=>openTasks(c).length); peopleUsers=[]; }
+    if(ofEl.value){
+      peopleUsers=[];
+      peopleCandidates=peopleCandidates.filter(c=>ofEl.value==='__none'?!c.owner:c.owner===ofEl.value);
+    }
+  }
 
   const combined=[
     ...peopleUsers.map(u=>({kind:'user', ts:u.lastSeen||0, data:u})),
@@ -1377,6 +1425,7 @@ function renderBoss(users, skipStatsFetch){
           '<td style="color:var(--muted)">'+(u.mentorName||'—')+'</td>'+
           '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
           '<td style="color:var(--muted)">'+when+'</td>'+
+          '<td style="color:var(--muted)">—</td>'+
           '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
       }
       // Кандидат из пайплайна найма, ещё не зарегистрирован на hr.sagibonus.com — колонки обучения
@@ -1400,9 +1449,10 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">—</td>'+
         '<td style="color:var(--muted)">'+(c.source||'—')+'</td>'+
         '<td style="color:var(--muted)">'+when+'</td>'+
+        '<td>'+(c.owner?'<span class="ownerTag">'+esc(c.owner)+'</span>':'<span style="color:var(--muted)">не закреплён</span>')+taskTagHtml(c)+((c.comments&&c.comments.length)?'<div class="comPrev" title="'+esc(c.comments[c.comments.length-1].text)+'">💬 '+c.comments.length+' · '+esc(c.comments[c.comments.length-1].text)+'</div>':'')+'</td>'+
         '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть карточку кандидата">📋 →</button></td></tr>';
     }).join('');
-    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Телефон</th><th>Связаться</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Телефон</th><th>Связаться</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th>РОП / комментарий</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn') || e.target.closest('.phoneTxt')) return;
@@ -1908,7 +1958,10 @@ function openCandModal(id){
   $('#cmContacts').innerHTML=candContactBtnsHtml(c);
   const st=CM_STAGES.includes(c.stage)?CM_STAGES:[c.stage].concat(CM_STAGES);
   $('#cmStage').innerHTML=st.map(x=>'<option'+(x===c.stage?' selected':'')+'>'+esc(x)+'</option>').join('');
-  $('#cmMsg').textContent='';
+  $('#cmMsg').textContent=''; $('#cmOwnerMsg').textContent=''; $('#cmComMsg').textContent=''; $('#cmTaskMsg').textContent=''; $('#cmComText').value='';
+  $('#cmOwner').value=c.owner||cmMyName();
+  $('#ownersList').innerHTML=[...new Set((CANDIDATES||[]).map(x=>x.owner).filter(Boolean))].map(o=>'<option value="'+esc(o)+'">').join('');
+  cmRenderComments(c); cmRenderTasks(c);
   const ans=Array.isArray(c.answers)?c.answers.filter(x=>x&&x.a):[];
   let h='';
   if(c.employedAt) h+='<div class="cmItem"><div class="cmQ">Трудоустроен(а)</div><div class="cmA">'+esc(new Date(c.employedAt).toLocaleDateString('ru-RU'))+'</div></div>';
@@ -1943,6 +1996,78 @@ $('#cmSave').onclick=async()=>{
   }catch(e){ $('#cmMsg').textContent='Ошибка: '+e.message; }
   btn.disabled=false;
 };
+
+
+const CM_ME_KEY='sagiHR_myName';
+function cmMyName(){ try{ return localStorage.getItem(CM_ME_KEY)||''; }catch(e){ return ''; } }
+function cmRememberName(n){ try{ if(n) localStorage.setItem(CM_ME_KEY,n); }catch(e){} }
+function cmRenderComments(c){
+  const list=(c.comments||[]).slice().reverse();
+  $('#cmComments').innerHTML=list.length?list.map(m=>'<div class="cmCom"><div style="white-space:pre-wrap">'+esc(m.text)+'</div><small>'+esc(m.by||'без имени')+' · '+esc(new Date(m.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))+'</small> <button data-at="'+m.at+'" class="cmDelCom" title="Удалить">🗑</button></div>').join(''):'<div class="sub">Комментариев пока нет.</div>';
+  $('#cmComments').querySelectorAll('.cmDelCom').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Удалить комментарий?')) return;
+    await cmCall({action:'delComment',id:CM_ID,at:Number(b.dataset.at)});
+  });
+}
+async function cmCall(payload){
+  const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({password:BOSS_PW},payload))});
+  const d=await r.json();
+  if(!r.ok||!d.ok) throw new Error(d.error||'Ошибка сохранения');
+  const i=CANDIDATES.findIndex(x=>String(x.id)===String(CM_ID));
+  if(i>=0 && d.item) CANDIDATES[i]=d.item;
+  renderBoss(LAST_BOSS_USERS,true);
+  if(d.item){ cmRenderComments(d.item); cmRenderTasks(d.item); }
+  return d;
+}
+$('#cmAssign').onclick=async()=>{
+  if(CM_ID==null) return;
+  const owner=$('#cmOwner').value.trim(); cmRememberName(owner);
+  $('#cmOwnerMsg').textContent='Сохраняю…';
+  try{ await cmCall({action:'assign',id:CM_ID,owner}); $('#cmOwnerMsg').textContent=owner?'Закреплён за '+owner+' ✓':'Закрепление снято ✓'; }
+  catch(e){ $('#cmOwnerMsg').textContent='Ошибка: '+e.message; }
+};
+$('#cmComAdd').onclick=async()=>{
+  if(CM_ID==null) return;
+  const text=$('#cmComText').value.trim(); if(!text) return;
+  let by=$('#cmOwner').value.trim()||cmMyName();
+  if(!by){ by=(prompt('Ваше имя (будет подписано под комментарием):','')||'').trim(); }
+  cmRememberName(by);
+  $('#cmComMsg').textContent='Сохраняю…';
+  try{ await cmCall({action:'comment',id:CM_ID,text,by}); $('#cmComText').value=''; $('#cmComMsg').textContent='Добавлено ✓'; }
+  catch(e){ $('#cmComMsg').textContent='Ошибка: '+e.message; }
+};
+if($('#ownerFilter')) $('#ownerFilter').addEventListener('change',()=>{ if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS,true); });
+
+/* ---- Задачи по кандидату (2026-11-11) ---- */
+let dueOnly=false;
+function openTasks(c){ return (c.tasks||[]).filter(t=>!t.done).sort((a,b)=>a.dueAt-b.dueAt); }
+function fmtDue(ts){ return new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function taskTagHtml(c){
+  const t=openTasks(c)[0]; if(!t) return '';
+  const over=t.dueAt<Date.now();
+  return '<div><span class="taskTag'+(over?' over':'')+'" title="'+esc(t.text)+'">⏰ '+esc(fmtDue(t.dueAt))+(over?' · просрочено':'')+' · '+esc(t.text.slice(0,24))+'</span></div>';
+}
+function toLocalInput(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'T'+z(d.getHours())+':'+z(d.getMinutes()); }
+function cmRenderTasks(c){
+  const ts=(c.tasks||[]).slice().sort((a,b)=>(a.done-b.done)||(a.dueAt-b.dueAt));
+  $('#cmTasks').innerHTML=ts.length?ts.map(t=>'<div class="cmTask'+(t.done?' done':'')+'"><input type="checkbox" class="cmTaskDone" data-tid="'+esc(t.tid)+'"'+(t.done?' checked':'')+' /><span style="flex:1">'+esc(t.text)+' <small style="color:'+((!t.done&&t.dueAt<Date.now())?'#ff6b6b':'var(--muted)')+'">· '+esc(fmtDue(t.dueAt))+(t.by?' · '+esc(t.by):'')+'</small></span><button class="cmDelCom cmTaskDel" data-tid="'+esc(t.tid)+'" title="Удалить" style="background:none;border:0;color:var(--muted);cursor:pointer">🗑</button></div>').join(''):'<div class="sub">Задач нет.</div>';
+  $('#cmTasks').querySelectorAll('.cmTaskDone').forEach(b=>b.onchange=()=>cmCall({action:'taskDone',id:CM_ID,tid:b.dataset.tid}).catch(e=>alert(e.message)));
+  $('#cmTasks').querySelectorAll('.cmTaskDel').forEach(b=>b.onclick=()=>{ if(confirm('Удалить задачу?')) cmCall({action:'taskDel',id:CM_ID,tid:b.dataset.tid}).catch(e=>alert(e.message)); });
+}
+document.querySelectorAll('.cmQuick').forEach(b=>b.onclick=()=>{
+  const d=new Date();
+  if(b.dataset.h==='tom'){ d.setDate(d.getDate()+1); d.setHours(10,0,0,0); } else d.setHours(d.getHours()+Number(b.dataset.h));
+  $('#cmTaskAt').value=toLocalInput(d);
+});
+$('#cmTaskAdd').onclick=async()=>{
+  if(CM_ID==null) return;
+  const v=$('#cmTaskAt').value; if(!v){ $('#cmTaskMsg').textContent='Выберите дату и время'; return; }
+  const by=$('#cmOwner').value.trim()||cmMyName();
+  $('#cmTaskMsg').textContent='Сохраняю…';
+  try{ await cmCall({action:'task',id:CM_ID,dueAt:new Date(v).getTime(),text:$('#cmTaskText').value.trim(),by}); $('#cmTaskText').value=''; $('#cmTaskAt').value=''; $('#cmTaskMsg').textContent='Задача поставлена ✓'; }
+  catch(e){ $('#cmTaskMsg').textContent='Ошибка: '+e.message; }
+};
+if($('#dueFilter')) $('#dueFilter').addEventListener('click',()=>{ dueOnly=!dueOnly; $('#dueFilter').classList.toggle('active',dueOnly); if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS,true); });
 
 /* ---- restore session ---- */
 (async function(){

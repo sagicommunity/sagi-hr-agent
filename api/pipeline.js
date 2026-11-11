@@ -373,6 +373,54 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 2026-11-11, Sagi: несколько РОПов обзванивают одну базу — закрепляем кандидата за РОПом
+    // (owner) и ведём комментарии (comments: [{text, by, at}]). Поля сохраняются через spread в normalize().
+    if (action === 'assign' || action === 'comment' || action === 'delComment') {
+      const id = (body?.id || '').toString();
+      const items = (await loadAll()).map(normalize);
+      const idx = items.findIndex(x => x.id === id);
+      if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
+      const c = items[idx];
+      if (action === 'assign') {
+        c.owner = (body?.owner || '').toString().trim().slice(0, 60);
+        c.ownerAt = c.owner ? Date.now() : null;
+      } else if (action === 'comment') {
+        const text = (body?.text || '').toString().trim().slice(0, 1000);
+        if (!text) { res.status(400).json({ error: 'Пустой комментарий' }); return; }
+        c.comments = (Array.isArray(c.comments) ? c.comments : []).concat([{ text, by: (body?.by || '').toString().trim().slice(0, 60), at: Date.now() }]).slice(-100);
+      } else {
+        const at = Number(body?.at);
+        c.comments = (Array.isArray(c.comments) ? c.comments : []).filter(m => m.at !== at);
+      }
+      await saveAll(items);
+      res.status(200).json({ ok: true, item: c });
+      return;
+    }
+
+    // 2026-11-11, Sagi: задачи по кандидату («перезвонить позже», «напомнить»): tasks: [{tid, text, dueAt, by, done}]
+    if (action === 'task' || action === 'taskDone' || action === 'taskDel') {
+      const id = (body?.id || '').toString();
+      const items = (await loadAll()).map(normalize);
+      const idx = items.findIndex(x => x.id === id);
+      if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
+      const c = items[idx];
+      const tasks = Array.isArray(c.tasks) ? c.tasks : [];
+      if (action === 'task') {
+        const dueAt = Number(body?.dueAt);
+        if (!dueAt || dueAt < 1e12) { res.status(400).json({ error: 'Укажите дату и время' }); return; }
+        const text = ((body?.text || '').toString().trim() || 'Перезвонить').slice(0, 300);
+        c.tasks = tasks.concat([{ tid: newId(), text, dueAt, by: (body?.by || '').toString().trim().slice(0, 60), done: false, createdAt: Date.now() }]).slice(-50);
+      } else {
+        const tid = (body?.tid || '').toString();
+        c.tasks = action === 'taskDel'
+          ? tasks.filter(t => t.tid !== tid)
+          : tasks.map(t => t.tid === tid ? { ...t, done: !t.done, doneAt: t.done ? null : Date.now() } : t);
+      }
+      await saveAll(items);
+      res.status(200).json({ ok: true, item: c });
+      return;
+    }
+
     if (action === 'delete') {
       const id = (body?.id || '').toString();
       const items = (await loadAll()).map(normalize).filter(x => x.id !== id);
