@@ -2073,6 +2073,15 @@ if($('#dueFilter')) $('#dueFilter').addEventListener('click',()=>{ dueOnly=!dueO
 (async function(){
   await applyLessonOverrides();
   if(BOSS_ENTRY){ await enterBoss(); return; }
+  // 2026-11-11, Sagi: «при обновлении страницы вылетает из кабинета руководителя». Пароль руководителя
+  // уже хранится в localStorage, но восстанавливался только по ссылке ?boss=1, а на обычном адресе
+  // (например /#employees) открывалась стартовая страница. Теперь, если руководитель входил,
+  // возвращаем его в панель на любом адресе; если пароль перестал подходить — идём обычным путём.
+  if(BOSS_PW){
+    const rb=await api({action:'list', password:BOSS_PW});
+    if(rb.ok){ renderBoss(rb.users); return; }
+    BOSS_PW=null; localStorage.removeItem(BOSS_PW_KEY);
+  }
   const s=getSession();
   if(s && s.login && s.token){
     const res=await api({action:'me', login:s.login, token:s.token});
