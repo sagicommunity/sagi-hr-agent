@@ -525,6 +525,7 @@
             <button class="rfBtn" data-role="manager">🎓 Стажировка</button>
             <button class="rfBtn" data-role="candidate">🗂 Только кандидаты</button>
             <button class="rfBtn dueBtn" id="dueFilter" title="Только с невыполненными задачами" style="margin-left:8px">⏰ Задачи</button>
+            <button class="rfBtn dueBtn" id="refreshBtn" title="Обновить список" style="margin-left:8px">🔄 Обновить</button><span class="sub" id="liveStamp" style="margin:0 0 0 8px"></span>
             <select id="ownerFilter" title="Фильтр по РОПу" style="margin-left:8px;background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px"><option value="">РОП: все</option></select>
           </div>
           <div id="bossTableWrap"></div>
@@ -1971,6 +1972,7 @@ function openCandModal(id){
   else if(!h) h='<div class="sub">Кандидат ещё не отвечал боту, ответов пока нет.</div>';
   $('#cmBody').innerHTML=h;
   $('#candModal').classList.add('open');
+  bossLiveTick(true); // подтянуть свежие комментарии/задачи, пока окно открыто
 }
 function closeCandModal(){ $('#candModal').classList.remove('open'); CM_ID=null; }
 $('#cmClose').onclick=closeCandModal;
@@ -2067,6 +2069,42 @@ $('#cmTaskAdd').onclick=async()=>{
   catch(e){ $('#cmTaskMsg').textContent='Ошибка: '+e.message; }
 };
 if($('#dueFilter')) $('#dueFilter').addEventListener('click',()=>{ dueOnly=!dueOnly; $('#dueFilter').classList.toggle('active',dueOnly); if(LAST_BOSS_USERS.length) renderBoss(LAST_BOSS_USERS,true); });
+
+
+/* ---- Автообновление списка (2026-11-11): несколько РОПов работают одновременно, чужие правки
+   (закрепление, комментарии, задачи, новые отклики) должны появляться без ручного F5 ---- */
+let _liveBusy=false, _liveSig='';
+function bossScreenVisible(){ const el=$('#screen-boss'); return !!el && !el.classList.contains('hidden'); }
+async function bossLiveTick(force){
+  if(_liveBusy || !BOSS_PW || !bossScreenVisible() || (document.hidden && !force)) return;
+  _liveBusy=true;
+  try{
+    const [ru,rc]=await Promise.all([
+      api({action:'list',password:BOSS_PW}),
+      fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'list',password:BOSS_PW})}).then(r=>r.json()).catch(()=>null),
+    ]);
+    if(!ru||!ru.ok||!rc||!rc.ok||!Array.isArray(rc.items)) return;
+    const sig=JSON.stringify([rc.items,(ru.users||[]).map(u=>[u.login,u.role,u.hireStatus,u.phone,u.progress&&Object.keys(u.progress).length])]);
+    const modalOpen=$('#candModal').classList.contains('open');
+    if(sig!==_liveSig){
+      _liveSig=sig;
+      CANDIDATES=rc.items;
+      if(modalOpen){
+        // не перерисовываем список под открытым окном и не трогаем поля ввода — обновляем только ленты
+        const c=CANDIDATES.find(x=>String(x.id)===String(CM_ID));
+        if(c){ cmRenderComments(c); cmRenderTasks(c); }
+      } else {
+        renderBoss(ru.users||[],true);
+      }
+    }
+    const st=$('#liveStamp'); if(st) st.textContent='обновлено '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(e){}
+  finally{ _liveBusy=false; }
+}
+setInterval(()=>bossLiveTick(false),15000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) bossLiveTick(false); });
+window.addEventListener('focus',()=>bossLiveTick(false));
+if($('#refreshBtn')) $('#refreshBtn').addEventListener('click',async()=>{ const b=$('#refreshBtn'); b.disabled=true; await bossLiveTick(true); b.disabled=false; });
 
 /* ---- restore session ---- */
 (async function(){
