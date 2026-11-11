@@ -267,6 +267,16 @@
   .accFrame{width:100%;border:0;display:block;min-height:220px;background:transparent}
   .copybox textarea{min-height:150px;font-size:13.5px;line-height:1.55}
   .copiedMsg{color:var(--brand);font-size:13px;font-weight:700;margin-top:8px;display:none}
+  /* 2026-11-11, Sagi: окно кандидата поверх списка (стадия, ответы, смена статуса) */
+  #candModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:200;overflow:auto;padding:24px 14px}
+  #candModal.open{display:flex}
+  #candModal .cmBox{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:18px;max-width:640px;width:100%;padding:20px 22px;position:relative}
+  #candModal .cmX{position:absolute;right:14px;top:10px;background:none;border:0;color:var(--muted);font-size:26px;cursor:pointer}
+  #candModal .cmRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  #candModal select{background:var(--panel-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:9px 12px;font:inherit}
+  #candModal .cmItem{border-top:1px solid var(--line);padding:10px 0}
+  #candModal .cmQ{color:var(--muted);font-size:12.5px}
+  #candModal .cmA{white-space:pre-wrap;font-size:14px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -646,6 +656,22 @@
 </div>
 
 <script src="lessons.js"></script>
+<div id="candModal" role="dialog" aria-modal="true">
+  <div class="cmBox">
+    <button class="cmX" id="cmClose" aria-label="Закрыть">×</button>
+    <div style="font-family:var(--display);font-size:19px;font-weight:700" id="cmName">Кандидат</div>
+    <div class="sub" id="cmMeta" style="margin:4px 0 0"></div>
+    <div class="cmRow" id="cmContacts"></div>
+    <div class="cmRow">
+      <label style="margin:0">Стадия:</label>
+      <select id="cmStage"></select>
+      <button class="btn small" id="cmSave">Сохранить стадию</button>
+      <span class="sub" id="cmMsg" style="margin:0"></span>
+    </div>
+    <div id="cmBody"></div>
+    <div class="cmRow"><button class="btn sec small" id="cmGoto">🗂 Открыть в пайплайне найма →</button></div>
+  </div>
+</div>
 <script>
 /* ============================================================
    СЛОЙ ДАННЫХ — реальная база через /api/users (Upstash Redis).
@@ -1374,13 +1400,13 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">—</td>'+
         '<td style="color:var(--muted)">'+(c.source||'—')+'</td>'+
         '<td style="color:var(--muted)">'+when+'</td>'+
-        '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть в пайплайне найма">🗂 →</button></td></tr>';
+        '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть карточку кандидата">📋 →</button></td></tr>';
     }).join('');
     wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Телефон</th><th>Связаться</th><th>Роль</th><th>Статус</th><th>Прогресс</th><th>Модули</th><th>Чек-лист</th><th>Тесты</th><th>Тренажёр</th><th>Наставник</th><th>Откуда узнал</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
     wrap.querySelectorAll('.bossRow').forEach(tr=>{
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn') || e.target.closest('.phoneTxt')) return;
-        if(tr.classList.contains('candRow')){ selectBossTab('pipeline'); return; }
+        if(tr.classList.contains('candRow')){ openCandModal(tr.dataset.candid); return; }
         const u=BOSS_USERS[tr.dataset.login];
         if(u) renderProfile(u);
       });
@@ -1395,7 +1421,7 @@ function renderBoss(users, skipStatsFetch){
       });
     });
     wrap.querySelectorAll('.candGotoBtn').forEach(btn=>{
-      btn.addEventListener('click', e=>{ e.stopPropagation(); selectBossTab('pipeline'); });
+      btn.addEventListener('click', e=>{ e.stopPropagation(); openCandModal(btn.dataset.candid); });
     });
     wrap.querySelectorAll('.bossDelBtn').forEach(btn=>{
       btn.addEventListener('click', async e=>{
@@ -1863,6 +1889,60 @@ $('#logoHome').onclick=async e=>{ e.preventDefault();
 ['f-name','f-login','f-pass'].forEach(id=>{ const el=$('#'+id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') $('#authSubmit').click(); }); });
 $('#f-boss')&&$('#f-boss').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#bossSubmit').click(); });
 $('#f-boss-login')&&$('#f-boss-login').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#bossSubmit').click(); });
+
+
+/* ---- Окно кандидата (2026-11-11): стадия, ответы, смена статуса, не уходя со списка ---- */
+let CM_ID=null;
+const CM_STAGES=['Новый','Ожидает ответа','Ответил','Приглашён','Обучение','Стажировка','Трудоустроен','На связи','Квалификация','Интервью','Оффер','Не подходит','Отказ','Ушёл'];
+function openCandModal(id){
+  const c=(CANDIDATES||[]).find(x=>String(x.id)===String(id)); if(!c) return;
+  CM_ID=c.id;
+  $('#cmName').textContent=c.name||'Кандидат';
+  const bits=[];
+  if(c.age!=null&&c.age!=='') bits.push('🎂 '+c.age);
+  if(c.phone) bits.push('📱 '+c.phone);
+  if(c.verdict) bits.push(c.verdict);
+  if(c.source) bits.push(c.source);
+  if(c.vacancy) bits.push('🎯 '+c.vacancy);
+  $('#cmMeta').textContent=bits.join(' · ');
+  $('#cmContacts').innerHTML=candContactBtnsHtml(c);
+  const st=CM_STAGES.includes(c.stage)?CM_STAGES:[c.stage].concat(CM_STAGES);
+  $('#cmStage').innerHTML=st.map(x=>'<option'+(x===c.stage?' selected':'')+'>'+esc(x)+'</option>').join('');
+  $('#cmMsg').textContent='';
+  const ans=Array.isArray(c.answers)?c.answers.filter(x=>x&&x.a):[];
+  let h='';
+  if(c.employedAt) h+='<div class="cmItem"><div class="cmQ">Трудоустроен(а)</div><div class="cmA">'+esc(new Date(c.employedAt).toLocaleDateString('ru-RU'))+'</div></div>';
+  if(c.leftAt) h+='<div class="cmItem"><div class="cmQ">Ушёл/ушла</div><div class="cmA">'+esc(new Date(c.leftAt).toLocaleDateString('ru-RU'))+(c.exitReason?' — '+esc(c.exitReason):'')+'</div></div>';
+  if(c.summary) h+='<div class="cmItem"><div class="cmQ">Оценка ИИ-скринера</div><div class="cmA">'+esc(c.summary)+'</div></div>';
+  if(ans.length) h+=ans.map(x=>'<div class="cmItem"><div class="cmQ">'+esc(x.q)+'</div><div class="cmA">'+esc(x.a)+'</div></div>').join('');
+  else if(c.resume) h+='<div class="cmItem"><div class="cmQ">Резюме / о себе</div><div class="cmA">'+esc(c.resume)+'</div></div>';
+  else if(!h) h='<div class="sub">Кандидат ещё не отвечал боту, ответов пока нет.</div>';
+  $('#cmBody').innerHTML=h;
+  $('#candModal').classList.add('open');
+}
+function closeCandModal(){ $('#candModal').classList.remove('open'); CM_ID=null; }
+$('#cmClose').onclick=closeCandModal;
+$('#candModal').addEventListener('click',e=>{ if(e.target.id==='candModal') closeCandModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeCandModal(); });
+$('#cmGoto').onclick=()=>{ closeCandModal(); selectBossTab('pipeline'); };
+$('#cmSave').onclick=async()=>{
+  if(CM_ID==null) return;
+  const stage=$('#cmStage').value; const btn=$('#cmSave');
+  const extra={};
+  if(stage==='Ушёл'){ const r=prompt('Причина ухода (можно оставить пустым):',''); if(r===null) return; extra.exitReason=r; }
+  btn.disabled=true; $('#cmMsg').textContent='Сохраняю…';
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action:'stage',password:BOSS_PW,id:CM_ID,stage},extra))});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Не удалось сохранить');
+    const i=CANDIDATES.findIndex(x=>String(x.id)===String(CM_ID));
+    if(i>=0) CANDIDATES[i]=d.item||Object.assign(CANDIDATES[i],{stage});
+    $('#cmMsg').textContent='Сохранено ✓';
+    renderBoss(LAST_BOSS_USERS,true);
+    setTimeout(closeCandModal,600);
+  }catch(e){ $('#cmMsg').textContent='Ошибка: '+e.message; }
+  btn.disabled=false;
+};
 
 /* ---- restore session ---- */
 (async function(){
