@@ -48,11 +48,39 @@ async function redis(cmd) {
   return d.result;
 }
 async function loadAll() {
-  const arr = await redis(['LRANGE', CAND_KEY, 0, 999]);
+  const arr = await redis(['LRANGE', CAND_KEY, 0, -1]);
   if (!Array.isArray(arr)) return [];
-  return arr.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+  const seen = new Set();
+  // 2026-11-11: если из-за прежних гонок в списке остались дубли одного id — берём первое вхождение
+  // (с ним же работает saveOne), иначе в панели руководителя карточки двоились.
+  return arr.map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean)
+    .filter(x => { if (!x.id) return true; if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+}
+// 2026-11-11, Sagi: «карточки дублируются, когда ставлю задачу или комментарий». Причина: saveAll
+// делал DEL и потом ~700 отдельных LPUSH (несколько секунд), и всё это время hh_poll/apply.js
+// добавляли и правили записи (LPUSH/LSET) — записи двоились и терялись. Теперь одиночные правки
+// идут через saveOne (один LSET по месту записи, как в hh_poll.js), а полная перезапись — одной
+// атомарной транзакцией.
+async function saveOne(item) {
+  const raw = await redis(['LRANGE', CAND_KEY, 0, -1]);
+  if (!Array.isArray(raw)) throw new Error('Хранилище недоступно');
+  for (let i = 0; i < raw.length; i++) {
+    let o = null; try { o = JSON.parse(raw[i]); } catch (e) {}
+    if (o && o.id === item.id) { await redis(['LSET', CAND_KEY, i, JSON.stringify(item)]); return; }
+  }
+  throw new Error('Кандидат не найден');
 }
 async function saveAll(items) {
+  const cmds = [['DEL', CAND_KEY]];
+  if (items.length) cmds.push(['LPUSH', CAND_KEY, ...items.slice().reverse().map(x => JSON.stringify(x))]);
+  try {
+    const r = await fetch(R_URL.replace(/\/+$/, '') + '/multi-exec', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + R_TOK, 'content-type': 'application/json' },
+      body: JSON.stringify(cmds),
+    });
+    if (r.ok) return;
+  } catch (e) {}
   await redis(['DEL', CAND_KEY]);
   for (const x of items.slice().reverse()) await redis(['LPUSH', CAND_KEY, JSON.stringify(x)]);
 }
@@ -329,7 +357,7 @@ export default async function handler(req, res) {
         const exitReason = (body?.exitReason || '').toString().slice(0, 500).trim();
         if (exitReason) items[idx].exitReason = exitReason;
       }
-      await saveAll(items);
+      await saveOne(items[idx]);
       res.status(200).json({ ok: true, item: items[idx] });
       return;
     }
@@ -348,7 +376,7 @@ export default async function handler(req, res) {
       if (action === 'referralSale') items[idx].saleInFirstMonth = true;
       if (action === 'referralPaid') { items[idx].referralBonusStatus = 'выплачено'; items[idx].referralPaidAt = Date.now(); }
       items[idx] = normalize(items[idx]);
-      await saveAll(items);
+      await saveOne(items[idx]);
       res.status(200).json({ ok: true, item: items[idx] });
       return;
     }
@@ -392,7 +420,7 @@ export default async function handler(req, res) {
         const at = Number(body?.at);
         c.comments = (Array.isArray(c.comments) ? c.comments : []).filter(m => m.at !== at);
       }
-      await saveAll(items);
+      await saveOne(c);
       res.status(200).json({ ok: true, item: c });
       return;
     }
@@ -416,7 +444,7 @@ export default async function handler(req, res) {
           ? tasks.filter(t => t.tid !== tid)
           : tasks.map(t => t.tid === tid ? { ...t, done: !t.done, doneAt: t.done ? null : Date.now() } : t);
       }
-      await saveAll(items);
+      await saveOne(c);
       res.status(200).json({ ok: true, item: c });
       return;
     }
