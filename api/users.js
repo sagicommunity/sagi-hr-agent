@@ -327,7 +327,11 @@ export default async function handler(req, res) {
       const logins = await redis(['SMEMBERS', 'hr:users']);
       const arr = Array.isArray(logins) ? logins : [];
       const users = [];
-      for (const lg of arr) { const u = await getUser(lg); if (u) users.push(safe(u)); }
+      // 2026-11-15: один MGET вместо запроса на каждого сотрудника (было сотни обращений к Redis за вызов)
+      if (arr.length) {
+        const raws = await redis(['MGET', ...arr.map(uKey)]);
+        if (Array.isArray(raws)) for (const raw of raws) { if (!raw) continue; try { users.push(safe(JSON.parse(raw))); } catch (e) {} }
+      }
       res.status(200).json({ ok: true, users });
       return;
     }

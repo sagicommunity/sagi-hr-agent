@@ -2075,7 +2075,10 @@ if($('#dueFilter')) $('#dueFilter').addEventListener('click',()=>{ dueOnly=!dueO
    (закрепление, комментарии, задачи, новые отклики) должны появляться без ручного F5 ---- */
 let _liveBusy=false, _liveSig='';
 function bossScreenVisible(){ const el=$('#screen-boss'); return !!el && !el.classList.contains('hidden'); }
+let _liveLast=0;
 async function bossLiveTick(force){
+  if(!force && Date.now()-_liveLast<30000) return;
+  _liveLast=Date.now();
   if(_liveBusy || !BOSS_PW || !bossScreenVisible() || (document.hidden && !force)) return;
   _liveBusy=true;
   try{
@@ -2101,7 +2104,7 @@ async function bossLiveTick(force){
   }catch(e){}
   finally{ _liveBusy=false; }
 }
-setInterval(()=>bossLiveTick(false),15000);
+setInterval(()=>bossLiveTick(false),120000); // 2026-11-15: было 15 с — лишняя нагрузка на Redis (список сотрудников = сотни запросов за тик)
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) bossLiveTick(false); });
 window.addEventListener('focus',()=>bossLiveTick(false));
 if($('#refreshBtn')) $('#refreshBtn').addEventListener('click',async()=>{ const b=$('#refreshBtn'); b.disabled=true; await bossLiveTick(true); b.disabled=false; });
