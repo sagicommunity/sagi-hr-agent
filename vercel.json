@@ -7,6 +7,11 @@
   },
   "redirects": [
     {
+      "source": "/contract.html",
+      "destination": "/",
+      "permanent": false
+    },
+    {
       "source": "/dashboard",
       "destination": "/analytics.html",
       "permanent": false
