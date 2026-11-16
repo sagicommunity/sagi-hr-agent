@@ -84,8 +84,7 @@ const ROLE_LABEL = { sales: 'Менеджер по продажам', success: '
 // «только менеджер по продажам указываем, остальным договор не нужен»). Для success/support
 // пункт из чек-листа убираем совсем, чтобы он не висел и не портил процент.
 function itemsForRole(role) {
-  // 2026-11-15: договор ГПХ отключён для всех ролей — пункт из чек-листа убран
-  const common = ITEMS.common.filter(([k]) => k !== CONTRACT_ITEM_KEY);
+  const common = role === 'sales' ? ITEMS.common : ITEMS.common.filter(([k]) => k !== CONTRACT_ITEM_KEY);
   return common.concat(ITEMS[role] || []);
 }
 
@@ -371,10 +370,6 @@ export default async function handler(req, res) {
     }
 
     if (action === 'contract_save') {
-      res.status(410).json({ error: 'Подписание договора отключено. Новый договор появится позже.' }); return;
-    }
-
-    if (action === 'contract_save_disabled') {
       const id = (body?.id || '').toString().trim();
       if (!id) { res.status(400).json({ error: 'Нет id' }); return; }
 
@@ -513,7 +508,8 @@ export default async function handler(req, res) {
       const trainingUser = rec ? null : await loadTrainingUser(id);
       const owner = rec || (trainingUser ? { name: trainingUser.name || '', role: 'sales' } : null);
       if (!owner) { res.status(400).json({ error: 'Не найден профиль стажёра' }); return; }
-      // 2026-11-15: подпись договора для входа в CRM больше не нужна
+      const signed = await isContractSigned(id);
+      if (!signed) { res.status(403).json({ error: 'Сначала изучите и подпишите договор ГПХ' }); return; }
       res.status(200).json({ ok: true, url: crmSsoUrl(id, owner.name || '', owner.role || 'sales') });
       return;
     }
