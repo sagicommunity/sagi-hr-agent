@@ -201,6 +201,19 @@ export default async function handler(req, res) {
 
     const action = body?.action;
 
+    // 2026-11-16: диагностика хранилища (только чтение, за паролем РОПа): что реально отвечает Redis.
+    if (action === 'redis_health') {
+      const out = { urlSet: !!R_URL, tokenSet: !!R_TOK, host: (R_URL.match(/^https?:\/\/([^/]+)/) || [])[1] || '' };
+      for (const [k, cmd] of [['ping', ['PING']], ['dbsize', ['DBSIZE']], ['candLen', ['LLEN', CAND_KEY]], ['usersCard', ['SCARD', 'hr:users']]]) {
+        try {
+          const r = await fetch(R_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + R_TOK, 'content-type': 'application/json' }, body: JSON.stringify(cmd) });
+          out[k] = { http: r.status, body: (await r.text()).slice(0, 300) };
+        } catch (e) { out[k] = { error: String(e.message || e) }; }
+      }
+      res.status(200).json({ ok: true, ...out });
+      return;
+    }
+
     // ── WhatsApp: прокси к серым воркерам (Sagi, 2026-09-10; несколько номеров — 2026-09-22) ──
     // Панель руководителя не может звать воркеры напрямую (CORS + секрет), поэтому проксируем
     // отсюда. До 2026-09-22 был один номер — теперь их может быть несколько (резерв на случай
