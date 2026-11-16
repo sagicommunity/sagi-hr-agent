@@ -2078,6 +2078,8 @@ async function bossLiveTick(force){
       fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'list',password:BOSS_PW})}).then(r=>r.json()).catch(()=>null),
     ]);
     if(!ru||!ru.ok||!rc||!rc.ok||!Array.isArray(rc.items)) return;
+    // 2026-11-16: если хранилище недоступно, API отвечает «пусто» — не затираем уже загруженный список пустым
+    if((CANDIDATES.length && !rc.items.length) || (LAST_BOSS_USERS.length && !(ru.users||[]).length)) return;
     const sig=JSON.stringify([rc.items,(ru.users||[]).map(u=>[u.login,u.role,u.hireStatus,u.phone,u.progress&&Object.keys(u.progress).length])]);
     const modalOpen=$('#candModal').classList.contains('open');
     if(sig!==_liveSig){
