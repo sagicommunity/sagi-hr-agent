@@ -594,6 +594,7 @@
           <span class="tag" id="profRole"></span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn small" id="profCrm">📞 РОП / задачи / комментарии</button>
           <button class="btn small" id="profPromote">🎓 Перевести в менеджеры</button>
           <button class="btn sec small" id="profNotifyWA" style="display:none">📣 Уведомить о стажировке (WhatsApp)</button>
           <button class="btn sec small" id="profDelete" style="color:#ff6b6b;border-color:#ff6b6b">🗑 Удалить</button>
@@ -685,7 +686,7 @@
     <div style="font-family:var(--display);font-size:19px;font-weight:700" id="cmName">Кандидат</div>
     <div class="sub" id="cmMeta" style="margin:4px 0 0"></div>
     <div class="cmRow" id="cmContacts"></div>
-    <div class="cmRow">
+    <div class="cmRow" id="cmStageRow">
       <label style="margin:0">Стадия:</label>
       <select id="cmStage"></select>
       <button class="btn small" id="cmSave">Сохранить стадию</button>
@@ -712,7 +713,7 @@
     <textarea id="cmComText" placeholder="Например: дозвонился, перезвонить завтра в 15:00"></textarea>
     <div class="cmRow"><button class="btn small" id="cmComAdd">Добавить комментарий</button><span class="sub" id="cmComMsg" style="margin:0"></span></div>
     <div id="cmBody"></div>
-    <div class="cmRow"><button class="btn sec small" id="cmGoto">🗂 Открыть в пайплайне найма →</button></div>
+    <div class="cmRow" id="cmGotoRow"><button class="btn sec small" id="cmGoto">🗂 Открыть в пайплайне найма →</button></div>
   </div>
 </div>
 <script>
@@ -1369,20 +1370,21 @@ function renderBoss(users, skipStatsFetch){
   }
 
   let peopleUsers = bossRoleFilter==='candidate' ? [] : (bossRoleFilter==='all' ? users : users.filter(u=>u.role===bossRoleFilter));
-  peopleUsers = peopleUsers.filter(u=>matchesSearch(u.name+' '+u.login+' '+(u.howFound||''), u.phone));
+  peopleUsers = peopleUsers.filter(u=>matchesSearch(u.name+' '+u.login+' '+(u.howFound||'')+' '+(u.owner||'')+' '+((u.comments||[]).map(m=>m.text).join(' ')), u.phone));
   let peopleCandidates = (bossRoleFilter==='trainee' || bossRoleFilter==='manager') ? [] : openCandidates;
   peopleCandidates = peopleCandidates.filter(c=>matchesSearch(c.name+' '+(c.contact||'')+' '+(c.source||'')+' '+(c.owner||'')+' '+((c.comments||[]).map(m=>m.text).join(' ')), c.phone));
   // 2026-11-11: фильтр по закреплённому РОПу (+ «не закреплён») и по задачам
   const ofEl=$('#ownerFilter');
   if(ofEl){
-    const owners=[...new Set((CANDIDATES||[]).map(c=>c.owner).filter(Boolean))].sort();
+    const owners=[...new Set((CANDIDATES||[]).concat(users).map(c=>c.owner).filter(Boolean))].sort();
     const cur=ofEl.value;
     ofEl.innerHTML='<option value="">РОП: все</option><option value="__none">Не закреплён</option>'+owners.map(o=>'<option value="'+esc(o)+'">'+esc(o)+'</option>').join('');
     ofEl.value=[...ofEl.options].some(o=>o.value===cur)?cur:'';
-    if(dueOnly){ peopleCandidates=peopleCandidates.filter(c=>openTasks(c).length); peopleUsers=[]; }
+    if(dueOnly){ peopleCandidates=peopleCandidates.filter(c=>openTasks(c).length); peopleUsers=peopleUsers.filter(u=>openTasks(u).length); }
     if(ofEl.value){
-      peopleUsers=[];
-      peopleCandidates=peopleCandidates.filter(c=>ofEl.value==='__none'?!c.owner:c.owner===ofEl.value);
+      const okOwner=c=>ofEl.value==='__none'?!c.owner:c.owner===ofEl.value;
+      peopleUsers=peopleUsers.filter(okOwner);
+      peopleCandidates=peopleCandidates.filter(okOwner);
     }
   }
 
@@ -1430,7 +1432,7 @@ function renderBoss(users, skipStatsFetch){
           '<td><div class="stk">'+roleTag+(hs!=='Активен'?statusCell:'')+'</div></td>'+
           '<td>'+eduCell+'</td>'+
           '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
-          '<td style="color:var(--muted)">—</td>'+
+          '<td>'+(u.owner?'<span class="ownerTag">'+esc(u.owner)+'</span>':'<span style="color:var(--muted)">не закреплён</span>')+taskTagHtml(u)+((u.comments&&u.comments.length)?'<div class="comPrev" title="'+esc(u.comments[u.comments.length-1].text)+'">💬 '+u.comments.length+' · '+esc(u.comments[u.comments.length-1].text.slice(0,40))+'</div>':'')+'</td>'+
           '<td style="color:var(--muted)" class="cNowrap">'+when+'</td>'+
           '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
       }
@@ -1457,8 +1459,7 @@ function renderBoss(users, skipStatsFetch){
       tr.addEventListener('click', e=>{
         if(e.target.closest('.bossDelBtn') || e.target.closest('.contactBtn') || e.target.closest('.candGotoBtn') || e.target.closest('.phoneTxt')) return;
         if(tr.classList.contains('candRow')){ openCandModal(tr.dataset.candid); return; }
-        const u=BOSS_USERS[tr.dataset.login];
-        if(u) renderProfile(u);
+        openUserCrm(tr.dataset.login);
       });
     });
     wrap.querySelectorAll('.phoneTxt').forEach(el=>{
@@ -1819,6 +1820,7 @@ function renderProfile(u){
   // 2026-08-24: роль 'manager' в базе технически не изменилась (api/users.js, setRole), но по
   // новой терминологии (Обучение → Стажировка) это и есть переключатель стажировки — переименовали
   // подписи кнопки, чтобы не путать с реальным руководителем/менеджером по продажам.
+  const crmBtn=$('#profCrm'); if(crmBtn) crmBtn.onclick=()=>openUserCrm(u.login);
   const promoteBtn=$('#profPromote');
   if(u.role==='manager'){
     promoteBtn.textContent='↩️ Вернуть на обучение';
@@ -1944,8 +1946,25 @@ $('#f-boss-login')&&$('#f-boss-login').addEventListener('keydown',e=>{ if(e.key=
 /* ---- Окно кандидата (2026-11-11): стадия, ответы, смена статуса, не уходя со списка ---- */
 let CM_ID=null;
 const CM_STAGES=['Новый','Ожидает ответа','Ответил','Приглашён','Обучение','Стажировка','Трудоустроен','На связи','Квалификация','Интервью','Оффер','Не подходит','Отказ','Ушёл'];
+let CM_USER=null; // login зарегистрированного сотрудника, если карточка открыта для него (а не для кандидата)
+function cmSetUserMode(on){ ['#cmStageRow','#cmGotoRow'].forEach(s=>{ const e=$(s); if(e) e.style.display=on?'none':''; }); }
+function openUserCrm(login){
+  const u=BOSS_USERS[login]; if(!u) return;
+  CM_USER=login; CM_ID=login; cmSetUserMode(true);
+  $('#cmName').textContent=u.name||login;
+  $('#cmMeta').textContent=['@'+u.login,u.phone?'📱 '+u.phone:'',u.role==='manager'?'🎓 Стажировка':'📘 Обучение'].filter(Boolean).join(' · ');
+  $('#cmContacts').innerHTML=contactBtnsHtml(u.phone);
+  $('#cmMsg').textContent=''; $('#cmOwnerMsg').textContent=''; $('#cmComMsg').textContent=''; $('#cmTaskMsg').textContent=''; $('#cmComText').value='';
+  $('#cmOwner').value=u.owner||cmMyName();
+  $('#ownersList').innerHTML=[...new Set((CANDIDATES||[]).concat(LAST_BOSS_USERS).map(x=>x.owner).filter(Boolean))].map(o=>'<option value="'+esc(o)+'">').join('');
+  cmRenderComments(u); cmRenderTasks(u);
+  $('#cmBody').innerHTML='<div class="sub">Это зарегистрированный сотрудник. Статус, пароль и прогресс обучения — в его профиле.</div><div class="cmRow"><button class="btn sec small" id="cmOpenProfile">👤 Открыть профиль →</button></div>';
+  $('#cmOpenProfile').onclick=()=>{ closeCandModal(); renderProfile(u); };
+  $('#candModal').classList.add('open');
+}
 function openCandModal(id){
   const c=(CANDIDATES||[]).find(x=>String(x.id)===String(id)); if(!c) return;
+  CM_USER=null; cmSetUserMode(false);
   CM_ID=c.id;
   $('#cmName').textContent=c.name||'Кандидат';
   const bits=[];
@@ -1974,7 +1993,7 @@ function openCandModal(id){
   $('#candModal').classList.add('open');
   bossLiveTick(true); // подтянуть свежие комментарии/задачи, пока окно открыто
 }
-function closeCandModal(){ $('#candModal').classList.remove('open'); CM_ID=null; }
+function closeCandModal(){ $('#candModal').classList.remove('open'); CM_ID=null; CM_USER=null; }
 $('#cmClose').onclick=closeCandModal;
 $('#candModal').addEventListener('click',e=>{ if(e.target.id==='candModal') closeCandModal(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeCandModal(); });
@@ -2011,6 +2030,18 @@ function cmRenderComments(c){
   });
 }
 async function cmCall(payload){
+  if(CM_USER){
+    const p=Object.assign({},payload); const op=p.action; delete p.action; delete p.id;
+    const r=await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action:'crm',op,login:CM_USER,password:BOSS_PW},p))});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Ошибка сохранения');
+    const i=LAST_BOSS_USERS.findIndex(x=>x.login===CM_USER);
+    if(i>=0) LAST_BOSS_USERS[i]=d.user;
+    BOSS_USERS[CM_USER]=d.user;
+    renderBoss(LAST_BOSS_USERS,true);
+    cmRenderComments(d.user); cmRenderTasks(d.user);
+    return d;
+  }
   const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({password:BOSS_PW},payload))});
   const d=await r.json();
   if(!r.ok||!d.ok) throw new Error(d.error||'Ошибка сохранения');
@@ -2089,14 +2120,15 @@ async function bossLiveTick(force){
     if(!ru||!ru.ok||!rc||!rc.ok||!Array.isArray(rc.items)) return;
     // 2026-11-16: если хранилище недоступно, API отвечает «пусто» — не затираем уже загруженный список пустым
     if((CANDIDATES.length && !rc.items.length) || (LAST_BOSS_USERS.length && !(ru.users||[]).length)) return;
-    const sig=JSON.stringify([rc.items,(ru.users||[]).map(u=>[u.login,u.role,u.hireStatus,u.phone,u.progress&&Object.keys(u.progress).length])]);
+    const sig=JSON.stringify([rc.items,(ru.users||[]).map(u=>[u.login,u.role,u.hireStatus,u.phone,u.progress&&Object.keys(u.progress).length,u.owner,u.comments,u.tasks])]);
     const modalOpen=$('#candModal').classList.contains('open');
     if(sig!==_liveSig){
       _liveSig=sig;
       CANDIDATES=rc.items;
       if(modalOpen){
         // не перерисовываем список под открытым окном и не трогаем поля ввода — обновляем только ленты
-        const c=CANDIDATES.find(x=>String(x.id)===String(CM_ID));
+        if(CM_USER){ LAST_BOSS_USERS=ru.users||[]; BOSS_USERS={}; LAST_BOSS_USERS.forEach(x=>{BOSS_USERS[x.login]=x;}); const uu=BOSS_USERS[CM_USER]; if(uu){ cmRenderComments(uu); cmRenderTasks(uu); } }
+        const c=CM_USER?null:CANDIDATES.find(x=>String(x.id)===String(CM_ID));
         if(c){ cmRenderComments(c); cmRenderTasks(c); }
       } else {
         renderBoss(ru.users||[],true);

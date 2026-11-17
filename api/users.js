@@ -79,7 +79,7 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, age: (typeof u.age === 'number') ? u.age : null, ageOutOfRange: !!u.ageOutOfRange, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, age: (typeof u.age === 'number') ? u.age : null, ageOutOfRange: !!u.ageOutOfRange, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, owner: u.owner || '', comments: Array.isArray(u.comments) ? u.comments : [], tasks: Array.isArray(u.tasks) ? u.tasks : [], hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
 }
 
 // Статусы сотрудника/стажёра (отдельно от role trainee/manager — role определяет доступный
@@ -391,6 +391,44 @@ export default async function handler(req, res) {
       if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
       u.role = role;
       if (role === 'manager' && !u.promotedAt) u.promotedAt = Date.now();
+      await putUser(u);
+      res.status(200).json({ ok: true, user: safe(u) });
+      return;
+    }
+
+    // ── РОП / комментарии / задачи по зарегистрированному сотруднику (2026-11-17, Sagi: «у Яны нет
+    // возможности закреплять сотрудников за собой»). Те же поля, что у кандидатов в api/pipeline.js.
+    if (action === 'crm') {
+      if (!checkBoss(body, res)) return;
+      const login = norm(body.login);
+      const u = await getUser(login);
+      if (!u) { res.status(404).json({ error: 'Пользователь не найден' }); return; }
+      const op = (body.op || '').toString();
+      const by = (body.by || '').toString().trim().slice(0, 60);
+      const newTid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      u.comments = Array.isArray(u.comments) ? u.comments : [];
+      u.tasks = Array.isArray(u.tasks) ? u.tasks : [];
+      if (op === 'assign') {
+        u.owner = (body.owner || '').toString().trim().slice(0, 60);
+        u.ownerAt = u.owner ? Date.now() : null;
+      } else if (op === 'comment') {
+        const text = (body.text || '').toString().trim().slice(0, 1000);
+        if (!text) { res.status(400).json({ error: 'Пустой комментарий' }); return; }
+        u.comments = u.comments.concat([{ text, by, at: Date.now() }]).slice(-100);
+      } else if (op === 'delComment') {
+        const at = Number(body.at);
+        u.comments = u.comments.filter(m => m.at !== at);
+      } else if (op === 'task') {
+        const dueAt = Number(body.dueAt);
+        if (!dueAt || dueAt < 1e12) { res.status(400).json({ error: 'Укажите дату и время' }); return; }
+        const text = ((body.text || '').toString().trim() || 'Перезвонить').slice(0, 300);
+        u.tasks = u.tasks.concat([{ tid: newTid(), text, dueAt, by, done: false, createdAt: Date.now() }]).slice(-50);
+      } else if (op === 'taskDone' || op === 'taskDel') {
+        const tid = (body.tid || '').toString();
+        u.tasks = op === 'taskDel'
+          ? u.tasks.filter(t => t.tid !== tid)
+          : u.tasks.map(t => t.tid === tid ? { ...t, done: !t.done, doneAt: t.done ? null : Date.now() } : t);
+      } else { res.status(400).json({ error: 'Неизвестная операция' }); return; }
       await putUser(u);
       res.status(200).json({ ok: true, user: safe(u) });
       return;
