@@ -360,6 +360,7 @@ export default async function handler(req, res) {
       const items = (await loadAll()).map(normalize);
       const idx = items.findIndex(x => x.id === id);
       if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
+      if (items[idx].stage !== stage) items[idx].stageAt = Date.now();
       items[idx].stage = stage;
       // Фиксируем даты для будущего расчёта оттока: когда реально вышел на работу и когда/почему
       // ушёл. employedAt проставляем только один раз (первый переход в «Трудоустроен»), чтобы

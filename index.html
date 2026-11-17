@@ -1433,7 +1433,7 @@ function renderBoss(users, skipStatsFetch){
           '<td>'+eduCell+'</td>'+
           '<td style="color:var(--muted)">'+howFoundCell+'</td>'+
           '<td>'+(u.owner?'<span class="ownerTag">'+esc(u.owner)+'</span>':'<span style="color:var(--muted)">не закреплён</span>')+taskTagHtml(u)+((u.comments&&u.comments.length)?'<div class="comPrev" title="'+esc(u.comments[u.comments.length-1].text)+'">💬 '+u.comments.length+' · '+esc(u.comments[u.comments.length-1].text.slice(0,40))+'</div>':'')+'</td>'+
-          '<td style="color:var(--muted)" class="cNowrap">'+when+'</td>'+
+          actCellHtml(u.lastSeen,'заходил',u)+
           '<td><button class="btn sec small bossDelBtn" data-login="'+loginAttr+'" style="color:#ff6b6b;border-color:#ff6b6b">🗑</button></td></tr>';
       }
       // Кандидат из пайплайна найма, ещё не зарегистрирован на hr.sagibonus.com — колонки обучения
@@ -1451,7 +1451,7 @@ function renderBoss(users, skipStatsFetch){
         '<td style="color:var(--muted)">—</td>'+
         '<td style="color:var(--muted)">'+(c.source||'—')+'</td>'+
         '<td>'+(c.owner?'<span class="ownerTag">'+esc(c.owner)+'</span>':'<span style="color:var(--muted)">не закреплён</span>')+taskTagHtml(c)+((c.comments&&c.comments.length)?'<div class="comPrev" title="'+esc(c.comments[c.comments.length-1].text)+'">💬 '+c.comments.length+' · '+esc(c.comments[c.comments.length-1].text)+'</div>':'')+'</td>'+
-        '<td style="color:var(--muted)" class="cNowrap">'+when+'</td>'+
+        actCellHtml(c.ts,'отклик',c)+
         '<td><button class="btn sec small candGotoBtn" data-candid="'+candIdAttr+'" title="Открыть карточку кандидата">📋 →</button></td></tr>';
     }).join('');
     wrap.innerHTML='<table><thead><tr><th>Сотрудник</th><th>Телефон</th><th>Связаться</th><th>Статус</th><th>Обучение</th><th>Откуда узнал</th><th>РОП / комментарий</th><th>Активность</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
@@ -2079,6 +2079,11 @@ function taskTagHtml(c){
   const over=t.dueAt<Date.now();
   return '<div><span class="taskTag'+(over?' over':'')+'" title="'+esc(t.text)+'">⏰ '+esc(fmtDue(t.dueAt))+(over?' · просрочено':'')+' · '+esc(t.text.slice(0,24))+'</span></div>';
 }
+/* 2026-11-17: даты в колонке «Активность» — по Алматы; последнее изменение = комментарий / задача / стадия / РОП / статус */
+function fmtDM(ts){ return new Date(ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',timeZone:'Asia/Almaty'}); }
+function fmtDMT(ts){ return new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Almaty'}); }
+function lastChange(o){ let m=0; const f=v=>{ v=Number(v); if(v>m) m=v; }; f(o.stageAt); f(o.ownerAt); f(o.statusUpdatedAt); (o.comments||[]).forEach(x=>f(x.at)); (o.tasks||[]).forEach(t=>{ f(t.createdAt); f(t.doneAt); }); return m; }
+function actCellHtml(first,label,o){ const lc=lastChange(o); return '<td class="cNowrap" style="color:var(--muted)"><div>'+label+' '+(first?fmtDM(first):'—')+'</div><div title="Последнее изменение: комментарий, задача, стадия, РОП">✏️ '+(lc?fmtDMT(lc):'нет изменений')+'</div></td>'; }
 function toLocalInput(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'T'+z(d.getHours())+':'+z(d.getMinutes()); }
 function cmRenderTasks(c){
   const ts=(c.tasks||[]).slice().sort((a,b)=>(a.done-b.done)||(a.dueAt-b.dueAt));
