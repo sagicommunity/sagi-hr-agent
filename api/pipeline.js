@@ -513,6 +513,57 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 2026-11-18, Sagi: РОПы ведут рабочую таблицу прямо на сайте. Статус РОПа (ropStatus) + причина отказа,
+    // журнал ropLog [{s, at, by, reason}]; часть статусов двигает и основную стадию воронки (вперёд, не назад).
+    if (action === 'ropStatus' || action === 'ropAdd') {
+      const ROP_STATUSES = ['Ждём ответа', 'Изучает материал', 'Обучение', 'Доступ к CRM', 'Стажировка', 'Жду ответ', 'Перестал(а) отвечать', 'Отказ', 'Вышел'];
+      const TO_STAGE = { 'Изучает материал': 'Обучение', 'Обучение': 'Обучение', 'Доступ к CRM': 'Стажировка', 'Стажировка': 'Стажировка', 'Вышел': 'Трудоустроен', 'Отказ': 'Отказ' };
+      const RANK = { 'Новый': 0, 'Ожидает ответа': 1, 'Ответил': 2, 'Приглашён': 3, 'На связи': 3, 'Квалификация': 3, 'Интервью': 3, 'Оффер': 3, 'Обучение': 4, 'Стажировка': 5, 'Трудоустроен': 6 };
+      if (action === 'ropAdd') {
+        const name = (body?.name || '').toString().slice(0, 80).trim();
+        const phoneIn = (body?.phone || '').toString().trim();
+        const owner = (body?.owner || '').toString().trim().slice(0, 60);
+        if (!name && !phoneIn) { res.status(400).json({ error: 'Нужно имя или телефон' }); return; }
+        const items = (await loadAll()).map(normalize);
+        const d = digits(phoneIn);
+        if (d && d.length >= 7) {
+          const dup = items.find(x => digits(x.phone || '') === d);
+          if (dup) { res.status(409).json({ error: 'Уже в базе', dup: { id: dup.id, name: dup.name, owner: dup.owner || '' } }); return; }
+        }
+        const rec = normalize({ id: newId(), name: name || 'Без имени', contact: phoneIn, phone: d, source: 'добавил РОП', stage: 'Новый', verdict: 'Резерв', ts: Date.now(), owner, ownerAt: owner ? Date.now() : null, answers: [] });
+        await redis(['LPUSH', CAND_KEY, JSON.stringify(rec)]);
+        await redis(['LTRIM', CAND_KEY, 0, 1999]);
+        res.status(200).json({ ok: true, item: rec });
+        return;
+      }
+      const id = (body?.id || '').toString();
+      const status = (body?.status || '').toString();
+      if (status && !ROP_STATUSES.includes(status)) { res.status(400).json({ error: 'Неизвестный статус' }); return; }
+      const items = (await loadAll()).map(normalize);
+      const idx = items.findIndex(x => x.id === id);
+      if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
+      const c = items[idx];
+      const reason = (body?.reason || '').toString().trim().slice(0, 120);
+      const by = (body?.by || '').toString().trim().slice(0, 60);
+      c.ropStatus = status; c.ropReason = status === 'Отказ' ? reason : ''; c.ropStatusAt = Date.now();
+      if (status) {
+        c.ropLog = (Array.isArray(c.ropLog) ? c.ropLog : []).concat([{ s: status, at: Date.now(), by, reason }]).slice(-30);
+        const target = TO_STAGE[status];
+        if (target) {
+          const cur = c.stage;
+          if (target === 'Отказ') {
+            if (!['Отказ', 'Не подходит', 'Ушёл', 'Трудоустроен'].includes(cur)) { pushStageLog(c, 'Отказ'); c.stage = 'Отказ'; }
+          } else if (!(cur in RANK) || RANK[target] > RANK[cur]) {
+            pushStageLog(c, target); c.stage = target;
+            if (target === 'Трудоустроен' && !c.employedAt) c.employedAt = Date.now();
+          }
+        }
+      }
+      await saveOne(c);
+      res.status(200).json({ ok: true, item: c });
+      return;
+    }
+
     if (action === 'delete') {
       const id = (body?.id || '').toString();
       const items = (await loadAll()).map(normalize).filter(x => x.id !== id);

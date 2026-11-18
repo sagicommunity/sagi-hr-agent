@@ -79,7 +79,7 @@ async function putUser(u) {
 }
 // безопасное представление (без хэша/соли/токена)
 function safe(u) {
-  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, age: (typeof u.age === 'number') ? u.age : null, ageOutOfRange: !!u.ageOutOfRange, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, owner: u.owner || '', comments: Array.isArray(u.comments) ? u.comments : [], tasks: Array.isArray(u.tasks) ? u.tasks : [], hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
+  return { name: u.name, login: u.login, role: u.role, progress: u.progress || {}, points: u.points || 0, lastSeen: u.lastSeen, createdAt: u.createdAt, mentorName: u.mentorName || null, mentorPhone: u.mentorPhone || null, hhNegId: u.hhNegId || null, candId: u.candId || null, phone: u.phone || null, intakeAnswers: u.intakeAnswers || null, intakeVacancy: u.intakeVacancy || null, howFound: u.howFound || null, age: (typeof u.age === 'number') ? u.age : null, ageOutOfRange: !!u.ageOutOfRange, promotedAt: u.promotedAt || null, quizAttempts: u.quizAttempts || {}, quizBest: u.quizBest || {}, owner: u.owner || '', ropStatus: u.ropStatus || '', ropReason: u.ropReason || '', ropLog: Array.isArray(u.ropLog) ? u.ropLog : [], comments: Array.isArray(u.comments) ? u.comments : [], tasks: Array.isArray(u.tasks) ? u.tasks : [], hireStatus: u.hireStatus || 'Активен', statusComment: u.statusComment || '', statusUpdatedAt: u.statusUpdatedAt || null };
 }
 
 // Статусы сотрудника/стажёра (отдельно от role trainee/manager — role определяет доступный
@@ -416,6 +416,13 @@ export default async function handler(req, res) {
       if (op === 'assign') {
         u.owner = (body.owner || '').toString().trim().slice(0, 60);
         u.ownerAt = u.owner ? Date.now() : null;
+      } else if (op === 'ropStatus') {
+        const OK = ['Ждём ответа', 'Изучает материал', 'Обучение', 'Доступ к CRM', 'Стажировка', 'Жду ответ', 'Перестал(а) отвечать', 'Отказ', 'Вышел'];
+        const st = (body.status || '').toString();
+        if (st && !OK.includes(st)) { res.status(400).json({ error: 'Неизвестный статус' }); return; }
+        const reason = (body.reason || '').toString().trim().slice(0, 120);
+        u.ropStatus = st; u.ropReason = st === 'Отказ' ? reason : ''; u.ropStatusAt = Date.now();
+        if (st) u.ropLog = (Array.isArray(u.ropLog) ? u.ropLog : []).concat([{ s: st, at: Date.now(), by, reason }]).slice(-30);
       } else if (op === 'comment') {
         const text = (body.text || '').toString().trim().slice(0, 1000);
         if (!text) { res.status(400).json({ error: 'Пустой комментарий' }); return; }
