@@ -509,6 +509,7 @@
         <button class="bnItem" data-tab="onboarding"><span class="ic">✅</span>Адаптация новичков</button>
         <button class="bnItem" data-tab="training"><span class="ic">📚</span>Материалы обучения</button>
         <button class="bnItem" data-tab="analytics"><span class="ic">📊</span>Аналитика</button>
+        <button class="bnItem" data-tab="rop"><span class="ic">🎯</span>Контроль РОПов</button>
         <button class="bnItem" data-tab="checklist"><span class="ic">📋</span>Чек-лист оценки</button>
         <button class="bnItem" data-tab="broadcast"><span class="ic">📣</span>Ручная рассылка</button>
         <button class="bnItem" data-tab="wa"><span class="ic">📲</span>WhatsApp рассылка</button>
@@ -556,6 +557,26 @@
           <iframe class="accFrame" id="frame-analytics" data-src="/analytics.html?embed=1" title="Аналитика найма"></iframe>
         </div>
 
+        <div class="bossPane" data-pane="rop">
+          <div class="sectitle" style="margin-top:0">🎯 Контроль РОПов</div>
+          <div class="sub" id="ropSince" style="margin:2px 0 12px"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+            <button class="rfBtn ropP active" data-p="today">Сегодня</button>
+            <button class="rfBtn ropP" data-p="yesterday">Вчера</button>
+            <button class="rfBtn ropP" data-p="week">Неделя</button>
+            <input type="date" id="ropDate" title="Выбрать дату" style="background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px" />
+            <span class="sub" id="ropRange" style="margin:0"></span>
+          </div>
+          <div id="ropTable" style="overflow:auto"></div>
+          <div class="sub" style="margin-top:10px">Нажмите на цифру, чтобы увидеть людей. Дни считаются по Алматы. Человек относится к РОПу, за которым он закреплён; незакреплённые и прочие имена — в колонке «Без РОПа».</div>
+          <div id="ropModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:190;overflow:auto;padding:24px 14px">
+            <div style="background:var(--panel-solid);border:1px solid var(--line-2);border-radius:18px;max-width:720px;width:100%;padding:20px 22px;position:relative">
+              <button id="ropModalX" aria-label="Закрыть" style="position:absolute;right:14px;top:10px;background:none;border:0;color:var(--muted);font-size:26px;cursor:pointer">×</button>
+              <div style="font-family:var(--display);font-size:18px;font-weight:700" id="ropModalTitle"></div>
+              <div id="ropModalBody" style="margin-top:10px"></div>
+            </div>
+          </div>
+        </div>
         <div class="bossPane" data-pane="checklist">
           <div class="paneHead"><h2>📋 Чек-лист оценки</h2><p>Реальный стандарт РОПа: 23 пункта на звонок, 29 на встречу — для оценки живых звонков/встреч</p></div>
           <iframe class="accFrame" id="frame-checklist" data-src="/checklist.html?embed=1" title="Чек-лист оценки звонка и встречи"></iframe>
@@ -1316,6 +1337,7 @@ function renderBoss(users, skipStatsFetch){
   users=users||[];
   LAST_BOSS_USERS=users;
   BOSS_USERS={}; users.forEach(u=>{ BOSS_USERS[u.login]=u; });
+  try{ if(document.querySelector('.bossPane[data-pane="rop"].active')) ropRender(); }catch(e){}
   $('#whoChip').classList.remove('hidden'); $('#whoChip').innerHTML='🎯 <b>Руководитель</b>';
   $('#logoutBtn').classList.remove('hidden');
   const trainees=users.filter(u=>u.role==='trainee');
@@ -1680,6 +1702,7 @@ function selectBossTab(tab){
     frame.addEventListener('load', scheduleViewportSlice, {once:true});
   }
   if(tab==='wa') renderWaPane(); else waStopPoll();
+  if(tab==='rop') ropRender();
   scheduleViewportSlice();
   // 2026-09-28, Sagi: «тяжело ориентироваться». Запоминаем раздел в адресе (#pipeline) — после
   // обновления страницы остаёшься там же; и если меню ушло вверх за экран (долистал таблицу), при
@@ -2079,6 +2102,92 @@ function taskTagHtml(c){
   const over=t.dueAt<Date.now();
   return '<div><span class="taskTag'+(over?' over':'')+'" title="'+esc(t.text)+'">⏰ '+esc(fmtDue(t.dueAt))+(over?' · просрочено':'')+' · '+esc(t.text.slice(0,24))+'</span></div>';
 }
+/* ---- Контроль РОПов (2026-11-18): воронка по каждому РОПу за выбранный день/неделю, всё считается из данных сайта ---- */
+var ROP_COLS=[['damira','Дамира'],['aydana','Айдана'],['yana','Яна'],['other','Без РОПа']];
+var ROP_AL=5*3600000; // Алматы = UTC+5
+var ropPeriod='today', ropPickDate='';
+var ROP_REPL=['Ответил','Приглашён','Обучение','Стажировка','Трудоустроен','Ушёл','Интервью','Оффер','Квалификация','На связи'];
+var ROP_METRICS=[
+  ['resp','Откликов'],['wrote','Написали'],['replied','Ответили'],['link','Ссылка на анкету'],
+  ['filled','Заполнили анкету'],['learn','Обучение'],['intern','Стажировка'],['hired','Вышел'],
+  ['comm','💬 Комментарии'],['task','⏰ Задач поставлено']
+];
+function ropKey(n){ n=String(n||'').toLowerCase().trim(); if(!n) return 'other'; if(n.includes('дамир')) return 'damira'; if(n.includes('айдан')) return 'aydana'; if(/(^|\s)яна(\s|$)/.test(n)) return 'yana'; return 'other'; }
+function alDayStart(ts){ return Math.floor((ts+ROP_AL)/86400000)*86400000-ROP_AL; }
+function ropRange(){
+  const now=Date.now(), t0=alDayStart(now), D=86400000;
+  if(ropPeriod==='yesterday') return [t0-D,t0];
+  if(ropPeriod==='week'){ const dow=new Date(t0+ROP_AL).getUTCDay(); return [t0-((dow+6)%7)*D, t0+D]; }
+  if(ropPeriod==='date' && ropPickDate){ const p=ropPickDate.split('-').map(Number); const s=Date.UTC(p[0],p[1]-1,p[2])-ROP_AL; return [s,s+D]; }
+  return [t0,t0+D];
+}
+function ropLogAt(c,set){ let m=null; ((c&&c.stageLog)||[]).forEach(e=>{ if(!e.init && set.indexOf(e.s)>=0 && (m===null||e.at<m)) m=e.at; }); return m; }
+function ropMin(a){ a=a.filter(x=>x); return a.length?Math.min.apply(null,a):null; }
+function ropPeople(){
+  const users=LAST_BOSS_USERS||[], cands=CANDIDATES||[], byCand={}, byPhone={}, used={}, out=[];
+  users.forEach(u=>{ if(u.candId) byCand[u.candId]=u; const d=digitsOnly(u.phone); if(d) byPhone[d]=u; });
+  cands.forEach(c=>{ const u=byCand[c.id]||byPhone[digitsOnly(c.phone)]||null; if(u) used[u.login]=1; out.push({c:c,u:u}); });
+  users.forEach(u=>{ if(!used[u.login]) out.push({c:null,u:u}); });
+  return out.map(p=>{ p.name=(p.c&&p.c.name)||(p.u&&p.u.name)||'—'; p.phone=(p.c&&p.c.phone)||(p.u&&p.u.phone)||''; p.owner=(p.c&&p.c.owner)||(p.u&&p.u.owner)||''; p.stage=p.c?p.c.stage:((p.u&&p.u.role==='manager')?'Стажировка':'Обучение'); p.src=(p.c&&p.c.source)||(p.u&&p.u.howFound)||''; return p; });
+}
+function ropEvents(){
+  const ev={}; ROP_METRICS.forEach(m=>{ ev[m[0]]=[]; });
+  ropPeople().forEach(p=>{
+    const c=p.c, u=p.u, rop=ropKey(p.owner);
+    const add=(m,ts,note,rk)=>{ if(ts) ev[m].push({ts:ts,p:p,rop:rk||rop,note:note||''}); };
+    if(c){
+      add('resp',c.ts);
+      add('wrote',ropMin([c.msgAt,c.messageSent?c.ts:null,ropLogAt(c,['Ожидает ответа'])]));
+      add('replied',ropMin([ropLogAt(c,ROP_REPL),c.replyText?c.ts:null]));
+      add('link',ropLogAt(c,['Приглашён']));
+      add('learn',ropLogAt(c,['Обучение']));
+    }
+    add('filled',u&&u.createdAt);
+    add('intern',ropMin([u&&u.promotedAt,ropLogAt(c,['Стажировка'])]));
+    add('hired',ropMin([c&&c.employedAt,ropLogAt(c,['Трудоустроен'])]));
+    [c,u].forEach(o=>{ if(!o) return;
+      (o.comments||[]).forEach(m=>add('comm',m.at,m.text,ropKey(m.by||p.owner)));
+      (o.tasks||[]).forEach(t=>add('task',t.createdAt,t.text+' → '+fmtDMT(t.dueAt),ropKey(t.by||p.owner)));
+    });
+  });
+  return ev;
+}
+function ropSel(ev,m,rk,r){ return ev[m].filter(e=>e.ts>=r[0]&&e.ts<r[1]&&(rk==='all'||e.rop===rk)); }
+function ropCnt(list,m){ if(m==='comm'||m==='task') return list.length; const s={}; list.forEach(e=>{ s[(e.p.c&&e.p.c.id)||(e.p.u&&e.p.u.login)]=1; }); return Object.keys(s).length; }
+function ropRender(){
+  const wrap=$('#ropTable'); if(!wrap) return;
+  const r=ropRange(), ev=ropEvents();
+  $('#ropRange').textContent=fmtDM(r[0])+(r[1]-r[0]>86400000?' — '+fmtDM(r[1]-1):'');
+  let since=null; (CANDIDATES||[]).forEach(c=>(c.stageLog||[]).forEach(e=>{ if(!e.init && (since===null||e.at<since)) since=e.at; }));
+  $('#ropSince').textContent='Отклики, анкеты, стажировка и выход считаются за всё время. «Написали», «Ответили», «Ссылка на анкету» и «Обучение» — по журналу стадий, который ведётся с '+(since?fmtDM(since)+'.'+new Date(since+ROP_AL).getUTCFullYear():'момента запуска (пока записей нет)')+' (раньше времени смены стадии не сохранялось).';
+  const prev={}; let h='<table><thead><tr><th>Показатель</th>'+ROP_COLS.map(c=>'<th>'+c[1]+'</th>').join('')+'<th>Итого</th></tr></thead><tbody>';
+  ROP_METRICS.forEach((m,i)=>{
+    h+='<tr><td><b>'+m[1]+'</b></td>';
+    ROP_COLS.concat([['all','Итого']]).forEach(c=>{
+      const list=ropSel(ev,m[0],c[0],r), n=ropCnt(list,m[0]);
+      let conv=''; const pm=(i>=1&&i<=7)?ROP_METRICS[i-1][0]:null;
+      if(pm && n && prev[c[0]]) conv='<div class="eduSub">'+Math.round(n/prev[c[0]]*100)+'% к пред. шагу</div>';
+      if(i<=7) prev[c[0]]=n;
+      h+='<td>'+(n?'<button class="btn sec small ropNum" data-m="'+m[0]+'" data-r="'+c[0]+'" style="min-width:42px"><b>'+n+'</b></button>':'<span style="color:var(--muted)">0</span>')+conv+'</td>';
+    });
+    h+='</tr>';
+  });
+  wrap.innerHTML=h+'</tbody></table>';
+  wrap.querySelectorAll('.ropNum').forEach(b=>b.onclick=()=>ropDrill(b.dataset.m,b.dataset.r));
+}
+function ropDrill(m,rk){
+  const r=ropRange(), list=ropSel(ropEvents(),m,rk,r).sort((a,b)=>b.ts-a.ts);
+  const mn=(ROP_METRICS.find(x=>x[0]===m)||[0,m])[1], rn=rk==='all'?'все':((ROP_COLS.find(x=>x[0]===rk)||[0,rk])[1]);
+  $('#ropModalTitle').textContent=mn+' · '+rn+' · '+$('#ropRange').textContent;
+  $('#ropModalBody').innerHTML=list.map((e,i)=>{ const p=e.p, st=(CAND_STAGE_TAG[p.stage]||[p.stage])[0];
+    return '<div class="cmItem ropRow" data-i="'+i+'" style="cursor:pointer"><div class="cmQ"><b>'+esc(p.name)+'</b> · '+esc(p.phone||'без телефона')+' · '+esc(st)+(p.owner?' · РОП: '+esc(p.owner):'')+'</div><div class="cmA">'+esc(fmtDMT(e.ts))+(p.src?' · '+esc(p.src):'')+(e.note?' · '+esc(e.note):'')+'</div></div>'; }).join('')||'<div class="sub">Никого.</div>';
+  $('#ropModalBody').querySelectorAll('.ropRow').forEach(el=>el.onclick=()=>{ const p=list[Number(el.dataset.i)].p; if(p.c) openCandModal(p.c.id); else openUserCrm(p.u.login); });
+  $('#ropModal').style.display='flex';
+}
+document.querySelectorAll('.ropP').forEach(b=>b.onclick=()=>{ ropPeriod=b.dataset.p; document.querySelectorAll('.ropP').forEach(x=>x.classList.toggle('active',x===b)); $('#ropDate').value=''; ropRender(); });
+if($('#ropDate')) $('#ropDate').onchange=function(){ if(!this.value) return; ropPeriod='date'; ropPickDate=this.value; document.querySelectorAll('.ropP').forEach(x=>x.classList.remove('active')); ropRender(); };
+if($('#ropModalX')) $('#ropModalX').onclick=()=>{ $('#ropModal').style.display='none'; };
+if($('#ropModal')) $('#ropModal').addEventListener('click',e=>{ if(e.target.id==='ropModal') $('#ropModal').style.display='none'; });
 /* 2026-11-17: даты в колонке «Активность» — по Алматы; последнее изменение = комментарий / задача / стадия / РОП / статус */
 function fmtDM(ts){ return new Date(ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',timeZone:'Asia/Almaty'}); }
 function fmtDMT(ts){ return new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Almaty'}); }

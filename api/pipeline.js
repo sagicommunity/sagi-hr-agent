@@ -161,6 +161,15 @@ async function screen(name, resume, vacancy) {
 // поля, которых нет в этом списке ниже: messageSent, replyText, mentorName/mentorPhone
 // (наставник, ФАЗА E в hh_poll.js), а теперь ещё и employedAt/leftAt/exitReason (трекинг
 // оттока, см. ниже). Spread в начале сохраняет всё, что не перечислено явно.
+// 2026-11-18: журнал смен стадии (для вкладки «Контроль РОПов»). Первая запись init:true — стадия, в
+// которой запись уже была к моменту запуска журнала; точное время её наступления неизвестно.
+function pushStageLog(rec, newStage) {
+  if (rec.stage === newStage) return;
+  const log = Array.isArray(rec.stageLog) ? rec.stageLog : [{ s: rec.stage, at: rec.ts || Date.now(), init: true }];
+  rec.stageLog = log.concat([{ s: newStage, at: Date.now() }]).slice(-30);
+  rec.stageAt = Date.now();
+}
+
 function normalize(c) {
   return {
     ...c,
@@ -360,7 +369,7 @@ export default async function handler(req, res) {
       const items = (await loadAll()).map(normalize);
       const idx = items.findIndex(x => x.id === id);
       if (idx < 0) { res.status(404).json({ error: 'Кандидат не найден' }); return; }
-      if (items[idx].stage !== stage) items[idx].stageAt = Date.now();
+      pushStageLog(items[idx], stage);
       items[idx].stage = stage;
       // Фиксируем даты для будущего расчёта оттока: когда реально вышел на работу и когда/почему
       // ушёл. employedAt проставляем только один раз (первый переход в «Трудоустроен»), чтобы

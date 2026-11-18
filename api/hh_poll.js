@@ -612,6 +612,13 @@ async function updateCandidateRecord(id, patch) {
     try { rec = JSON.parse(raw[i]); } catch (e) { continue; }
     if (rec && rec.id === id) {
       const updated = { ...rec, ...patch };
+      // 2026-11-18: журнал стадий и время первого сообщения (вкладка «Контроль РОПов»)
+      if (patch.stage && patch.stage !== rec.stage) {
+        const log = Array.isArray(rec.stageLog) ? rec.stageLog : [{ s: rec.stage, at: rec.ts || Date.now(), init: true }];
+        updated.stageLog = log.concat([{ s: patch.stage, at: Date.now() }]).slice(-30);
+        updated.stageAt = Date.now();
+      }
+      if (patch.messageSent === true && !rec.messageSent && !rec.msgAt) updated.msgAt = Date.now();
       await redis(['LSET', CAND_KEY, i, JSON.stringify(updated)]);
       return updated;
     }

@@ -127,6 +127,11 @@ async function bumpCandidateStage(candId, fromStages, toStage) {
     try { rec = JSON.parse(raw[i]); } catch (e) { continue; }
     if (rec && rec.id === candId) {
       if (!fromStages.includes(rec.stage)) return false;
+      if (rec.stage !== toStage) {
+        const log = Array.isArray(rec.stageLog) ? rec.stageLog : [{ s: rec.stage, at: rec.ts || Date.now(), init: true }];
+        rec.stageLog = log.concat([{ s: toStage, at: Date.now() }]).slice(-30);
+        rec.stageAt = Date.now();
+      }
       rec.stage = toStage;
       await redis(['LSET', CAND_KEY, i, JSON.stringify(rec)]);
       return true;
