@@ -2172,7 +2172,19 @@ function ropRender(){
     });
     h+='</tr>';
   });
+  h+='</tbody></table>';
+  // 2026-11-18: срез «сейчас» — сколько людей у каждого РОПа находится на каждой стадии прямо сейчас
+  // (так считают сами РОПы: «у Дамиры трое на обучении»). Не зависит от периода и от журнала стадий.
+  const ppl=ropPeople(), ST=['Ожидает ответа','Ответил','Приглашён','На связи','Квалификация','Интервью','Оффер','Обучение','Стажировка','Трудоустроен','Ушёл','Не подходит','Отказ'];
+  const cols=ROP_COLS.concat([['all','Итого']]);
+  h+='<div style="font-weight:700;margin:22px 0 4px">Сейчас на стадиях (на текущий момент, без привязки к периоду)</div><table><thead><tr><th>Стадия</th>'+cols.map(c=>'<th>'+c[1]+'</th>').join('')+'</tr></thead><tbody>';
+  ST.forEach(s=>{
+    const row=cols.map(c=>ppl.filter(p=>p.stage===s&&(c[0]==='all'||ropKey(p.owner)===c[0])).length);
+    if(!row[row.length-1]) return;
+    h+='<tr><td><b>'+((CAND_STAGE_TAG[s]||[s])[0])+'</b></td>'+row.map((n,i)=>'<td>'+(n?'<button class="btn sec small ropSnap" data-s="'+s+'" data-r="'+cols[i][0]+'" style="min-width:42px"><b>'+n+'</b></button>':'<span style="color:var(--muted)">0</span>')+'</td>').join('')+'</tr>';
+  });
   wrap.innerHTML=h+'</tbody></table>';
+  wrap.querySelectorAll('.ropSnap').forEach(b=>b.onclick=()=>ropDrillSnap(b.dataset.s,b.dataset.r));
   wrap.querySelectorAll('.ropNum').forEach(b=>b.onclick=()=>ropDrill(b.dataset.m,b.dataset.r));
 }
 function ropDrill(m,rk){
@@ -2182,6 +2194,14 @@ function ropDrill(m,rk){
   $('#ropModalBody').innerHTML=list.map((e,i)=>{ const p=e.p, st=(CAND_STAGE_TAG[p.stage]||[p.stage])[0];
     return '<div class="cmItem ropRow" data-i="'+i+'" style="cursor:pointer"><div class="cmQ"><b>'+esc(p.name)+'</b> · '+esc(p.phone||'без телефона')+' · '+esc(st)+(p.owner?' · РОП: '+esc(p.owner):'')+'</div><div class="cmA">'+esc(fmtDMT(e.ts))+(p.src?' · '+esc(p.src):'')+(e.note?' · '+esc(e.note):'')+'</div></div>'; }).join('')||'<div class="sub">Никого.</div>';
   $('#ropModalBody').querySelectorAll('.ropRow').forEach(el=>el.onclick=()=>{ const p=list[Number(el.dataset.i)].p; if(p.c) openCandModal(p.c.id); else openUserCrm(p.u.login); });
+  $('#ropModal').style.display='flex';
+}
+function ropDrillSnap(stage,rk){
+  const list=ropPeople().filter(p=>p.stage===stage&&(rk==='all'||ropKey(p.owner)===rk));
+  const rn=rk==='all'?'все':((ROP_COLS.find(x=>x[0]===rk)||[0,rk])[1]);
+  $('#ropModalTitle').textContent=((CAND_STAGE_TAG[stage]||[stage])[0])+' · '+rn+' · сейчас';
+  $('#ropModalBody').innerHTML=list.map((p,i)=>'<div class="cmItem ropRow" data-i="'+i+'" style="cursor:pointer"><div class="cmQ"><b>'+esc(p.name)+'</b> · '+esc(p.phone||'без телефона')+(p.owner?' · РОП: '+esc(p.owner):'')+'</div><div class="cmA">'+(p.src?esc(p.src):'')+'</div></div>').join('')||'<div class="sub">Никого.</div>';
+  $('#ropModalBody').querySelectorAll('.ropRow').forEach(el=>el.onclick=()=>{ const p=list[Number(el.dataset.i)]; if(p.c) openCandModal(p.c.id); else openUserCrm(p.u.login); });
   $('#ropModal').style.display='flex';
 }
 document.querySelectorAll('.ropP').forEach(b=>b.onclick=()=>{ ropPeriod=b.dataset.p; document.querySelectorAll('.ropP').forEach(x=>x.classList.toggle('active',x===b)); $('#ropDate').value=''; ropRender(); });
