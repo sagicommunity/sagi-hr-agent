@@ -472,6 +472,47 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 2026-11-18, Sagi: «вчера был Сергей, сегодня Сергей и Тимур — новый один». Снимок состояния
+    // (человек → стадия, РОП, имя) раз в сутки по Алматы (последний за день перезаписывает), чтобы
+    // сравнивать дни по именам. Хэш hr:snaps, поле = дата YYYY-MM-DD, храним 60 дней.
+    if (action === 'snapshot' || action === 'snapList' || action === 'snapGet') {
+      if (action === 'snapList') {
+        const keys = ((await redis(['HKEYS', 'hr:snaps'])) || []).sort();
+        res.status(200).json({ ok: true, dates: keys });
+        return;
+      }
+      if (action === 'snapGet') {
+        const raw = await redis(['HGET', 'hr:snaps', (body?.date || '').toString().slice(0, 10)]);
+        let snap = null; try { snap = raw ? JSON.parse(raw) : null; } catch (e) {}
+        res.status(snap ? 200 : 404).json(snap ? { ok: true, ts: snap.ts, people: snap.people } : { error: 'Нет снимка' });
+        return;
+      }
+      const items = (await loadAll()).map(normalize);
+      const logins = (await redis(['SMEMBERS', 'hr:users'])) || [];
+      let users = [];
+      if (logins.length) {
+        const vals = (await redis(['MGET', ...logins.map(l => 'hr:user:' + l)])) || [];
+        users = vals.map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean);
+      }
+      const dig = s => String(s || '').replace(/\D/g, '');
+      const byCand = {}, byPhone = {}, used = {}, people = {};
+      users.forEach(u => { if (u.candId) byCand[u.candId] = u; const d = dig(u.phone); if (d) byPhone[d] = u; });
+      items.forEach(c => {
+        const u = byCand[c.id] || byPhone[dig(c.phone)] || null;
+        if (u) used[u.login] = 1;
+        people[c.id] = [c.stage, (c.owner || (u && u.owner) || ''), String(c.name || '').slice(0, 40)];
+      });
+      users.forEach(u => { if (!used[u.login]) people['u:' + u.login] = [u.role === 'manager' ? 'Стажировка' : 'Обучение', u.owner || '', String(u.name || '').slice(0, 40)]; });
+      const n = Object.keys(people).length;
+      if (n < 20) { res.status(200).json({ ok: true, skipped: true }); return; } // хранилище недоступно — не затираем хороший снимок
+      const day = new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+      await redis(['HSET', 'hr:snaps', day, JSON.stringify({ ts: Date.now(), people })]);
+      const keys = ((await redis(['HKEYS', 'hr:snaps'])) || []).sort();
+      if (keys.length > 60) await redis(['HDEL', 'hr:snaps', ...keys.slice(0, keys.length - 60)]);
+      res.status(200).json({ ok: true, day, n });
+      return;
+    }
+
     if (action === 'delete') {
       const id = (body?.id || '').toString();
       const items = (await loadAll()).map(normalize).filter(x => x.id !== id);
